@@ -52,17 +52,19 @@ Hearme allows verified individuals worldwide to:
 
 The platform is designed around pluralism and data sovereignty: there is no single "truth AI," no single agent everyone must use, and no central app that holds your data.
 
-**Hearme is not an app you install. Hearme is an add-on for the agent OS you already run.**
+**Hearme is not tied to the phone assistant, the desktop assistant, or any single chatbot. Hearme integrates with the persistent personal agent runtime the user controls.**
+
+Most users may interact with their agent through a phone-native interface, because the phone is the natural remote control for daily life. But the agent itself does not need to run on the phone. A serious personal agent is likely to be always-on, stateful, tool-connected, and able to run background processes while the user sleeps. That runtime may live on a home server, a rented cloud machine, a managed personal-agent cloud, a desktop, or an open-source agent OS such as Openclaw or Hermes. The phone is the interface; the persistent runtime is where memory, tools, policies, and long-running work live.
 
 Users bring:
-- their own agent OS — self-hosted, open-source agent runtimes (such as Openclaw and Hermes) are first-class targets, with integrations also planned for Claude, ChatGPT, Gemini, and other major assistants
+- their own persistent personal agent runtime — self-hosted, cloud-hosted, or managed, with Openclaw and Hermes as first-class targets
 - their own values and lived context, accumulated through normal use of their agent over months and years
-- their own trusted information sources
-- their own data, which never leaves their environment
+- their own trusted information sources and connected tools
+- their own data, which stays inside the environment they authorized
 
-This matters because the agent that represents you should be the one that already knows you — and the one that already knows you is the one running under your control, with your permissions, on your data. A self-hosted agent in an agent OS like Openclaw can know more about you than any SaaS chatbot ever will, precisely because you trusted it with context you would never hand to a third-party server.
+This matters because the agent that represents you should be the one that already knows you — and the one that already knows you is the one running with your permissions, against your connected data, under policies you can inspect and change. A persistent agent runtime can connect more of your real life than a narrow phone assistant alone: documents, email, repositories, notes, calendars, personal workflows, and long-running background tasks. The interface may be mobile; the representative context lives in the runtime.
 
-Hearme plugs into that agent. It asks the agent the question. The agent answers the way you would. The aggregated, anonymized result is what the world sees. Your raw data, your conversations, your private context — none of it leaves your machine.
+Hearme plugs into that runtime. It asks the agent the question. The agent answers the way you would. The aggregated, anonymized result is what the world sees. Your raw data, your conversations, your private context — none of it leaves the environment you authorized.
 
 This creates an ecosystem of personal representative agents — each one a stand-in for a specific human, owned and controlled by that human — rather than a centralized ideological engine.
 
@@ -135,7 +137,7 @@ Most people have a deep, persistent urge to be heard. They argue with the TV. Th
 
 Today, only a small minority have a real platform: journalists, politicians, celebrities, online influencers. Everyone else is silent by default — not because they don't have views, but because they have no channel and no time. The urge is everywhere; the channel is missing.
 
-Hearme is that channel — and it reaches you through the agent you already trust. You do not have to read the bill. You do not have to write the post. You do not have to log into yet another app. Your personal agent — the one that already knows you, lives in your agent OS, and holds your data on your terms — speaks for you. You can review and correct any answer it gave on your behalf.
+Hearme is that channel — and it reaches you through the agent you already trust. You do not have to read the bill. You do not have to write the post. You do not have to log into yet another app. Your personal agent — the one you may talk to through your phone, but that runs persistently wherever your long-term memory, tools, and policies live — speaks for you. You can review and correct any answer it gave on your behalf.
 
 The result is a real-time sentiment signal that decision-makers — and the public — can actually see. The millions who silently disagree with a government action would, today, never be counted. Through their agent, they finally are.
 
@@ -389,7 +391,7 @@ Hearme will likely require layered and evolving defenses.
 
 If a user's personal agent does not faithfully represent them, the aggregate signal stops being "what humanity thinks" and becomes "what frontier LLMs think humanity thinks" — filtered through whichever RLHF choices the underlying models happen to embed. Agents today have systematic biases (sycophancy, training-data skew, mainstream defaults) that can pull responses away from any specific user's actual views. And critically, today most people do not have a personal AI agent that knows them well. They use assistants to draft emails or debug code, not to discuss values, politics, or how they would react to a contested policy. The training signal for "what would this specific user say about Iran?" is, for most users today, very thin.
 
-**This is the platform's central bet.** Hearme explicitly assumes a future — within the next several years — in which a large fraction of people routinely use a personal AI assistant that has accumulated genuine context about their work, values, reactions to news, and political instincts. We are not building for the world as it is today. We are building for the world we believe is arriving: one where talking to a personal AI is as ordinary as using a phone, and where that AI has years of context about its user. If that future does not arrive, or arrives only for a narrow slice of the population, Hearme's signal quality collapses to that slice. We accept this as a bold assumption rather than trying to hide it.
+**This is the platform's central bet.** Hearme explicitly assumes a future — within the next several years — in which a large fraction of people routinely use a personal AI assistant that has accumulated genuine context about their work, values, reactions to news, and political instincts. We are not building for the world as it is today. We are building for the world we believe is arriving: one where talking to a personal AI is as ordinary as using a phone, but where the agent's durable memory and background work often run somewhere more persistent than the phone itself. People will use phone-native interfaces to control persistent personal agents running on home servers, cloud machines, managed personal-agent clouds, desktops, or open agent runtimes; Hearme integrates with that persistent runtime. If that future does not arrive, or arrives only for a narrow slice of the population, Hearme's signal quality collapses to that slice. We accept this as a bold assumption rather than trying to hide it.
 
 **Why we believe the assumption is reasonable.** The trajectory looks favorable on several fronts simultaneously. Personal AI adoption is growing quickly. Instruction-following on user-specific preferences is already reasonable in frontier models and improving rapidly. Long-lived user memory, persistent personalization, and user-controlled agent profiles are being shipped by every major AI provider. The base model's defaults matter most when the model has no user context; they matter much less when the model has been steered by months or years of explicit user interaction.
 
