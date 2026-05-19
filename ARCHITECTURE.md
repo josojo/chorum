@@ -50,6 +50,14 @@ The user can preview, edit, or veto any answer before submission. Every submitte
 ### 1.13 Phone is the enrollment device, not a hot dependency
 The user's phone (running the ZKPassport app) is touched at exactly three moments: **install**, **refresh** (every 90 days), and **revocation**. In steady state, the phone is never contacted.
 
+### 1.14 Cheap relevance gating before generation
+
+**Problem.** Most users have no formed view on most questions. The economics in VISION.md set the per-response payout at roughly the cost of one LLM inference (~a fraction of a cent). If the skill runs a full generation just to discover the user has no signal on a topic, the marginal answer is worth less than its inference cost — the platform burns budget producing noise and the buyer pays for it. At scale, this inverts the unit economics of the whole marketplace.
+
+**Strategy.** The cost of an answer is not a single number. A retrieval-tier embedding lookup over the user's memory is roughly **100–1000× cheaper** than a generation-tier LLM call. The skill MUST exploit this asymmetry: before invoking the Answerer, run a cheap relevance check (§7.3). If the user has no relevant memory above threshold, emit a `no_signal` envelope and skip generation entirely. The no-signal branch drops from ~$0.001 (full inference) to ~$0.00001 (one embedding lookup).
+
+**Implication.** `no_signal` is not noise — it is real aggregate data ("47% of EU 25–34 respondents had no formed view on synthetic meat") and it is exactly the silent-majority finding that traditional Likert-forced polls hide. Aggregation MUST treat `no_signal` as a first-class bucket, not a discarded row. Honeypots (VISION.md Challenge #6) still apply: an agent that emits `no_signal` on a planted test question fails just as hard as one that fakes an opinion, because the planted instruction is detectable at the retrieval tier too. `no_signal` is not rewarded with the full reward/payout. Honeypots questions that are answered with `no_signal` are never punished.
+
 ---
 
 ## 2. v0 system overview
@@ -120,7 +128,9 @@ CREATE TABLE questions (
 CREATE TABLE envelopes (
   question_id          UUID NOT NULL REFERENCES questions(id),
   unique_identifier    TEXT NOT NULL,              -- from DelegationToken, stable per user
-  answer               TEXT NOT NULL,              -- LLM-generated answer text
+  answer               TEXT NOT NULL,              -- LLM-generated answer text (empty string when no_signal=true)
+  no_signal            BOOLEAN NOT NULL DEFAULT FALSE, -- §1.14 / §7.3: agent had no relevant memory; skipped generation
+  relevance_score      REAL NOT NULL,              -- §7.3: top-k embedding similarity vs user memory, in [0, 1]
   disclosed_predicates JSONB NOT NULL,             -- {age_band, region, ...}
   agent_signature      TEXT NOT NULL,              -- base64 Ed25519
   delegation_hash      TEXT NOT NULL,              -- hash of the DelegationToken used
@@ -313,7 +323,7 @@ Three trust boundaries: broker, agent runtime, phone. The phone is touched only 
 
 ## 7. `hearme-skill` — layered architecture
 
-Seven layers. Linear flow, no per-question fork. Layers below never call layers above.
+Eight layers. Linear flow, no per-question fork. Layers below never call layers above. The Relevance layer (§7.3) short-circuits the flow past Persona and Answerer when the user has no signal on the question — see §1.14.
 
 ```
         ┌────────────────────────┐
@@ -325,13 +335,18 @@ Seven layers. Linear flow, no per-question fork. Layers below never call layers 
         └────────────┬───────────┘
                      │
         ┌────────────▼───────────┐
-        │  Persona (projection)  │
-        └────────────┬───────────┘
-                     │
-        ┌────────────▼───────────┐
-        │  Answerer (LLM)        │
-        └────────────┬───────────┘
-                     │
+        │  Relevance (cheap gate)│──┐
+        └────────────┬───────────┘  │ below threshold:
+                     │              │ skip Persona+Answerer,
+                     │              │ emit no_signal envelope
+        ┌────────────▼───────────┐  │
+        │  Persona (projection)  │  │
+        └────────────┬───────────┘  │
+                     │              │
+        ┌────────────▼───────────┐  │
+        │  Answerer (LLM)        │  │
+        └────────────┬───────────┘  │
+                     │◄─────────────┘
         ┌────────────▼───────────┐
         │  Envelope              │
         │  reads cached          │
@@ -363,37 +378,63 @@ The DelegationToken is set up out-of-band by `onboarding.py` (see §8) and lives
 - User policy is plain YAML in `~/.hermes/hearme/policy.yaml`. Topics, askers, max/day, min payment, auto-submit window.
 - Honeypot detection lives elsewhere; policy never branches on "is this a test".
 
-### 7.3 Persona — `persona.py`
+### 7.3 Relevance — `relevance.py`
+
+The cheap gate. Sits between Policy and Persona. Exists to satisfy §1.14: most users have no formed view on most questions, and we MUST detect that without spending a generation.
+
+- Pure function `(question, memory_handle) -> RelevanceScore` where `RelevanceScore ∈ [0, 1]`.
+- **Mechanics.** Embed the question (cheap, retrieval-tier model), run k-NN against the user's memory vector store through Hermes's memory abstraction (never importing a specific provider — §1.11), return a score derived from top-k similarity. No LLM generation, no chain-of-thought.
+- **Cost asymmetry.** Retrieval-tier embedding lookup is ~100–1000× cheaper than a generation-tier LLM call. The whole point of this layer is to spend the retrieval cost so we don't spend the generation cost when the expected information yield is near zero.
+- **Below threshold (`no_signal` branch).**
+  - The flow short-circuits past Persona and Answerer.
+  - Envelope (§7.6) emits `{answer: "", no_signal: true, relevance_score: <score>}` and signs it.
+  - Cost of this branch is roughly one embedding call.
+- **Above threshold.**
+  - Flow continues to Persona (§7.4) and Answerer (§7.5).
+  - The `relevance_score` is passed through and attached to the envelope as a confidence hint.
+- **Threshold is question-stake-dependent.** Higher-staked questions justify a wider net (lower threshold) because the asker is implicitly paying for a broader sample; low-stake questions justify a tighter one. v0 ships a single global threshold and tunes from honeypot telemetry; per-stake tuning is v0.2 (§13).
+- **Honeypot compatibility (§1.7).** Planted test questions are designed so an agent that actually runs *any* inference on the prompt — including the retrieval step — can detect the embedded instruction. The Relevance layer therefore does not let a lazy agent escape detection by emitting `no_signal` on tests. Test questions are calibrated to score above any reasonable threshold; an agent that emits `no_signal` on a planted test fails just as hard as one that fakes an opinion.
+- **Privacy.** Retrieval and the gate decision happen entirely inside the user's runtime. The broker sees only the resulting envelope. Per-user `no_signal` patterns are linkable via `unique_identifier` — same tradeoff as §1.4 — and aggregation must surface only population-level no-signal rates, never per-user no-signal histories.
+- **Calibration risk.** Threshold-too-high reproduces the self-selection bias Hearme is trying to escape (VISION.md Challenge #5: only the engaged answer). v0 starts gate-permissive and tightens via telemetry. The right endpoint is somewhere around 60–70% of dispatched questions reaching generation — wide enough to capture latent opinion, narrow enough to make the economics work.
+- **Future optimization — opinion fingerprint.** Precompute, at install time and on a weekly refresh, a stable low-dimensional projection of the user's memory across topic axes. New questions match against the fingerprint with a single dot product. No memory scan per question. v0.2.
+
+### 7.4 Persona — `persona.py`
 - Pure function `(question, memory_handle) -> PersonaProjection`.
+- Only runs when Relevance (§7.3) cleared the gate. If `no_signal`, Persona is skipped entirely.
 - Queries Hermes memory through the provider interface; never imports a specific backend.
 - Output is a **minimal sanitized snapshot** scoped to the question. No raw memory IDs, no source quotes, **no demographic fields** (those live in the DelegationToken).
 - Must be deterministic-ish: same question + same memory state → same projection.
 
-### 7.4 Answerer — `answerer.py`
+### 7.5 Answerer — `answerer.py`
 - Single LLM call: `(persona_projection, question, style_guide) -> Answer`.
+- Only runs when Relevance (§7.3) cleared the gate. The Answerer LLM call is the expensive part of the pipeline that the gate exists to protect.
 - Returns an `Answer` plus a *local-only* rationale string for the audit trail. Rationale is never serialized into the envelope.
 - Does **not** see the DelegationToken or `unique_identifier`. Strict separation between identity and inference.
 
-### 7.5 Envelope — `envelope.py` + `delegation.py` + `crypto/`
+### 7.6 Envelope — `envelope.py` + `delegation.py` + `crypto/`
 - `delegation.py` loads the cached `DelegationToken` from encrypted storage. If expired, the layer fails the request and triggers a refresh prompt via the UI layer — it does **not** silently call the phone.
 - `envelope.py` builds:
   ```
   {
     question_id,
-    answer,
+    answer,                   # "" when no_signal is true
+    no_signal,                # bool, §7.3
+    relevance_score,          # float in [0, 1], §7.3
     delegation_token,         # the install-time bundle (see §8)
-    agent_signature,          # Sign(agent_key, H(question_id, answer, nonce, delegation_hash))
+    agent_signature,          # Sign(agent_key, H(question_id, answer, no_signal, relevance_score, nonce, delegation_hash))
     nonce                     # echo of the broker's per-question nonce
   }
   ```
+- Both the `no_signal` and `relevance_score` paths produce envelopes with the same structure and the same signature scheme. A `no_signal` envelope is just an envelope with `answer = ""` and `no_signal = true`; the broker verifies it exactly the same way.
 
-### 7.6 Ledger — `ledger.py`
+### 7.7 Ledger — `ledger.py`
 - Local SQLite. Schema: `questions`, `answers`, `submissions`, `revocations`, `question_spend`.
 - Primary key: `question_id`.
+- Records `no_signal` and `relevance_score` for every submission so the user can audit which questions were skipped at the gate and why.
 - Encrypted at rest.
 - Read-only views to the UI layer.
 
-### 7.7 UI — `ui.py`
+### 7.8 UI — `ui.py`
 - Uses Hermes's messaging-channel abstraction to prompt the user, send summaries, and **notify when the DelegationToken is about to expire** (7 days out).
 
 ---
