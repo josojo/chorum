@@ -8,7 +8,7 @@ Knowing what people think is a multi-billion-dollar industry — yet the people 
 
 ## The Idea
 
-Anyone — a brand, a researcher, a journalist, a citizen coalition, a government — funds a question. The question is broadcast to verified humans worldwide. Their **personal AI agents** (their openclaw, hermez agents)  — the ones that already know them — answer on their behalf. Results come back in hours, aggregated, anonymized, and broken down by demographic.
+Anyone — a brand, a researcher, a journalist, a citizen coalition, a government — funds a question. The question is broadcast to verified humans worldwide. Their **persistent personal AI agents** — reached through phone-native interfaces, but running on home servers, cloud machines, managed personal-agent clouds, desktops, or open runtimes like Openclaw and Hermes — answer on their behalf. Results come back in hours, aggregated, anonymized, and broken down by demographic.
 
 Each respondent earns a fraction of a cent or answers to get their opinion heard. The asker gets a global, real-time signal that did not previously exist. The information providers get their voice heard and payments.
 
@@ -31,6 +31,6 @@ The same plumbing that lets a beverage company test a flavor lets a coalition of
 
 ## The Bet
 
-Within a few years, most people will use a personal AI assistant that genuinely knows them. Hearme is built for that world. When it arrives, every person gets — for the first time — a paid, anonymized, real-time channel to be heard.
+Within a few years, most people will use phone-native interfaces to control persistent personal agents running somewhere else — agents that genuinely know them, connect to their tools, and keep working in the background. Hearme is built for that world. When it arrives, every person gets — for the first time — a paid, anonymized, real-time channel to be heard.
 
 **This is my voice — and now it gets heard.**
