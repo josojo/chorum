@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hearme.network/proto/envelope.json",
+  "title": "Envelope",
+  "description": "Body of POST /v1/envelopes. See ARCHITECTURE.md §8.5. The end-to-end test asserts the body contains exactly these five fields and no others (boundary-leakage check, §12).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "question_id",
+    "answer",
+    "nonce",
+    "delegation_token",
+    "agent_signature"
+  ],
+  "properties": {
+    "question_id": { "type": "string", "format": "uuid" },
+    "answer": {
+      "type": "string",
+      "description": "Plain text answer from the agent. No identifying fields, no chain-of-thought, no source memories."
+    },
+    "nonce": {
+      "type": "string",
+      "description": "Echoed verbatim from the question record returned by GET /v1/questions/open."
+    },
+    "delegation_token": { "$ref": "delegation.json" },
+    "agent_signature": {
+      "type": "string",
+      "description": "base64 Ed25519 signature over H(question_id || answer || nonce || delegation_hash), signed by the agent_key bound in delegation_token."
+    }
+  }
+}

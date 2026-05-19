@@ -1,0 +1,22 @@
+# Node
+node_modules/
+.next/
+dist/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Env
+.env
+.env.local
+*.env
+
+# OS
+.DS_Store

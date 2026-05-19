@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hearme.network/proto/question.json",
+  "title": "Question",
+  "description": "Shape returned by GET /v1/questions/open. See ARCHITECTURE.md §5.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["question_id", "text", "closes_at", "nonce"],
+  "properties": {
+    "question_id": { "type": "string", "format": "uuid" },
+    "text": { "type": "string" },
+    "topic": { "type": ["string", "null"] },
+    "closes_at": { "type": "string", "format": "date-time" },
+    "nonce": {
+      "type": "string",
+      "description": "Per-question random value the agent binds into agent_signature."
+    }
+  }
+}

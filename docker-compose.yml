@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: hearme-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hearme
+      POSTGRES_USER: hearme_admin
+      POSTGRES_PASSWORD: hearme_admin_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - hearme-pgdata:/var/lib/postgresql/data
+      # Schema + roles are applied on first container start, in alpha order.
+      # 01: tables (canonical migration owned by hearme-web)
+      # 02: roles + grants
+      - ./packages/web/drizzle/0000_init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/init/02-roles.sql:/docker-entrypoint-initdb.d/02-roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hearme_admin -d hearme"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  hearme-pgdata:

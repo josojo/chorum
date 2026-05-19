@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hearme.network/proto/delegation.json",
+  "title": "DelegationToken",
+  "description": "Phone-issued bundle that authorizes an agent_key to speak for a unique_identifier within the Hearme scope. See ARCHITECTURE.md §8.5. Canonical JSON serialization (sorted keys, no whitespace) is the input to delegation_hash = SHA-256(canonical_json(token)).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "zkpassport_proof",
+    "domain",
+    "scope",
+    "unique_identifier",
+    "disclosed_predicates",
+    "agent_key",
+    "issued_at",
+    "expires_at",
+    "phone_signature"
+  ],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "zkpassport_proof": {
+      "type": "string",
+      "description": "base64-encoded zkPassport proof bytes. v0 stubs full circuit verification (see ARCHITECTURE.md §11)."
+    },
+    "domain": { "type": "string", "const": "hearme.network" },
+    "scope": { "type": "string", "const": "v1" },
+    "unique_identifier": {
+      "type": "string",
+      "description": "base64 of 32 bytes. Stable per (passport, domain, scope)."
+    },
+    "disclosed_predicates": {
+      "type": "object",
+      "description": "Predicate bundle picked once at install. Keys/values are fixed by the chosen disclosure profile (§8.3).",
+      "additionalProperties": { "type": "string" }
+    },
+    "agent_key": {
+      "type": "string",
+      "description": "base64 of the agent's Ed25519 public key (32 bytes). Phone attests this key speaks for unique_identifier."
+    },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "phone_signature": {
+      "type": "string",
+      "description": "base64 Ed25519 signature (64 bytes) over the canonical-JSON-encoded bundle with phone_signature removed."
+    }
+  }
+}

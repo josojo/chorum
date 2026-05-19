@@ -1,0 +1,41 @@
+name: db
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  migrate:
+    name: schema applies and boundaries hold
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start postgres
+        run: docker compose up -d postgres
+
+      - name: Wait for healthy
+        run: |
+          for i in $(seq 1 60); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' hearme-postgres 2>/dev/null || echo starting)
+            if [ "$status" = "healthy" ]; then
+              echo "postgres healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres failed to become healthy:"
+          docker logs hearme-postgres
+          exit 1
+
+      - name: Verify schema + roles + grant boundaries
+        run: scripts/verify-db.sh
+
+      - name: Show postgres logs on failure
+        if: failure()
+        run: docker logs hearme-postgres
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
