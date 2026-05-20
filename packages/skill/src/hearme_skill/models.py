@@ -31,10 +31,13 @@ class Question(BaseModel):
 
 
 class DelegationToken(BaseModel):
-    """Phone-issued delegation bundle (ARCHITECTURE.md §8.5).
+    """Delegation bundle authorizing an agent_key to speak for a human
+    (ARCHITECTURE.md §8.5).
 
-    Canonical-JSON-encoded form of this object is the input to
-    `delegation_hash = SHA-256(canonical_json(token))`.
+    Integrity comes from the real zkPassport SNARK in `zkpassport_proof`
+    (bound in-circuit to `agent_key`); the broker re-verifies it. No separate
+    signature wraps the bundle. Canonical-JSON-encoded form of this object is
+    the input to `delegation_hash = SHA-256(canonical_json(token))`.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -48,7 +51,6 @@ class DelegationToken(BaseModel):
     agent_key: str
     issued_at: datetime
     expires_at: datetime
-    phone_signature: str
 
 
 class Envelope(BaseModel):

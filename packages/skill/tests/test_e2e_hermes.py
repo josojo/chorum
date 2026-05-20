@@ -35,7 +35,6 @@ broker's dev phone pubkey. Everything else is real.
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import os
 import socket
@@ -53,7 +52,6 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_SQL = REPO_ROOT / "packages" / "web" / "drizzle" / "0000_init.sql"
 ROLES_SQL = REPO_ROOT / "db" / "init" / "02-roles.sql"
-MOCK_PHONE = REPO_ROOT / "scripts" / "mock-phone.py"
 
 
 # ---- prerequisite skips -------------------------------------------------
@@ -293,39 +291,42 @@ def tmp_skill_root(tmp_path, monkeypatch):
 
 
 def _mint_delegation(skill_root: Path) -> None:
-    """Generate an agent key + mint a dev DelegationToken.
+    """Install a DelegationToken from a captured zkPassport bridge result.
 
-    Mirrors the docker-compose skill bootstrap: load_or_create the agent
-    key, run mock-phone.py to mint a token against the dev phone pubkey,
-    then persist via the same ``store_delegation`` path the production
-    skill uses.
+    After the SNARK migration there is no way to fabricate a valid proof: the
+    broker re-verifies it via the zkpassport-bridge. To run this end-to-end
+    flow, capture a verified ``GET /requests/<id>`` response (scan a mock
+    passport in devMode) whose bundle is bound to THIS skill's agent key, then
+    point ``HEARME_E2E_ZK_FIXTURE`` at it. Without that, skip.
     """
+
+    import json as _json
 
     from hearme_skill.crypto.keystore import load_or_create_agent_keypair
     from hearme_skill.onboarding import accept_delegation_from_mock_phone
 
-    kp = load_or_create_agent_keypair(skill_root / "agent_key")
-    pub_b64 = base64.b64encode(kp.public_bytes).decode("ascii")
-    out = subprocess.run(
-        [
-            sys.executable,
-            str(MOCK_PHONE),
-            "mint",
-            "--agent-pubkey-b64",
-            pub_b64,
-            "--unique-id",
-            f"e2e-test-{uuid.uuid4()}",
-            "--profile",
-            "standard",
-            "--ttl-days",
-            "90",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
+    fixture = os.environ.get("HEARME_E2E_ZK_FIXTURE")
+    if not fixture or not Path(fixture).exists():
+        pytest.skip(
+            "HEARME_E2E_ZK_FIXTURE (a captured, verified zkPassport bridge "
+            "result bound to the skill agent key) is required for the e2e flow."
+        )
+
+    # Load mock-onboard's token builder to convert the bridge result -> token.
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "mock_onboard", REPO_ROOT / "scripts" / "mock-onboard.py"
     )
+    assert spec and spec.loader
+    mock_onboard = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mock_onboard)
+
+    load_or_create_agent_keypair(skill_root / "agent_key")
+    bridge_result = _json.loads(Path(fixture).read_text())
+    token = mock_onboard.build_token(bridge_result, ttl_days=90)
     accept_delegation_from_mock_phone(
-        raw_json=out.stdout,
+        raw_json=_json.dumps(token),
         delegation_path=skill_root / "delegation.token",
     )
 

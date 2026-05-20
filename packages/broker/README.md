@@ -36,15 +36,18 @@ All settings are read from environment variables prefixed `HEARME_BROKER_`:
 | `HEARME_BROKER_DB_POOL_MIN_SIZE`         | `1`                                                                    | asyncpg pool min size.                               |
 | `HEARME_BROKER_DB_POOL_MAX_SIZE`         | `10`                                                                   | asyncpg pool max size.                               |
 | `HEARME_BROKER_EXPOSE_REJECTION_REASONS` | `True`                                                                 | v0: include specific reason codes; turn off in prod. |
-| `HEARME_PHONE_PUBKEY_BASE64`             | hardcoded dev key                                                      | Well-known phone Ed25519 pubkey, base64.             |
+| `HEARME_BROKER_ZKPASSPORT_BRIDGE_URL`    | `http://localhost:8787`                                                | zkpassport-bridge `/verify` base URL (broker-controlled). |
+| `HEARME_BROKER_ZKPASSPORT_VERIFY_TIMEOUT_SECONDS` | `30.0`                                                        | Timeout for the bridge verify call.                 |
 
 ## Verification pipeline
 
 Per envelope, in order (ARCHITECTURE.md §5):
 
 1. Parse with Pydantic (`extra="forbid"`). Schema-invalid bodies return 422.
-2. Verify `phone_signature` on the DelegationToken (Ed25519, against the
-   well-known phone pubkey).
+2. Verify the zkPassport proof in `zkpassport_proof` — a **real Noir/UltraHonk
+   proof** re-verified via the zkpassport-bridge (`verify/zkpassport.py` →
+   `verify/bridge_client.py`) — plus its bindings: `agent_key` (bound in-circuit
+   via `custom_data`), scope, nullifier ↔ `unique_identifier`, and predicates.
 3. Check `token.expires_at > now()`.
 4. Check `token.delegation_hash` not present in `revocations`.
 5. Recompute `delegation_hash = SHA-256(canonical_json(delegation_token))`.
@@ -138,12 +141,10 @@ If Docker isn't available they skip cleanly.
 
 Search for `# STUB:` in code to find these. Mirrors ARCHITECTURE.md §11.
 
-- **zkPassport circuit verification.** We verify the phone's Ed25519
-  signature on the DelegationToken bundle and trust that the embedded
-  `zkpassport_proof` is valid. Real ZK verification lands in v0.2.
-- **Well-known phone pubkey.** `verify/well_known.py` hardcodes a single
-  dev pubkey. Production resolves the right phone key via the
-  ZKPassport attestation chain — not yet wired.
+- **zkPassport circuit verification — now real.** `verify/zkpassport.py`
+  re-verifies the real Noir/UltraHonk proof via the zkpassport-bridge
+  (`HEARME_BROKER_ZKPASSPORT_BRIDGE_URL`). Point it at a bridge the broker
+  controls. Mock-passport proofs verify only when the bridge runs `devMode=1`.
 - **Honeypot signal handling.** The broker accepts honeypot envelopes
   like any other; no per-user scoring is emitted. v0.2 adds this.
 - **Revocation publishing.** The `revocations` table is read on every
@@ -170,9 +171,10 @@ packages/broker/
 │   │   └── envelopes.py          # POST /v1/envelopes
 │   ├── verify/
 │   │   ├── canonical.py          # deterministic JSON + SHA-256
-│   │   ├── delegation.py         # phone signature + expiry
-│   │   ├── envelope.py           # agent signature + linkage
-│   │   └── well_known.py         # phone pubkey config (v0: hardcoded)
+│   │   ├── delegation.py         # expiry + zkPassport verification
+│   │   ├── zkpassport.py         # bindings + real SNARK check (via bridge)
+│   │   ├── bridge_client.py      # HTTP client for the zkpassport-bridge
+│   │   └── envelope.py           # agent signature + linkage
 │   ├── models/
 │   │   └── schemas.py            # Pydantic models, extra="forbid"
 │   └── db/

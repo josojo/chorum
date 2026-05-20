@@ -16,7 +16,6 @@ from __future__ import annotations
 import dataclasses
 import inspect
 
-from hearme_skill import answerer as answerer_mod
 from hearme_skill.answerer import answer
 from hearme_skill.llm.client import LLMClient, LLMRequest, LLMResponse
 from hearme_skill.memory.mem0_stub import Mem0StubProvider

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from hearme_broker.db import queries as q
-from hearme_broker.models.schemas import DelegationToken, Envelope, RejectionReason
+from hearme_broker.models.schemas import Envelope
 from hearme_broker.verify.canonical import delegation_hash
 from hearme_broker.verify.delegation import verify_delegation
 
@@ -48,7 +48,7 @@ async def test_duplicate_envelope_rejected_at_db(pg_pool, make_token, make_envel
     )
 
     env = Envelope.model_validate(env_dict)
-    verified = verify_delegation(env.delegation_token)
+    verified = await verify_delegation(env.delegation_token)
 
     async with pg_pool.acquire() as conn:
         ok1 = await q.insert_envelope(
@@ -155,7 +155,7 @@ async def test_different_uids_can_both_answer(pg_pool, make_token, make_envelope
         for t in (token_a, token_b):
             env_dict = make_envelope(t, question_id=qid, answer="x", nonce="seed-nonce-2")
             env = Envelope.model_validate(env_dict)
-            verified = verify_delegation(env.delegation_token)
+            verified = await verify_delegation(env.delegation_token)
             ok = await q.insert_envelope(
                 conn,
                 question_id=env.question_id,

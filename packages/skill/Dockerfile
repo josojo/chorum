@@ -21,11 +21,11 @@ COPY packages/skill/README.md ./README.md
 
 RUN pip install --upgrade pip && pip install .
 
-# mock-phone.py is part of the repo, not the skill package; copy it in so the
-# entrypoint can mint a dev DelegationToken at startup.
-COPY scripts/mock-phone.py /usr/local/bin/mock-phone.py
+# mock-onboard.py is part of the repo, not the skill package; copy it in so the
+# entrypoint can replay a captured dev-mode proof fixture into a DelegationToken.
+COPY scripts/mock-onboard.py /usr/local/bin/mock-onboard.py
 COPY packages/skill/docker-entrypoint.sh /usr/local/bin/hearme-skill-entrypoint
-RUN chmod +x /usr/local/bin/mock-phone.py /usr/local/bin/hearme-skill-entrypoint
+RUN chmod +x /usr/local/bin/mock-onboard.py /usr/local/bin/hearme-skill-entrypoint
 
 VOLUME ["/data"]
 

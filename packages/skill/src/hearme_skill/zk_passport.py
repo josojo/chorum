@@ -1,120 +1,76 @@
-"""ZK passport identity forwarding (skill side).
+"""ZK passport identity bundle handling (skill side).
 
-The phone is responsible for producing the cryptographic material; the
-skill's job is to receive an identity bundle (a ``DelegationToken``
-containing a structured ``ZkPassportProof`` in ``zkpassport_proof``), do
-the cheap structural checks the skill can do without the broker's issuer
-registry, and store the bundle on disk for use by the envelope layer.
+The zkpassport-bridge produces the cryptographic material; the skill's job is
+to receive a ``DelegationToken`` (carrying the verifiable zkPassport bundle in
+``zkpassport_proof``), run the cheap structural checks it can do without the
+heavy UltraHonk verifier, and store the token on disk for the envelope layer.
 
-The skill DELIBERATELY does NOT verify the issuer signature here:
+The skill DELIBERATELY does NOT run the SNARK verification here:
 
-* The skill doesn't ship the issuer pubkey registry.
-* The broker is the source of truth for what counts as a valid identity
-  and will reject any envelope whose proof fails verification, surfacing
-  a clear rejection reason.
-* Keeping the skill's surface narrow matches §1.13 (phone is enrollment-only)
-  and avoids two divergent issuer registries.
+* SNARK verification needs the Node bridge + @aztec/bb.js; the skill stays light.
+* The broker is the source of truth and re-verifies every proof, surfacing a
+  clear rejection reason.
+* Keeping the skill's surface narrow matches §1.13 (phone is enrollment-only).
 
-The skill DOES check:
+The skill DOES check (fast, catches wrong-bundle / user-error early):
 
-* The proof parses.
-* ``proof.nullifier == token.unique_identifier``.
-* ``proof.scope == "<token.domain>|<token.scope>"``.
-* ``proof.agent_key_commitment`` matches ``SHA256(token.agent_key)``.
-* ``proof.disclosed == token.disclosed_predicates`` (no silent drift after
-  the phone signed).
-
-These are cheap and catch user-error / wrong-bundle scenarios fast.
+* ``zkpassport_proof`` base64-decodes and parses as the expected bundle shape.
+* The bundle's ``query.bind.custom_data`` equals ``token.agent_key`` (the proof
+  is bound to *our* agent key).
+* The bundle ``scope`` matches the token scope.
 """
 
 from __future__ import annotations
 
 import base64
-import hashlib
-from datetime import datetime
-from typing import Literal
+import binascii
+import json
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-
-from .crypto.canonical import canonical_json_bytes
 from .models import DelegationToken
-
-
-class ZkPassportProof(BaseModel):
-    """Mirror of broker's ZkPassportProof. Parsed locally for structural checks."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    version: Literal[1]
-    scheme: str
-    issuer_key_id: str
-    scope: str
-    nullifier: str
-    agent_key_commitment: str
-    predicate_commitment: str
-    disclosed: dict[str, str]
-    issued_at: datetime
-    expires_at: datetime
-    issuer_signature: str = Field(description="base64 Ed25519 signature, 64 bytes")
 
 
 class IdentityBundleError(ValueError):
     """Raised when an incoming identity bundle doesn't structurally bind to
-    the agent_key / scope / predicates already in the delegation token."""
+    the agent_key / scope already in the delegation token."""
 
 
-def parse_proof_from_token(token: DelegationToken) -> ZkPassportProof:
+def parse_bundle_from_token(token: DelegationToken) -> dict[str, Any]:
     """Decode ``token.zkpassport_proof`` (base64 of canonical JSON) and parse."""
     try:
         raw = base64.b64decode(token.zkpassport_proof, validate=True)
-    except Exception as exc:  # noqa: BLE001
+    except (binascii.Error, ValueError) as exc:
         raise IdentityBundleError(
             f"zkpassport_proof base64 decode failed: {exc}"
         ) from exc
     try:
-        return ZkPassportProof.model_validate_json(raw.decode("utf-8"))
-    except (UnicodeDecodeError, ValidationError) as exc:
+        bundle = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise IdentityBundleError(f"zkpassport_proof parse failed: {exc}") from exc
+    if not isinstance(bundle, dict):
+        raise IdentityBundleError("zkpassport_proof is not a JSON object")
+    for key in ("proofs", "query", "queryResult", "scope"):
+        if key not in bundle:
+            raise IdentityBundleError(f"zkpassport_proof bundle missing {key!r}")
+    return bundle
 
 
-def verify_bindings(token: DelegationToken) -> ZkPassportProof:
-    """Structural binding checks. Returns the parsed proof on success.
+def verify_bindings(token: DelegationToken) -> dict[str, Any]:
+    """Structural binding checks. Returns the parsed bundle on success.
 
-    Does NOT verify ``issuer_signature`` — that's the broker's job
-    (cf. module docstring).
+    Does NOT verify the SNARK — that's the broker's job (cf. module docstring).
     """
-    proof = parse_proof_from_token(token)
+    bundle = parse_bundle_from_token(token)
 
-    expected_scope = f"{token.domain}|{token.scope}"
-    if proof.scope != expected_scope:
+    bound = ((bundle.get("query") or {}).get("bind") or {}).get("custom_data")
+    if bound != token.agent_key:
         raise IdentityBundleError(
-            f"proof.scope={proof.scope!r} does not match token scope {expected_scope!r}"
-        )
-
-    if proof.nullifier != token.unique_identifier:
-        raise IdentityBundleError(
-            "proof.nullifier does not equal token.unique_identifier"
+            "bundle query.bind.custom_data does not equal token.agent_key"
         )
 
-    try:
-        agent_raw = base64.b64decode(token.agent_key, validate=True)
-    except Exception as exc:  # noqa: BLE001
-        raise IdentityBundleError(f"token.agent_key base64 decode failed: {exc}") from exc
-    expected_commit = hashlib.sha256(agent_raw).hexdigest()
-    if proof.agent_key_commitment.lower() != expected_commit:
+    if bundle.get("scope") != token.scope:
         raise IdentityBundleError(
-            "agent_key_commitment does not match SHA256(token.agent_key)"
+            f"bundle scope={bundle.get('scope')!r} does not match token scope "
+            f"{token.scope!r}"
         )
-
-    expected_pred_commit = hashlib.sha256(
-        canonical_json_bytes(token.disclosed_predicates)
-    ).hexdigest()
-    if proof.predicate_commitment.lower() != expected_pred_commit:
-        raise IdentityBundleError(
-            "predicate_commitment does not match SHA256(canonical_json(predicates))"
-        )
-    if proof.disclosed != token.disclosed_predicates:
-        raise IdentityBundleError(
-            "proof.disclosed differs from token.disclosed_predicates"
-        )
-    return proof
+    return bundle

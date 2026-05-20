@@ -2,19 +2,16 @@
 
 * fresh load
 * expiry behavior
-* signature verification (against the test phone pubkey)
+* deterministic delegation hash
 * refresh trigger (no auto phone call)
 """
 
 from __future__ import annotations
 
-import base64
 from datetime import timedelta
 
 import pytest
 
-from hearme_skill.crypto.canonical import canonical_json_bytes
-from hearme_skill.crypto.ed25519 import verify
 from hearme_skill.delegation import (
     DelegationExpired,
     DelegationMissing,
@@ -68,16 +65,6 @@ def test_refresh_window_detection(fresh_token, now):
 
     edge = fresh_token.model_copy(update={"expires_at": now + REFRESH_WINDOW})
     assert needs_refresh_soon(edge, now=now) is True
-
-
-def test_phone_signature_verifies(fresh_token, phone_keypair):
-    """The conftest-built token's signature must validate under the phone pubkey."""
-
-    token_dict = fresh_token.model_dump(mode="json")
-    sig_b64 = token_dict.pop("phone_signature")
-    sig = base64.b64decode(sig_b64)
-    payload = canonical_json_bytes(token_dict)
-    assert verify(phone_keypair.public_bytes, payload, sig) is True
 
 
 def test_delegation_hash_is_deterministic(fresh_token):

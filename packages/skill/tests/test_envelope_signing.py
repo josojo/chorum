@@ -69,7 +69,7 @@ def test_flipping_any_string_field_breaks_signature(fresh_token, agent_keypair, 
 
 
 def test_swapping_delegation_token_breaks_signature(
-    fresh_token, agent_keypair, question, phone_keypair
+    fresh_token, agent_keypair, question
 ):
     """A different delegation_token → different delegation_hash → bad sig."""
 

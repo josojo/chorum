@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     # should set this False (avoid being an oracle — see ARCHITECTURE.md §5).
     expose_rejection_reasons: bool = True
 
+    # zkpassport-bridge: the Node sidecar that runs the real Noir/UltraHonk
+    # verifier. The broker re-verifies every proof here. Point this at a bridge
+    # instance the broker controls (never trust the agent's verification).
+    zkpassport_bridge_url: str = Field(
+        default="http://localhost:8787",
+        description="Base URL of the zkpassport-bridge POST /verify endpoint.",
+    )
+    zkpassport_verify_timeout_seconds: float = 30.0
+
 
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]

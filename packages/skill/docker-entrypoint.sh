@@ -3,10 +3,14 @@
 #
 # 1. Ensures the root dir exists.
 # 2. Generates the agent key if missing (load_or_create_agent_keypair).
-# 3. Mints a dev DelegationToken via scripts/mock-phone.py if none on disk.
+# 3. If no DelegationToken is on disk: replay a captured dev-mode proof fixture
+#    ($HEARME_SKILL_DEV_FIXTURE) via scripts/mock-onboard.py when provided,
+#    otherwise print onboarding instructions (a real scan is required — there
+#    is no longer a way to fake a valid zkPassport proof).
 # 4. Writes a permissive dev policy.yaml if none is mounted.
 # 5. Execs the dev runner, which provides a stub host (FakeLLM, auto-approve
-#    channel, Mem0 stub memory) and starts the broker-polling loop.
+#    channel, Mem0 stub memory) and starts the broker-polling loop. The loop
+#    tolerates a missing delegation (logs + idles) until onboarding completes.
 #
 # All of this is dev-only. Real Hermes integration replaces this entrypoint
 # with the Hermes runtime, which provides the host instead.
@@ -28,17 +32,26 @@ PY
 )"
 echo "[hearme-skill] agent pubkey = $AGENT_PUB_B64"
 
-# --- Step 3: mint DelegationToken if not present. -------------------------
+# --- Step 3: obtain a DelegationToken if not present. ---------------------
+# A valid token requires a real zkPassport proof. Either replay a captured
+# dev-mode fixture (HEARME_SKILL_DEV_FIXTURE), or onboard interactively by
+# scanning the QR from the bridge.
 if [ ! -f "$ROOT/delegation.token" ]; then
-  echo "[hearme-skill] minting dev DelegationToken via mock-phone..."
-  python /usr/local/bin/mock-phone.py mint \
-    --agent-pubkey-b64 "$AGENT_PUB_B64" \
-    --unique-id "${HEARME_SKILL_UNIQUE_ID:-dev-user-1}" \
-    --profile "${HEARME_SKILL_PROFILE:-standard}" \
-    --ttl-days 90 \
-    > "$ROOT/delegation.token.tmp"
-  mv "$ROOT/delegation.token.tmp" "$ROOT/delegation.token"
-  chmod 600 "$ROOT/delegation.token"
+  if [ -n "${HEARME_SKILL_DEV_FIXTURE:-}" ] && [ -f "${HEARME_SKILL_DEV_FIXTURE}" ]; then
+    echo "[hearme-skill] replaying dev fixture ${HEARME_SKILL_DEV_FIXTURE} via mock-onboard..."
+    python /usr/local/bin/mock-onboard.py \
+      --from-bridge "${HEARME_SKILL_DEV_FIXTURE}" \
+      --ttl-days 90 \
+      > "$ROOT/delegation.token.tmp"
+    mv "$ROOT/delegation.token.tmp" "$ROOT/delegation.token"
+    chmod 600 "$ROOT/delegation.token"
+  else
+    echo "[hearme-skill] no delegation token and no HEARME_SKILL_DEV_FIXTURE."
+    echo "[hearme-skill] Onboard by scanning a zkPassport (mock) passport:"
+    echo "[hearme-skill]   docker compose exec skill hearme-skill onboard \\"
+    echo "[hearme-skill]     --bridge-url ${HEARME_SKILL_ZKPASSPORT_BRIDGE_URL:-http://zkpassport-bridge:8787}"
+    echo "[hearme-skill] The loop will idle (no answers) until a token exists."
+  fi
 fi
 
 # --- Step 4: default dev policy. ------------------------------------------

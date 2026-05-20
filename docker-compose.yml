@@ -1,9 +1,15 @@
 # `docker compose up` brings up the full hearme v0 stack: shared Postgres,
-# broker, web, and a dev skill instance pre-onboarded via scripts/mock-phone.py.
+# broker, web, the zkpassport-bridge, and a dev skill instance.
 #
 # First run:
 #   docker compose up --build
 # Then open http://localhost:3000.
+#
+# Onboarding now requires a REAL zkPassport proof (the broker verifies the
+# SNARK). With the bridge in devMode you can scan a *mock passport*:
+#   docker compose exec skill hearme-skill onboard \
+#     --bridge-url http://zkpassport-bridge:8787
+# (Install the zkPassport app, tap 5x to create a mock passport, scan the QR.)
 #
 # To wipe state and start from scratch:
 #   docker compose down -v && docker compose up --build
@@ -42,11 +48,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      zkpassport-bridge:
+        condition: service_started
     environment:
       # asyncpg DSN. scheme must be `postgres://` (asyncpg-style).
       HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:hearme_broker_dev@postgres:5432/hearme
-      # Default well-known phone pubkey matches scripts/mock-phone.py.
-      # Set HEARME_PHONE_PUBKEY_BASE64 to override.
+      # Real SNARK verification is delegated to the bridge the broker controls.
+      HEARME_BROKER_ZKPASSPORT_BRIDGE_URL: http://zkpassport-bridge:8787
     ports:
       - "8000:8000"
     healthcheck:
@@ -55,6 +63,20 @@ services:
       timeout: 3s
       retries: 20
       start_period: 5s
+
+  zkpassport-bridge:
+    build:
+      context: .
+      dockerfile: packages/zkpassport-bridge/Dockerfile
+    container_name: hearme-zkpassport-bridge
+    restart: unless-stopped
+    environment:
+      ZKPASSPORT_DOMAIN: hearme.network
+      ZKPASSPORT_SCOPE: v1
+      # devMode=1 accepts mock-passport proofs for testing. Set 0 in production.
+      ZKPASSPORT_DEV_MODE: "1"
+    ports:
+      - "8787:8787"
 
   web:
     build:
@@ -82,15 +104,18 @@ services:
     depends_on:
       broker:
         condition: service_healthy
+      zkpassport-bridge:
+        condition: service_started
     environment:
       HEARME_SKILL_BROKER_URL: http://broker:8000
+      HEARME_SKILL_ZKPASSPORT_BRIDGE_URL: http://zkpassport-bridge:8787
       HEARME_SKILL_ROOT_DIR: /data
       # Faster poll than the 30s default so the demo feels responsive.
       HEARME_SKILL_POLL_INTERVAL_SECONDS: "5"
-      # Identifies this dev user — change to fork the unique_identifier and
-      # run multiple skill containers without colliding on the broker's
-      # one-answer-per-(question_id, unique_identifier) constraint.
-      HEARME_SKILL_UNIQUE_ID: dev-user-1
+      # Optional: path (inside the container) to a captured GET /requests/<id>
+      # JSON to replay offline via mock-onboard.py. Without it, onboard by
+      # scanning a (mock) passport — see the header of this file.
+      # HEARME_SKILL_DEV_FIXTURE: /data/fixture.json
     volumes:
       - hearme-skill-data:/data
 

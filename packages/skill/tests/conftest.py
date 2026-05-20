@@ -3,74 +3,66 @@
 Per ARCHITECTURE.md §12 no test in this suite makes a live LLM or HTTP call.
 All external collaborators are doubles defined here or in the package's
 `memory/` and `llm/` modules.
+
+DelegationTokens now wrap a real zkPassport bundle (no phone signature). The
+fixtures build a bundle of the right shape — bound to the agent key — so the
+skill's cheap structural checks (`zk_passport.verify_bindings`) pass. Full
+SNARK verification is the broker's job and is not exercised here.
 """
 
 from __future__ import annotations
 
 import base64
-import hashlib
-import json
 import uuid
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
+from pathlib import Path
 
 import pytest
 
-from hearme_skill.crypto.canonical import canonical_json, canonical_json_bytes
-from hearme_skill.crypto.ed25519 import Keypair, generate_keypair, sign
+from hearme_skill.crypto.canonical import canonical_json_bytes
+from hearme_skill.crypto.ed25519 import Keypair, generate_keypair
 from hearme_skill.models import DelegationToken, Question
 
 
-def _mint_zk_proof_for_test(
+def _make_bundle(*, agent_key_b64: str, scope: str = "v1") -> dict[str, Any]:
+    """A verifiable-shaped zkPassport bundle bound to ``agent_key_b64``."""
+    return {
+        "version": 1,
+        "proofs": [{"name": "test_circuit", "proof": "00", "version": "1"}],
+        "query": {"bind": {"custom_data": agent_key_b64}},
+        "queryResult": {
+            "age": {"gte": {"result": True}},
+            "nationality": {"in": {"result": True}},
+        },
+        "scope": scope,
+    }
+
+
+def _build_token(
     *,
-    issuer_keypair: Keypair,
-    issuer_key_id: str,
-    agent_pubkey: bytes,
-    nullifier_b64: str,
+    agent_keypair: Keypair,
+    unique_id: str,
     disclosed: dict[str, str],
     issued_at: datetime,
     expires_at: datetime,
-    scope: str = "hearme.network|v1",
-) -> str:
-    """Build a valid ZkPassportProof + return its base64 wire form."""
-
-    def _iso(dt: datetime) -> str:
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-
-    body = {
-        "version": 1,
-        "scheme": "zkpassport.v1.test",
-        "issuer_key_id": issuer_key_id,
-        "scope": scope,
-        "nullifier": nullifier_b64,
-        "agent_key_commitment": hashlib.sha256(agent_pubkey).hexdigest(),
-        "predicate_commitment": hashlib.sha256(
-            canonical_json_bytes(disclosed)
-        ).hexdigest(),
-        "disclosed": disclosed,
-        "issued_at": _iso(issued_at),
-        "expires_at": _iso(expires_at),
-    }
-    sig = sign(issuer_keypair, canonical_json_bytes(body))
-    body["issuer_signature"] = base64.b64encode(sig).decode("ascii")
-    return base64.b64encode(canonical_json_bytes(body)).decode("ascii")
-
-
-@pytest.fixture
-def phone_keypair() -> Keypair:
-    return generate_keypair()
-
-
-@pytest.fixture
-def issuer_keypair() -> Keypair:
-    """Stand-in for the zkPassport issuer (CSCA). Used to sign embedded proofs."""
-    return generate_keypair()
-
-
-ZK_TEST_ISSUER_KEY_ID = "icao-csca-test-skill"
+) -> DelegationToken:
+    agent_b64 = base64.b64encode(agent_keypair.public_bytes).decode("ascii")
+    bundle = _make_bundle(agent_key_b64=agent_b64)
+    proof_b64 = base64.b64encode(canonical_json_bytes(bundle)).decode("ascii")
+    return DelegationToken.model_validate(
+        {
+            "version": 1,
+            "zkpassport_proof": proof_b64,
+            "domain": "hearme.network",
+            "scope": "v1",
+            "unique_identifier": unique_id,
+            "disclosed_predicates": disclosed,
+            "agent_key": agent_b64,
+            "issued_at": issued_at.isoformat().replace("+00:00", "Z"),
+            "expires_at": expires_at.isoformat().replace("+00:00", "Z"),
+        }
+    )
 
 
 @pytest.fixture
@@ -84,80 +76,27 @@ def now() -> datetime:
 
 
 @pytest.fixture
-def fresh_token(
-    phone_keypair: Keypair,
-    issuer_keypair: Keypair,
-    agent_keypair: Keypair,
-    now: datetime,
-) -> DelegationToken:
-    """A freshly-issued DelegationToken signed by the test phone key, with a
-    valid (test-issuer-signed) ZkPassportProof inside ``zkpassport_proof``."""
-
-    unique_id = base64.b64encode(b"u" * 32).decode("ascii")
-    disclosed = {"age_band": "25-34", "region": "EU"}
-    token_expires = now + timedelta(days=90)
-
-    proof_b64 = _mint_zk_proof_for_test(
-        issuer_keypair=issuer_keypair,
-        issuer_key_id=ZK_TEST_ISSUER_KEY_ID,
-        agent_pubkey=agent_keypair.public_bytes,
-        nullifier_b64=unique_id,
-        disclosed=disclosed,
+def fresh_token(agent_keypair: Keypair, now: datetime) -> DelegationToken:
+    """A freshly-issued DelegationToken wrapping a (bundle-shaped) zkPassport proof."""
+    return _build_token(
+        agent_keypair=agent_keypair,
+        unique_id=base64.b64encode(b"u" * 32).decode("ascii"),
+        disclosed={"age_band": "18+", "region": "EU"},
         issued_at=now,
-        expires_at=token_expires + timedelta(minutes=1),
+        expires_at=now + timedelta(days=90),
     )
-
-    unsigned = {
-        "version": 1,
-        "zkpassport_proof": proof_b64,
-        "domain": "hearme.network",
-        "scope": "v1",
-        "unique_identifier": unique_id,
-        "disclosed_predicates": disclosed,
-        "agent_key": base64.b64encode(agent_keypair.public_bytes).decode("ascii"),
-        "issued_at": now.isoformat().replace("+00:00", "Z"),
-        "expires_at": token_expires.isoformat().replace("+00:00", "Z"),
-    }
-    sig = sign(phone_keypair, canonical_json_bytes(unsigned))
-    unsigned["phone_signature"] = base64.b64encode(sig).decode("ascii")
-    return DelegationToken.model_validate(unsigned)
 
 
 @pytest.fixture
-def expired_token(
-    phone_keypair: Keypair,
-    issuer_keypair: Keypair,
-    agent_keypair: Keypair,
-    now: datetime,
-) -> DelegationToken:
+def expired_token(agent_keypair: Keypair, now: datetime) -> DelegationToken:
     past = now - timedelta(days=100)
-    unique_id = base64.b64encode(b"u" * 32).decode("ascii")
-    disclosed = {"age_band": "25-34", "region": "EU"}
-
-    proof_b64 = _mint_zk_proof_for_test(
-        issuer_keypair=issuer_keypair,
-        issuer_key_id=ZK_TEST_ISSUER_KEY_ID,
-        agent_pubkey=agent_keypair.public_bytes,
-        nullifier_b64=unique_id,
-        disclosed=disclosed,
+    return _build_token(
+        agent_keypair=agent_keypair,
+        unique_id=base64.b64encode(b"u" * 32).decode("ascii"),
+        disclosed={"age_band": "18+", "region": "EU"},
         issued_at=past - timedelta(days=90),
-        expires_at=past + timedelta(minutes=1),
+        expires_at=past,
     )
-
-    unsigned = {
-        "version": 1,
-        "zkpassport_proof": proof_b64,
-        "domain": "hearme.network",
-        "scope": "v1",
-        "unique_identifier": unique_id,
-        "disclosed_predicates": disclosed,
-        "agent_key": base64.b64encode(agent_keypair.public_bytes).decode("ascii"),
-        "issued_at": (past - timedelta(days=90)).isoformat().replace("+00:00", "Z"),
-        "expires_at": past.isoformat().replace("+00:00", "Z"),
-    }
-    sig = sign(phone_keypair, canonical_json_bytes(unsigned))
-    unsigned["phone_signature"] = base64.b64encode(sig).decode("ascii")
-    return DelegationToken.model_validate(unsigned)
 
 
 @pytest.fixture

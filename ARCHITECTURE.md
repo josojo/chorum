@@ -242,7 +242,8 @@ For v0, simple HTTP polling is fine. Long-poll or WebSocket is a v0.2 transport 
 
 ```
 parse (pydantic)
-  → verify phone_signature on DelegationToken (Ed25519, against well-known phone pubkey)
+  → verify the zkPassport proof (real SNARK via the zkpassport-bridge) + bindings
+    (agent_key via custom_data, scope, nullifier ↔ unique_identifier, predicates)
   → check token.expires_at > now()
   → check token.delegation_hash not in revocations
   → recompute expected delegation_hash and compare
@@ -274,9 +275,10 @@ hearme-broker/
 │   │   └── envelopes.py          # POST /v1/envelopes
 │   ├── verify/
 │   │   ├── __init__.py
-│   │   ├── delegation.py         # phone signature + expiry + revocation
-│   │   ├── envelope.py           # agent signature + linkage
-│   │   └── well_known.py         # phone pubkey config (v0: hardcoded)
+│   │   ├── delegation.py         # expiry + zkPassport verification + revocation
+│   │   ├── zkpassport.py         # bindings + real SNARK check (via bridge)
+│   │   ├── bridge_client.py      # HTTP client for the zkpassport-bridge
+│   │   └── envelope.py           # agent signature + linkage
 │   ├── db/
 │   │   ├── client.py             # asyncpg pool
 │   │   └── queries.py
@@ -446,24 +448,23 @@ The only time the phone produces cryptographic material for the agent.
 ### 8.1 Flow
 
 1. User installs the `hearme` Hermes skill. The skill generates an Ed25519 keypair → `agent_key`.
-2. The skill displays a QR code containing: `agent_key.public`, the user's Hermes node id, a fresh onboarding nonce, and the available **disclosure profiles** (see §8.3).
-3. User opens the ZKPassport app, scans the QR, and picks a disclosure profile.
-4. The phone produces the **DelegationToken**:
+2. The skill asks the **zkpassport-bridge** to create a zkPassport request bound to `agent_key` (via the SDK's `custom_data` bind) and renders the returned `url` as a QR.
+3. User opens the ZKPassport app, scans the QR, approves the disclosure. The app produces a real Noir/UltraHonk proof and relays it back to the bridge.
+4. The skill polls the bridge, then assembles the **DelegationToken** wrapping the verifiable bundle:
    ```
    DelegationToken = {
-     zkpassport_proof,
+     zkpassport_proof,         # base64(canonical_json({proofs, query, queryResult, scope}))
      domain = "hearme.network",
      scope = "v1",
-     unique_identifier,        # H(passport_secret, domain, scope)
-     disclosed_predicates,     # e.g. {age_band: "25-34", region: "EU"}
-     agent_key_authorization,  # phone-signed: "agent_key.public speaks for unique_identifier"
+     unique_identifier,        # zkPassport nullifier = Poseidon2(id, domain, scope)
+     disclosed_predicates,     # e.g. {age_band: "18+", region: "EU"}
+     agent_key,                # bound in-circuit via custom_data; the proof attests it speaks for unique_identifier
      issued_at,
      expires_at,               # default issued_at + 90 days
-     phone_signature           # binds the whole bundle
    }
    ```
-5. Phone sends the DelegationToken to the agent over the QR-paired channel.
-6. Skill encrypts and stores at `~/.hermes/hearme/delegation.token`. Done.
+   No signature wraps the bundle: integrity comes from the SNARK, which the broker re-verifies.
+5. Skill encrypts and stores at `~/.hermes/hearme/delegation.token`. Done.
 
 ### 8.2 Refresh
 7 days before expiry, UI nudges the user. User opens ZKPassport app, approves, phone re-issues, agent stores new token. If ignored, agent stops answering and surfaces a weekly nudge.
@@ -483,15 +484,14 @@ Phone publishes a signed revocation to the broker (`POST /v1/revocations` — ou
 ```json
 {
   "version": 1,
-  "zkpassport_proof": "<base64 bytes>",
+  "zkpassport_proof": "<base64 of canonical_json({proofs, query, queryResult, scope})>",
   "domain": "hearme.network",
   "scope": "v1",
-  "unique_identifier": "<base64 32 bytes>",
-  "disclosed_predicates": {"age_band": "25-34", "region": "EU"},
+  "unique_identifier": "<zkPassport nullifier string>",
+  "disclosed_predicates": {"age_band": "18+", "region": "EU"},
   "agent_key": "<base64 32 bytes>",
   "issued_at": "2026-05-19T10:00:00Z",
-  "expires_at": "2026-08-17T10:00:00Z",
-  "phone_signature": "<base64 64 bytes>"
+  "expires_at": "2026-08-17T10:00:00Z"
 }
 ```
 
@@ -517,18 +517,20 @@ Phone publishes a signed revocation to the broker (`POST /v1/revocations` — ou
 hearme/
 ├── README.md
 ├── ARCHITECTURE.md
-├── docker-compose.yml             # postgres + broker + web for local dev
+├── docker-compose.yml             # postgres + broker + web + zkpassport-bridge for local dev
 ├── packages/
 │   ├── web/                       # § 4 — Next.js
 │   ├── broker/                    # § 5 — Python/FastAPI
 │   ├── skill/                     # § 6-8 — Python Hermes skill
+│   ├── zkpassport-bridge/         # Node sidecar — real zkPassport request + verify
 │   └── proto/                     # shared schemas (DelegationToken, Envelope, Question)
 │       ├── delegation.json        # JSON schema
 │       ├── envelope.json
+│       ├── zkpassport.json        # verifiable zkPassport bundle
 │       └── question.json
 └── scripts/
     ├── dev-up.sh                  # docker-compose up + seed
-    └── mock-phone.py              # issues test DelegationTokens for dev
+    └── mock-onboard.py            # replays a captured dev-mode proof fixture into a token
 ```
 
 `packages/proto/` holds the canonical JSON schemas. Both `broker` and `skill` validate against them; `web` doesn't need them (it doesn't touch envelopes).
@@ -586,7 +588,7 @@ Marked `# STUB:` in code and listed in each package's README under "Not yet real
 
 - **Payments.** No money flows anywhere in v0. The pitch's "fraction of a cent" is deferred to v0.3. No payment fields in the schema.
 - **Asker auth.** Display name only; anyone can post. Asker accounts and auth land in v0.2.
-- **Real zkPassport proof verification.** v0.2 verifies a structured `ZkPassportProof` embedded in `zkpassport_proof`: the broker checks an issuer Ed25519 signature plus four bindings (scope, nullifier ↔ unique_identifier, agent_key commitment, predicate commitment), and registers the nullifier so the same passport can't bind multiple agent_keys without revocation. The issuer signature stands in for SNARK verification of the real circuit; v0.3 swaps it for ICAO-CSCA-rooted ZK verification. See `packages/proto/zkpassport.json` and `packages/broker/src/hearme_broker/verify/zkpassport.py`.
+- **Real zkPassport proof verification — DONE.** The broker now verifies a real Noir/UltraHonk zkPassport proof: `verify/zkpassport.py` re-runs `@zkpassport/sdk` `verify()` through the **zkpassport-bridge** (`packages/zkpassport-bridge`, a Node sidecar — there is no pure-Python UltraHonk verifier), then enforces the bindings (agent_key via `custom_data`, scope, nullifier ↔ unique_identifier, predicates) and registers the nullifier so the same passport can't bind multiple agent_keys without revocation. Mock-passport proofs verify only when the bridge runs with `devMode=1` (testing without a real passport). See `packages/proto/zkpassport.json` and `packages/broker/src/hearme_broker/verify/zkpassport.py`. *Open follow-up: re-verifying per envelope relies on a long `validity` window; a verify-once-at-registration + broker-issued session credential would avoid that.*
 - **Memory provider abstraction.** Skill hard-codes one provider (Mem0 or Holographic). Wire the abstraction in v0.2.
 - **Multi-channel skill UI.** Telegram only in v0.
 - **Revocation propagation.** Broker has the `revocations` table; skill respects expiry; live revocation publishing flow lands in v0.2.
@@ -607,7 +609,7 @@ Each package has its own test suite; one cross-cutting end-to-end suite at the r
 - Detail page renders aggregate results without exposing raw envelopes.
 
 ### broker — the highest-stakes suite
-- **Verify delegation** — happy path, expired token, bad phone signature, revoked token.
+- **Verify delegation** — happy path, expired token, ZK failures (proof-invalid, binding mismatches) surfaced, revoked token. The bridge call is mocked in unit tests (a deterministic fake steered by `query._test_outputs`); a live devMode verify is opt-in.
 - **Verify envelope** — happy path, bad agent signature, swapped `question_id`, swapped `answer`, swapped `nonce`, swapped `delegation_hash`. Each swap must reject.
 - **Uniqueness** — two envelopes from the same `unique_identifier` for the same `question_id` → second rejects via DB constraint. (Test against a real Postgres in CI.)
 - **Aggregate increment** — accepted envelopes update `total_answers` and `by_predicate` without scanning all prior envelopes.
@@ -622,7 +624,7 @@ Each package has its own test suite; one cross-cutting end-to-end suite at the r
 - **No phone contact in steady state** — across 100 simulated answers, phone bridge is called **zero** times.
 
 ### end-to-end (`/scripts/e2e.sh`)
-- Spin up postgres + broker + web + a mock skill (driven by `mock-phone.py` for the DelegationToken).
+- Spin up postgres + broker + web + zkpassport-bridge + a skill. Onboard by scanning a mock passport (devMode), or replay a captured proof fixture via `mock-onboard.py`.
 - Asker posts a question via the web UI (programmatically).
 - Mock skill polls broker, answers, submits envelope.
 - Assert: envelope appears in DB, aggregate row updated, web detail page renders it.

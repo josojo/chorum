@@ -39,7 +39,13 @@ from .llm.client import LLMClient
 from .memory.mem0_stub import Mem0StubProvider
 from .memory.provider import MemoryProvider
 from .models import Question
-from .onboarding import begin_onboarding, render_qr_ascii, accept_delegation_from_mock_phone
+from .onboarding import (
+    OnboardingError,
+    accept_delegation_from_mock_phone,
+    begin_onboarding,
+    complete_onboarding,
+    render_qr_ascii,
+)
 from .policy import LedgerStats, decide, load_policy
 from .ui import UI, Channel, InMemoryChannel
 
@@ -188,12 +194,32 @@ def entrypoint(host: Any) -> None:
 def _cmd_onboard(args: argparse.Namespace) -> int:
     settings = get_settings()
     settings.root_dir.mkdir(parents=True, exist_ok=True)
-    handoff = begin_onboarding(
+    bridge_url = args.bridge_url or settings.zkpassport_bridge_url
+    request = begin_onboarding(
         agent_key_path=settings.agent_key_path,
-        hermes_node_id=args.node_id,
+        bridge_url=bridge_url,
+        profile=args.profile,
     )
     print("Scan this QR with the ZKPassport app:\n")
-    print(render_qr_ascii(handoff.to_qr_payload()))
+    print(render_qr_ascii(request.url))
+    print(f"\nOr open: {request.url}\n")
+    if args.no_wait:
+        print(f"request_id={request.request_id} (run with --no-wait off to store the token)")
+        return 0
+    print("Waiting for the proof from your phone...")
+    try:
+        token = complete_onboarding(
+            bridge_url=bridge_url,
+            request_id=request.request_id,
+            agent_public_key=request.agent_public_key,
+            delegation_path=settings.delegation_path,
+            ttl_days=args.ttl_days,
+            timeout_seconds=args.timeout,
+        )
+    except OnboardingError as exc:
+        print(f"onboarding failed: {exc}", file=sys.stderr)
+        return 2
+    print(f"Stored delegation token (expires {token.expires_at.isoformat()})")
     return 0
 
 
@@ -251,13 +277,33 @@ def cli() -> int:
     parser = argparse.ArgumentParser(prog="hearme-skill")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_onboard = sub.add_parser("onboard", help="Generate agent key + print QR")
-    p_onboard.add_argument("--node-id", default="hermes-local-0")
+    p_onboard = sub.add_parser(
+        "onboard",
+        help="Generate agent key, print the zkPassport QR, and store the proof",
+    )
+    p_onboard.add_argument(
+        "--bridge-url",
+        default=None,
+        help="zkpassport-bridge URL (default: $HEARME_SKILL_ZKPASSPORT_BRIDGE_URL).",
+    )
+    p_onboard.add_argument("--profile", default="eu-adult")
+    p_onboard.add_argument("--ttl-days", type=int, default=90)
+    p_onboard.add_argument(
+        "--timeout",
+        type=float,
+        default=300.0,
+        help="Seconds to wait for the phone to send a proof.",
+    )
+    p_onboard.add_argument(
+        "--no-wait",
+        action="store_true",
+        help="Print the QR/link and exit without waiting for the proof.",
+    )
     p_onboard.set_defaults(func=_cmd_onboard)
 
     p_accept = sub.add_parser(
         "accept-mock-delegation",
-        help="Accept a DelegationToken from scripts/mock-phone.py",
+        help="Accept a DelegationToken from scripts/mock-onboard.py (dev fixture replay)",
     )
     p_accept.add_argument("token_path", help="Path to token JSON, or '-' for stdin")
     p_accept.set_defaults(func=_cmd_accept_mock)

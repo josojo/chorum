@@ -3,7 +3,8 @@
 Implements the verification pipeline from ARCHITECTURE.md §5 in order:
 
   1. Parse with Pydantic (FastAPI does this).
-  2. Verify phone_signature on DelegationToken.
+  2. Verify the zkPassport proof (real SNARK via the zkpassport-bridge) and its
+     bindings: agent_key, scope, nullifier, predicates.
   3. Check token.expires_at > now().
   4. Check delegation_hash not in revocations.
   5. Recompute expected delegation_hash (we do this inside verify_delegation
@@ -53,9 +54,10 @@ def _ack(accepted: bool, reason: RejectionReason | None = None) -> EnvelopeAck:
 async def submit_envelope(envelope: Envelope) -> EnvelopeAck:
     # Step 1: parsing already happened (FastAPI ran Pydantic v2 with extra="forbid").
 
-    # Steps 2 & 3 & 5 (and prep for 6).
+    # Steps 2 & 3 & 5 (and prep for 6). Async: real SNARK verification of the
+    # zkPassport proof runs through the zkpassport-bridge.
     try:
-        verified = verify_delegation(envelope.delegation_token)
+        verified = await verify_delegation(envelope.delegation_token)
     except VerifyDelegationError as exc:
         log.info("delegation verify failed: %s", exc)
         return _ack(False, exc.reason)

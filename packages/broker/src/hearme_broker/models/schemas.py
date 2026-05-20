@@ -15,36 +15,15 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class ZkPassportProof(BaseModel):
-    """ZK-passport-derived proof embedded in ``DelegationToken.zkpassport_proof``.
-
-    Stored on the wire as ``base64(canonical_json(this))``. See
-    ``packages/proto/zkpassport.json`` for the field-by-field description.
-
-    The ``issuer_signature`` in v0.2 stands in for SNARK verification of a
-    real zkPassport circuit. ``verify/zkpassport.py`` checks four bindings
-    (scope, nullifier, agent_key, predicates) on top of the signature.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    version: Literal[1]
-    scheme: str
-    issuer_key_id: str
-    scope: str
-    nullifier: str = Field(description="base64, 32 bytes")
-    agent_key_commitment: str = Field(description="hex SHA-256, 64 chars")
-    predicate_commitment: str = Field(description="hex SHA-256, 64 chars")
-    disclosed: dict[str, str]
-    issued_at: datetime
-    expires_at: datetime
-    issuer_signature: str = Field(description="base64 Ed25519 signature, 64 bytes")
-
-
 class DelegationToken(BaseModel):
-    """Phone-issued bundle authorizing an agent_key to speak for a user.
+    """Bundle authorizing an agent_key to speak for a unique human.
 
-    Canonical-JSON of this object is the input to
+    Integrity comes from the real zkPassport SNARK in ``zkpassport_proof``:
+    the proof is bound (in-circuit) to the ``agent_key`` (via the SDK's
+    ``custom_data`` bind) and yields the scope-bound ``unique_identifier``
+    (nullifier). The broker re-verifies the proof and validates every claim
+    below against the verified outputs, so no separate signature wraps the
+    bundle. Canonical-JSON of this object is the input to
     ``delegation_hash = SHA-256(canonical_json(token))``.
     """
 
@@ -52,16 +31,21 @@ class DelegationToken(BaseModel):
 
     version: Literal[1]
     zkpassport_proof: str = Field(
-        description="base64 of canonical_json(ZkPassportProof). Verified by verify/zkpassport.py."
+        description=(
+            "base64 of canonical_json of the verifiable zkPassport bundle "
+            "{version, proofs, query, queryResult, scope}. Re-verified by "
+            "verify/zkpassport.py via the zkpassport-bridge."
+        )
     )
     domain: Literal["hearme.network"]
     scope: Literal["v1"]
-    unique_identifier: str = Field(description="base64, 32 bytes")
+    unique_identifier: str = Field(
+        description="zkPassport unique identifier (scope-bound nullifier)."
+    )
     disclosed_predicates: dict[str, str]
     agent_key: str = Field(description="base64 Ed25519 public key, 32 bytes")
     issued_at: datetime
     expires_at: datetime
-    phone_signature: str = Field(description="base64 Ed25519 signature, 64 bytes")
 
 
 class Envelope(BaseModel):
@@ -98,7 +82,6 @@ class RejectionReason(str, Enum):
     """
 
     SCHEMA_INVALID = "schema_invalid"
-    PHONE_SIGNATURE_INVALID = "phone_signature_invalid"
     TOKEN_EXPIRED = "token_expired"
     TOKEN_REVOKED = "token_revoked"
     DELEGATION_HASH_MISMATCH = "delegation_hash_mismatch"
@@ -111,15 +94,14 @@ class RejectionReason(str, Enum):
     SCOPE_INELIGIBLE = "scope_ineligible"
     DUPLICATE = "duplicate"
     INTERNAL_ERROR = "internal_error"
-    # ZK passport (verify/zkpassport.py).
+    # ZK passport (verify/zkpassport.py — real SNARK verification via the bridge).
     ZKPASSPORT_PROOF_MALFORMED = "zkpassport_proof_malformed"
-    ZKPASSPORT_ISSUER_UNKNOWN = "zkpassport_issuer_unknown"
-    ZKPASSPORT_SIGNATURE_INVALID = "zkpassport_signature_invalid"
+    ZKPASSPORT_PROOF_INVALID = "zkpassport_proof_invalid"
+    ZKPASSPORT_BRIDGE_ERROR = "zkpassport_bridge_error"
     ZKPASSPORT_SCOPE_MISMATCH = "zkpassport_scope_mismatch"
     ZKPASSPORT_NULLIFIER_MISMATCH = "zkpassport_nullifier_mismatch"
     ZKPASSPORT_AGENT_BINDING_MISMATCH = "zkpassport_agent_binding_mismatch"
     ZKPASSPORT_PREDICATES_MISMATCH = "zkpassport_predicates_mismatch"
-    ZKPASSPORT_PROOF_EXPIRED = "zkpassport_proof_expired"
     # Cross-binding (envelope route).
     IDENTITY_ALREADY_BOUND = "identity_already_bound"
 

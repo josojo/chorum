@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hearme.network/proto/delegation.json",
   "title": "DelegationToken",
-  "description": "Phone-issued bundle that authorizes an agent_key to speak for a unique_identifier within the Hearme scope. See ARCHITECTURE.md §8.5. Canonical JSON serialization (sorted keys, no whitespace) is the input to delegation_hash = SHA-256(canonical_json(token)).",
+  "description": "Bundle that authorizes an agent_key to speak for a unique human within the Hearme scope. Integrity comes from the real zkPassport SNARK in zkpassport_proof, which is bound in-circuit to agent_key and yields the scope-bound unique_identifier (nullifier); the broker re-verifies the proof and validates every claim below against the verified outputs, so no separate signature wraps the bundle. See ARCHITECTURE.md §8.5. Canonical JSON serialization (sorted keys, no whitespace) is the input to delegation_hash = SHA-256(canonical_json(token)).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -14,35 +14,30 @@
     "disclosed_predicates",
     "agent_key",
     "issued_at",
-    "expires_at",
-    "phone_signature"
+    "expires_at"
   ],
   "properties": {
     "version": { "type": "integer", "const": 1 },
     "zkpassport_proof": {
       "type": "string",
-      "description": "base64 of canonical-JSON-encoded ZkPassportProof (see zkpassport.json). v0.2 cryptographically verifies the proof's issuer signature and its bindings to scope, nullifier, agent_key, and disclosed predicates. v0.3 replaces the issuer signature with real SNARK verification against ICAO CSCA keys."
+      "description": "base64 of canonical-JSON of the verifiable zkPassport bundle (see zkpassport.json): {version, proofs, query, queryResult, scope}. Re-verified by the broker via the zkpassport-bridge (real Noir/UltraHonk verification)."
     },
     "domain": { "type": "string", "const": "hearme.network" },
     "scope": { "type": "string", "const": "v1" },
     "unique_identifier": {
       "type": "string",
-      "description": "base64 of 32 bytes. Stable per (passport, domain, scope)."
+      "description": "zkPassport unique identifier (scope-bound nullifier). Stable per (passport, domain, scope)."
     },
     "disclosed_predicates": {
       "type": "object",
-      "description": "Predicate bundle picked once at install. Keys/values are fixed by the chosen disclosure profile (§8.3).",
+      "description": "Predicate bundle derived from the verified proof's selective disclosure (§8.3). Reproduced deterministically by the bridge's disclosure mapping.",
       "additionalProperties": { "type": "string" }
     },
     "agent_key": {
       "type": "string",
-      "description": "base64 of the agent's Ed25519 public key (32 bytes). Phone attests this key speaks for unique_identifier."
+      "description": "base64 of the agent's Ed25519 public key (32 bytes). Bound into the proof via the SDK's custom_data; the proof attests this key speaks for unique_identifier."
     },
     "issued_at": { "type": "string", "format": "date-time" },
-    "expires_at": { "type": "string", "format": "date-time" },
-    "phone_signature": {
-      "type": "string",
-      "description": "base64 Ed25519 signature (64 bytes) over the canonical-JSON-encoded bundle with phone_signature removed."
-    }
+    "expires_at": { "type": "string", "format": "date-time" }
   }
 }

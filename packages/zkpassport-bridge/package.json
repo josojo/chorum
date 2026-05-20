@@ -1,0 +1,19 @@
+{
+  "name": "hearme-zkpassport-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node sidecar wrapping @zkpassport/sdk: zkPassport request relay + server-side UltraHonk proof verification for the hearme broker and skill.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@zkpassport/sdk": "0.14.2",
+    "express": "^4.19.2"
+  }
+}

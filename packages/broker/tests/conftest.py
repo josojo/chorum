@@ -1,19 +1,18 @@
 """Shared test fixtures.
 
-A few helpers are shared across most files:
-- A deterministic phone signer + agent signer.
-- A factory that builds a valid signed DelegationToken.
-- A factory that builds a valid signed envelope dict.
+The zkPassport SNARK verification is delegated to the Node bridge in
+production; in tests we replace that one network call with a deterministic
+fake (``mock_bridge``, autouse) and steer its outputs via test-only fields
+embedded in the bundle (``query._test_outputs``). Everything else — the
+binding checks, the agent signature, the DB constraints — runs for real.
 
 The Postgres-dependent suite (test_uniqueness, test_aggregate_recompute)
-spins up a real Postgres via ``testcontainers``. If Docker isn't available
-those tests skip.
+spins up a real Postgres via ``testcontainers``; skipped if Docker is absent.
 """
 
 from __future__ import annotations
 
 import base64
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -24,6 +23,7 @@ import pytest
 import pytest_asyncio
 from nacl.signing import SigningKey
 
+from hearme_broker.verify.bridge_client import BridgeVerifyResult
 from hearme_broker.verify.canonical import canonical_json
 
 
@@ -31,88 +31,92 @@ from hearme_broker.verify.canonical import canonical_json
 
 
 @pytest.fixture(scope="session")
-def phone_signing_key() -> SigningKey:
-    # Deterministic across the run; tests assert on the corresponding pubkey.
-    return SigningKey(b"PHONE-KEY-FOR-HEARME-TESTING-32B")
-
-
-@pytest.fixture(scope="session")
-def zk_issuer_signing_key() -> SigningKey:
-    return SigningKey(b"ZK-ISSUER-KEY-FOR-HEARME-TESTING")
-
-
-ZK_TEST_ISSUER_KEY_ID = "icao-csca-test-suite"
-
-
-@pytest.fixture(scope="session", autouse=True)
-def install_phone_pubkey(
-    phone_signing_key: SigningKey, zk_issuer_signing_key: SigningKey
-):
-    """Resolve well-known pubkeys to our test keys for the whole session."""
-    raw = phone_signing_key.verify_key.encode()
-    os.environ["HEARME_PHONE_PUBKEY_BASE64"] = base64.b64encode(raw).decode("ascii")
-    issuer_raw = zk_issuer_signing_key.verify_key.encode()
-    os.environ["HEARME_ZK_ISSUERS"] = (
-        f"{ZK_TEST_ISSUER_KEY_ID}:{base64.b64encode(issuer_raw).decode('ascii')}"
-    )
-    yield
-
-
-@pytest.fixture(scope="session")
 def agent_signing_key() -> SigningKey:
     return SigningKey(b"AGENT-KEY-FOR-HEARME-TESTING-32B")
 
 
-# ----- token + envelope factories ---------------------------------------
+# ----- mocked zkpassport-bridge -----------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def mock_bridge(monkeypatch):
+    """Replace the bridge ``verify_bundle`` call with a deterministic fake.
+
+    The fake echoes test-controlled outputs embedded in the bundle's
+    ``query._test_outputs`` so each test can steer verified / uniqueIdentifier
+    / disclosed without a real Node bridge or any network.
+    """
+
+    async def _fake_verify_bundle(
+        *, bridge_url, proofs, query, query_result, timeout=30.0
+    ):
+        outputs = (query or {}).get("_test_outputs") or {}
+        bound = ((query or {}).get("bind") or {}).get("custom_data")
+        return BridgeVerifyResult(
+            verified=outputs.get("verified", True),
+            unique_identifier=outputs.get("uniqueIdentifier"),
+            disclosed=outputs.get("disclosed") or {},
+            bound_agent_key=bound,
+        )
+
+    monkeypatch.setattr(
+        "hearme_broker.verify.zkpassport.verify_bundle", _fake_verify_bundle
+    )
+    return _fake_verify_bundle
+
+
+# ----- bundle + token + envelope factories ------------------------------
+
+
+def _make_bundle(
+    *,
+    agent_key_b64: str,
+    unique_identifier: str,
+    disclosed: dict[str, str],
+    scope: str = "v1",
+    bound_agent_key: str | None = None,
+    verified: bool = True,
+    verified_uid: str | None = None,
+    verified_disclosed: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """A verifiable-shaped zkPassport bundle with test-only verify outputs."""
+    return {
+        "version": 1,
+        "proofs": [{"name": "test_circuit", "proof": "00", "version": "1"}],
+        "query": {
+            "bind": {
+                "custom_data": bound_agent_key
+                if bound_agent_key is not None
+                else agent_key_b64
+            },
+            "_test_outputs": {
+                "verified": verified,
+                "uniqueIdentifier": verified_uid
+                if verified_uid is not None
+                else unique_identifier,
+                "disclosed": verified_disclosed
+                if verified_disclosed is not None
+                else disclosed,
+            },
+        },
+        "queryResult": {
+            "age": {"gte": {"result": True}},
+            "nationality": {"in": {"result": True}},
+        },
+        "scope": scope,
+    }
 
 
 @pytest.fixture
-def make_zk_proof(
-    zk_issuer_signing_key: SigningKey,
-) -> Callable[..., dict[str, Any]]:
-    """Build a valid issuer-signed ZkPassportProof dict.
-
-    Mirrors what mock-phone does, but keyed to the test issuer key so the
-    broker accepts it under ``HEARME_ZK_ISSUERS``. Tests can override any
-    field to construct adversarial proofs.
-    """
-    from hearme_broker.verify.zkpassport import mint_zkpassport_proof
-
-    def _factory(
-        *,
-        agent_key_b64: str,
-        nullifier_b64: str,
-        disclosed: dict[str, str],
-        issued_at: datetime | None = None,
-        expires_at: datetime | None = None,
-        scope: str = "hearme.network|v1",
-        issuer_key_id: str = ZK_TEST_ISSUER_KEY_ID,
-        scheme: str = "zkpassport.v1.test",
-    ) -> dict[str, Any]:
-        now = datetime.now(timezone.utc)
-        return mint_zkpassport_proof(
-            issuer_signing_key=zk_issuer_signing_key,
-            issuer_key_id=issuer_key_id,
-            nullifier_b64=nullifier_b64,
-            agent_key_b64=agent_key_b64,
-            disclosed_predicates=disclosed,
-            issued_at=issued_at or now - timedelta(minutes=1),
-            expires_at=expires_at or now + timedelta(days=90),
-            scope=scope,
-            scheme=scheme,
-        )
-
-    return _factory
+def make_bundle() -> Callable[..., dict[str, Any]]:
+    return _make_bundle
 
 
 @pytest.fixture
 def make_token(
-    phone_signing_key: SigningKey,
     agent_signing_key: SigningKey,
-    make_zk_proof: Callable[..., dict[str, Any]],
 ) -> Callable[..., dict[str, Any]]:
-    """Build a valid DelegationToken dict (phone-signed, with a valid ZK proof)."""
-    from hearme_broker.verify.zkpassport import pack_proof
+    """Build a DelegationToken dict wrapping a (mock-verifiable) zkPassport bundle."""
 
     def _factory(
         *,
@@ -121,34 +125,44 @@ def make_token(
         issued_at: datetime | None = None,
         expires_at: datetime | None = None,
         agent_pubkey: bytes | None = None,
-        zk_proof_override: dict[str, Any] | None = None,
+        scope: str = "v1",
+        bound_agent_key: str | None = None,
+        verified: bool = True,
+        verified_unique_identifier: str | None = None,
+        verified_disclosed: dict[str, str] | None = None,
+        bundle: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         token_expires = (expires_at or now + timedelta(days=89)).astimezone(
             timezone.utc
         )
-
-        uid = unique_identifier or base64.b64encode(b"\x01" * 32).decode("ascii")
-        predicates = disclosed_predicates or {"region": "EU", "age_band": "25-34"}
+        uid = unique_identifier or "zkp:" + base64.b64encode(b"\x01" * 32).decode(
+            "ascii"
+        )
+        predicates = (
+            disclosed_predicates
+            if disclosed_predicates is not None
+            else {"region": "EU", "age_band": "18+"}
+        )
         agent_b64 = base64.b64encode(
             agent_pubkey or agent_signing_key.verify_key.encode()
         ).decode("ascii")
 
-        if zk_proof_override is not None:
-            proof = zk_proof_override
-        else:
-            proof = make_zk_proof(
-                agent_key_b64=agent_b64,
-                nullifier_b64=uid,
-                disclosed=predicates,
-                issued_at=now - timedelta(minutes=1),
-                # Proof must outlive token.
-                expires_at=token_expires + timedelta(minutes=5),
-            )
+        the_bundle = bundle or _make_bundle(
+            agent_key_b64=agent_b64,
+            unique_identifier=uid,
+            disclosed=predicates,
+            scope=scope,
+            bound_agent_key=bound_agent_key,
+            verified=verified,
+            verified_uid=verified_unique_identifier,
+            verified_disclosed=verified_disclosed,
+        )
+        proof_b64 = base64.b64encode(canonical_json(the_bundle)).decode("ascii")
 
-        token = {
+        return {
             "version": 1,
-            "zkpassport_proof": pack_proof(proof),
+            "zkpassport_proof": proof_b64,
             "domain": "hearme.network",
             "scope": "v1",
             "unique_identifier": uid,
@@ -160,11 +174,6 @@ def make_token(
             .replace("+00:00", "Z"),
             "expires_at": token_expires.isoformat().replace("+00:00", "Z"),
         }
-        # Sign the canonical-JSON of the token-without-signature.
-        signing_input = canonical_json(token)
-        signature = phone_signing_key.sign(signing_input).signature
-        token["phone_signature"] = base64.b64encode(signature).decode("ascii")
-        return token
 
     return _factory
 
@@ -224,8 +233,9 @@ async def pg_pool():
         pytest.skip(f"could not start postgres container (is docker running?): {exc}")
 
     try:
-        dsn = container.get_connection_url().replace("postgresql+psycopg2://", "postgres://")
-        # Wait for readiness via a quick connection.
+        dsn = container.get_connection_url().replace(
+            "postgresql+psycopg2://", "postgres://"
+        )
         pool = await asyncpg.create_pool(dsn=dsn, min_size=1, max_size=4)
         async with pool.acquire() as conn:
             await conn.execute(_read_schema())

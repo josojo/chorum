@@ -1,31 +1,27 @@
 """DelegationToken verification.
 
 Steps (ARCHITECTURE.md §5 + IDENTITY.md, in order):
-  1. Verify ``phone_signature`` on the token bundle (Ed25519, well-known key).
-  2. Check ``expires_at > now()``.
-  3. Verify the embedded ZkPassportProof — issuer signature, scope binding,
-     nullifier == unique_identifier, agent_key commitment, predicate
-     commitment, and proof expiry (see ``verify/zkpassport.py``).
-  4. Check ``delegation_hash`` not in ``revocations`` table (caller checks DB).
-  5. Check ``(nullifier, agent_key)`` binding in ``nullifiers`` table
+  1. Check ``expires_at > now()``.
+  2. Verify the zkPassport bundle in ``zkpassport_proof`` — real SNARK
+     verification via the bridge, plus the agent_key / scope / nullifier /
+     predicate bindings (see ``verify/zkpassport.py``).
+  3. Check ``delegation_hash`` not in ``revocations`` table (caller checks DB).
+  4. Check ``(nullifier, agent_key)`` binding in ``nullifiers`` table
      (caller checks DB).
 
-This module handles 1, 2, and 3, and computes the canonical hash callers
-need for the revocation lookup and the agent-signature step.
+This module handles 1 and 2, and computes the canonical hash callers need for
+the revocation lookup and the agent-signature step. There is no phone
+signature: integrity comes from the SNARK, which binds the agent_key in-circuit.
 """
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from nacl.exceptions import BadSignatureError
-from nacl.signing import VerifyKey
-
-from ..models.schemas import DelegationToken, RejectionReason, ZkPassportProof
+from ..config import Settings
+from ..models.schemas import DelegationToken, RejectionReason
 from .canonical import canonical_json, delegation_hash
-from .well_known import phone_verify_key
 from .zkpassport import VerifyZkPassportError, verify_zkpassport_proof
 
 
@@ -45,57 +41,19 @@ class VerifiedDelegation:
     token: DelegationToken
     delegation_hash: str
     canonical_bytes: bytes
-    zk_proof: ZkPassportProof
-
-
-def _token_payload_for_signature(token_dict: dict) -> bytes:
-    """The bytes the phone signs: canonical JSON of the token with
-    ``phone_signature`` removed.
-
-    Matches packages/proto/delegation.json's description of phone_signature.
-    """
-    payload = {k: v for k, v in token_dict.items() if k != "phone_signature"}
-    return canonical_json(payload)
+    unique_identifier: str
+    disclosed: dict[str, str]
 
 
 def _token_to_dict(token: DelegationToken) -> dict:
-    # Use mode="json" so datetimes serialize as ISO strings — matches what the
-    # phone signed and what the agent recomputed. ``canonical_json`` will sort
-    # keys before serialization.
+    # mode="json" serializes datetimes as ISO strings, matching what the agent
+    # hashed; ``canonical_json`` sorts keys before serialization.
     return token.model_dump(mode="json")
 
 
-def verify_phone_signature(
-    token: DelegationToken,
-    *,
-    verify_key: VerifyKey | None = None,
-) -> None:
-    """Step 1: phone signed the bundle."""
-    vk = verify_key or phone_verify_key()
-    token_dict = _token_to_dict(token)
-    try:
-        signature = base64.b64decode(token.phone_signature)
-    except Exception as exc:  # noqa: BLE001
-        raise VerifyDelegationError(
-            RejectionReason.PHONE_SIGNATURE_INVALID, f"base64 decode failed: {exc}"
-        ) from exc
-    if len(signature) != 64:
-        raise VerifyDelegationError(
-            RejectionReason.PHONE_SIGNATURE_INVALID,
-            f"signature is {len(signature)} bytes; want 64",
-        )
-    try:
-        vk.verify(_token_payload_for_signature(token_dict), signature)
-    except BadSignatureError as exc:
-        raise VerifyDelegationError(
-            RejectionReason.PHONE_SIGNATURE_INVALID, "phone signature does not verify"
-        ) from exc
-
-
 def check_expiry(token: DelegationToken, *, now: datetime | None = None) -> None:
-    """Step 2: not expired."""
+    """Step 1: not expired."""
     moment = now or datetime.now(timezone.utc)
-    # Pydantic gives us a tz-aware datetime; coerce naive ``now`` if a caller passes one.
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     expires_at = token.expires_at
@@ -108,31 +66,24 @@ def check_expiry(token: DelegationToken, *, now: datetime | None = None) -> None
         )
 
 
-def verify_delegation(
+async def verify_delegation(
     token: DelegationToken,
     *,
     now: datetime | None = None,
-    verify_key: VerifyKey | None = None,
+    settings: Settings | None = None,
 ) -> VerifiedDelegation:
     """Run the pre-DB portion of the delegation pipeline.
 
-    Returns a ``VerifiedDelegation`` carrying the canonical hash so the
-    caller can do the revocations DB lookup and the agent-signature check
-    without recomputing.
-
-    v0.2: The embedded ``zkpassport_proof`` is now cryptographically verified
-    (issuer signature + four bindings: scope, nullifier, agent_key,
-    predicates). v0.3 swaps the issuer-signature check for SNARK
-    verification against ICAO CSCA pubkeys — see ``verify/zkpassport.py``.
+    Returns a ``VerifiedDelegation`` carrying the canonical hash so the caller
+    can do the revocations DB lookup and the agent-signature check without
+    recomputing. Async because the SNARK verification calls the bridge.
     """
-    verify_phone_signature(token, verify_key=verify_key)
     check_expiry(token, now=now)
     try:
-        verified_zk = verify_zkpassport_proof(token, now=now)
+        verified_zk = await verify_zkpassport_proof(token, settings=settings)
     except VerifyZkPassportError as exc:
-        # Surface the ZK rejection reason through the same exception type
-        # used for the rest of the delegation pipeline so the envelope
-        # route can keep its single ``except`` block.
+        # Surface the ZK rejection reason through the delegation exception type
+        # so the envelope route keeps its single ``except`` block.
         raise VerifyDelegationError(exc.reason, exc.detail) from exc
 
     token_dict = _token_to_dict(token)
@@ -140,5 +91,6 @@ def verify_delegation(
         token=token,
         delegation_hash=delegation_hash(token_dict),
         canonical_bytes=canonical_json(token_dict),
-        zk_proof=verified_zk.proof,
+        unique_identifier=verified_zk.unique_identifier,
+        disclosed=verified_zk.disclosed,
     )

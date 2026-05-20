@@ -54,11 +54,13 @@ and asserted by `tests/test_identity_inference_separation.py`.
 # from packages/skill/
 pip install -e '.[dev]'
 
-# 1. Generate the agent key + show the QR for ZKPassport
-hearme-skill onboard --node-id hermes-local-0
+# 1. Generate the agent key, show the zkPassport QR, and wait for the proof.
+#    Scan with the ZKPassport app (a mock passport works with the bridge in
+#    devMode). Requires the zkpassport-bridge running (see packages/zkpassport-bridge).
+hearme-skill onboard --bridge-url http://localhost:8787
 
-# 2. (Dev only) Accept a mock delegation token instead of a real phone:
-python ../../scripts/mock-phone.py > /tmp/token.json
+# 2. (Dev only) Replay a captured proof fixture instead of scanning live:
+python ../../scripts/mock-onboard.py --from-bridge /tmp/bridge-result.json > /tmp/token.json
 hearme-skill accept-mock-delegation /tmp/token.json
 
 # 3. Configure policy (sample below). Hearme defaults to off.
@@ -206,10 +208,11 @@ The test:
    uses; calls `answer_one` to drive Persona → Answerer → Envelope.
 5. Asserts the envelope landed and the answer reflects the prior chat.
 
-Mocked / out-of-scope (matches v0 §11): phone is the dev `mock-phone.py`
-key; payments don't exist; the DelegationToken's zkPassport proof is a
-literal stub byte string. Real Hermes inference is the one piece that's
-*not* mocked.
+Mocked / out-of-scope (matches v0 §11): payments don't exist. The
+DelegationToken now wraps a **real** zkPassport bundle, so this e2e flow
+needs a captured proof fixture (`HEARME_E2E_ZK_FIXTURE`, replayed via
+`mock-onboard.py`) bound to the skill's agent key — otherwise it skips.
+Real Hermes inference is the one piece that's *not* mocked.
 
 Skips cleanly when: `hermes-agent` not installed, `OPEN_ROUTER_API_KEY`
 missing, or Docker unavailable (and no `HEARME_E2E_PG_DSN`).
