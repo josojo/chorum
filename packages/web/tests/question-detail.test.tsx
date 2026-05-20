@@ -54,15 +54,19 @@ describe("QuestionDetail rendering", () => {
     // Total surfaces.
     expect(screen.getByText("60")).toBeTruthy();
 
-    // Dimensions appear as section headings.
-    expect(screen.getByText("region")).toBeTruthy();
-    expect(screen.getByText("age_band")).toBeTruthy();
+    // Geography always sits at the top; age comes beneath it.
+    expect(screen.getByText("Geography")).toBeTruthy();
+    expect(screen.getByText("Age")).toBeTruthy();
 
-    // Values appear, with their counts.
-    expect(screen.getByText("EU")).toBeTruthy();
-    expect(screen.getByText("non-EU")).toBeTruthy();
+    // Known continent codes surface on the world map.
+    expect(screen.getAllByText(/Europe/i).length).toBeGreaterThan(0);
     expect(screen.getByText("42")).toBeTruthy();
+
+    // Unknown geography values still surface in the ranked region list.
+    expect(screen.getByText("non-EU")).toBeTruthy();
     expect(screen.getByText("18")).toBeTruthy();
+
+    // Age bands and their counts surface in the age chart.
     expect(screen.getByText("25-34")).toBeTruthy();
     expect(screen.getByText("30")).toBeTruthy();
   });
@@ -92,6 +96,26 @@ describe("QuestionDetail rendering", () => {
     expect(
       screen.getByText(/No answers yet/i),
     ).toBeTruthy();
+  });
+
+  it("places Geography above Age in the DOM order", () => {
+    const { container } = render(
+      <QuestionDetail
+        question={baseQuestion}
+        totalAnswers={60}
+        byPredicate={{
+          "region:EU": 42,
+          "age_band:25-34": 18,
+        }}
+      />,
+    );
+    const headings = Array.from(
+      container.querySelectorAll("h2"),
+    ).map((h) => h.textContent);
+    const geoIdx = headings.indexOf("Geography");
+    const ageIdx = headings.indexOf("Age");
+    expect(geoIdx).toBeGreaterThanOrEqual(0);
+    expect(ageIdx).toBeGreaterThan(geoIdx);
   });
 });
 

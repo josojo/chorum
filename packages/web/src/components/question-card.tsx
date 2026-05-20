@@ -52,15 +52,21 @@ export function QuestionCard(props: QuestionCardProps) {
   return (
     <Link
       href={`/q/${props.id}`}
-      className="group block rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md"
+      className="group relative block overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-lg"
     >
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-0 top-0 h-full w-1 origin-top scale-y-0 bg-gradient-to-b from-violet-500 to-fuchsia-500 transition-transform duration-200 group-hover:scale-y-100"
+      />
       <div className="flex items-start justify-between gap-3">
-        <h3 className="text-base font-semibold text-slate-900 group-hover:text-violet-700">
+        <h3 className="text-base font-semibold text-slate-900 transition group-hover:text-violet-700">
           {props.text}
         </h3>
-        <span className="shrink-0 rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white">
-          {props.answerCount}{" "}
-          {props.answerCount === 1 ? "answer" : "answers"}
+        <span className="inline-flex shrink-0 items-baseline gap-1 rounded-full bg-gradient-to-br from-slate-900 to-slate-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+          <span className="tabular-nums">{props.answerCount}</span>
+          <span className="opacity-80">
+            {props.answerCount === 1 ? "answer" : "answers"}
+          </span>
         </span>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">

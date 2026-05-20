@@ -1,10 +1,21 @@
 // Pure presentational component for the question detail page.
 // Split out from src/app/q/[id]/page.tsx so it's trivial to unit-test without
 // touching the database.
+//
+// Layout: Geography always on top (a real world map when the data is
+// continent-bucketed, a ranked country/region list otherwise), then Age,
+// then any remaining dimensions in a generic chart.
 
 import { AggregateChart, type ByPredicate } from "./aggregate-chart";
+import { AgeChart } from "./age-chart";
+import { CountryBreakdown } from "./country-breakdown";
+import { WorldMap, type ContinentDatum } from "./world-map";
 import { countryFlag } from "@/lib/flags";
-import { CONTINENT_NAMES, COUNTRY_NAMES, type Continent } from "@/lib/geo-data";
+import {
+  CONTINENT_NAMES,
+  COUNTRY_NAMES,
+  type Continent,
+} from "@/lib/geo-data";
 
 export type QuestionDetailProps = {
   question: {
@@ -21,6 +32,16 @@ export type QuestionDetailProps = {
   totalAnswers: number;
   byPredicate: ByPredicate;
 };
+
+const KNOWN_CONTINENTS: ReadonlyArray<Continent> = [
+  "AF",
+  "AN",
+  "AS",
+  "EU",
+  "NA",
+  "OC",
+  "SA",
+];
 
 function fmtDate(d: Date): string {
   return d.toISOString().replace("T", " ").slice(0, 16) + " UTC";
@@ -58,60 +79,192 @@ function ScopePill(props: {
   return null;
 }
 
+/**
+ * Splits `byPredicate` into geography / age / other buckets. The geography
+ * bucket itself splits into "continent" (atlas-mappable codes) and "country"
+ * (or sub-national region), so the renderer can pick the right widget.
+ */
+function partition(byPredicate: ByPredicate) {
+  const geoContinent: ContinentDatum[] = [];
+  const geoCountry: Array<{ code: string; count: number }> = [];
+  const geoRegion: Array<{ code: string; count: number }> = [];
+  const age: Array<{ band: string; count: number }> = [];
+  const other: ByPredicate = {};
+
+  for (const [k, raw] of Object.entries(byPredicate)) {
+    if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
+    const idx = k.indexOf(":");
+    if (idx === -1) {
+      other[k] = raw;
+      continue;
+    }
+    const dim = k.slice(0, idx);
+    const value = k.slice(idx + 1);
+    if (dim === "age_band" || dim === "age") {
+      age.push({ band: value, count: raw });
+    } else if (dim === "country") {
+      geoCountry.push({ code: value, count: raw });
+    } else if (dim === "continent") {
+      if (KNOWN_CONTINENTS.includes(value as Continent)) {
+        geoContinent.push({ code: value as Continent, count: raw });
+      } else {
+        geoRegion.push({ code: value, count: raw });
+      }
+    } else if (dim === "region") {
+      // `region` is overloaded: at worldwide scope it carries continent codes
+      // ("EU", "NA", "AS", ...); at country scope it carries sub-national
+      // labels ("northeast", "Berlin", "NSW", ...). Detect by membership.
+      if (KNOWN_CONTINENTS.includes(value as Continent)) {
+        geoContinent.push({ code: value as Continent, count: raw });
+      } else {
+        geoRegion.push({ code: value, count: raw });
+      }
+    } else {
+      other[k] = raw;
+    }
+  }
+
+  return { geoContinent, geoCountry, geoRegion, age, other };
+}
+
+function SectionHeader({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-b border-slate-200 pb-2">
+      <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+        {title}
+      </h2>
+      {subtitle ? (
+        <span className="text-xs uppercase tracking-wider text-slate-500">
+          {subtitle}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function QuestionDetail(props: QuestionDetailProps) {
   const { question, totalAnswers, byPredicate } = props;
+  const parts = partition(byPredicate);
+
+  const hasGeography =
+    parts.geoContinent.length > 0 ||
+    parts.geoCountry.length > 0 ||
+    parts.geoRegion.length > 0;
+  const hasAge = parts.age.length > 0;
+  const hasOther = Object.keys(parts.other).length > 0;
+  const hasAnyBreakdown = hasGeography || hasAge || hasOther;
 
   return (
-    <article className="space-y-10">
-      <header className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-          <ScopePill
-            scope={question.scope}
-            country={question.country}
-            continent={question.continent}
-          />
-          {question.topic ? (
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
-              #{question.topic}
+    <article className="space-y-8">
+      <header className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-0 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50"
+        />
+        <div className="relative">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <ScopePill
+              scope={question.scope}
+              country={question.country}
+              continent={question.continent}
+            />
+            {question.topic ? (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                #{question.topic}
+              </span>
+            ) : null}
+            <span
+              className={
+                "rounded-full px-2 py-0.5 font-medium " +
+                (question.status === "open"
+                  ? "bg-emerald-100 text-emerald-800"
+                  : "bg-slate-200 text-slate-700")
+              }
+            >
+              {question.status}
             </span>
-          ) : null}
-          <span
-            className={
-              "rounded-full px-2 py-0.5 font-medium " +
-              (question.status === "open"
-                ? "bg-emerald-100 text-emerald-800"
-                : "bg-slate-200 text-slate-700")
-            }
-          >
-            {question.status}
-          </span>
-          <span className="text-slate-400">·</span>
-          <span>opened {fmtDate(question.createdAt)}</span>
-          <span className="text-slate-400">·</span>
-          <span>closes {fmtDate(question.closesAt)}</span>
+            <span className="text-slate-400">·</span>
+            <span>opened {fmtDate(question.createdAt)}</span>
+            <span className="text-slate-400">·</span>
+            <span>closes {fmtDate(question.closesAt)}</span>
+          </div>
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+            {question.text}
+          </h1>
+          <div className="mt-4 flex flex-wrap items-baseline gap-3 text-sm text-slate-600">
+            <span className="inline-flex items-baseline gap-1.5 rounded-full bg-white/80 px-3 py-1 shadow-sm ring-1 ring-slate-200">
+              <span className="text-base font-semibold text-slate-900 tabular-nums">
+                {totalAnswers}
+              </span>
+              <span className="text-slate-600">
+                {totalAnswers === 1 ? "verified answer" : "verified answers"}
+              </span>
+            </span>
+          </div>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
-          {question.text}
-        </h1>
       </header>
 
-      <section>
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Breakdown
-          </h2>
-          <span className="text-sm text-slate-700">
-            <strong className="font-semibold text-slate-900">
-              {totalAnswers}
-            </strong>{" "}
-            {totalAnswers === 1 ? "answer" : "answers"} total
-          </span>
+      {!hasAnyBreakdown ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 p-8 text-center text-sm text-slate-600">
+          No answers yet. Agents poll the broker every ~30s for new questions.
         </div>
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <AggregateChart total={totalAnswers} byPredicate={byPredicate} />
-        </div>
-      </section>
+      ) : null}
 
+      {hasGeography ? (
+        <section className="space-y-4">
+          <SectionHeader
+            title="Geography"
+            subtitle={
+              parts.geoContinent.length > 0
+                ? "by continent"
+                : parts.geoCountry.length > 0
+                ? "by country"
+                : "by region"
+            }
+          />
+          {parts.geoContinent.length > 0 ? (
+            <WorldMap data={parts.geoContinent} total={totalAnswers} />
+          ) : null}
+          {parts.geoCountry.length > 0 ? (
+            <CountryBreakdown
+              data={parts.geoCountry}
+              total={totalAnswers}
+              variant="country"
+            />
+          ) : null}
+          {parts.geoRegion.length > 0 ? (
+            <CountryBreakdown
+              data={parts.geoRegion}
+              total={totalAnswers}
+              variant="region"
+            />
+          ) : null}
+        </section>
+      ) : null}
+
+      {hasAge ? (
+        <section className="space-y-4">
+          <SectionHeader title="Age" subtitle="by cohort" />
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <AgeChart data={parts.age} total={totalAnswers} />
+          </div>
+        </section>
+      ) : null}
+
+      {hasOther ? (
+        <section className="space-y-4">
+          <SectionHeader title="Other dimensions" />
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <AggregateChart total={totalAnswers} byPredicate={parts.other} />
+          </div>
+        </section>
+      ) : null}
     </article>
   );
 }

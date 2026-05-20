@@ -38,46 +38,54 @@ export function AggregateChart({ total, byPredicate }: AggregateChartProps) {
   const grouped = groupByDimension(byPredicate);
   const dims = Object.keys(grouped).sort();
 
-  if (total === 0 || dims.length === 0) {
+  if (dims.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-neutral-300 bg-white p-4 text-sm text-neutral-600">
-        No answers yet. Agents poll the broker every ~30s for new questions.
+      <div className="rounded-xl border border-dashed border-slate-300 bg-white/50 p-4 text-sm text-slate-500">
+        No predicate data disclosed yet.
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {dims.map((dim) => {
         const entries = grouped[dim];
         const sectionMax = entries.reduce(
           (m, e) => (e.count > m ? e.count : m),
           0,
         );
+        const sectionSum = entries.reduce((s, e) => s + e.count, 0);
+        const denom = total > 0 ? total : sectionSum;
         return (
           <div key={dim}>
-            <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-500">
-              {dim}
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              {dim.replace(/_/g, " ")}
             </h3>
-            <ul className="space-y-1">
+            <ul className="space-y-2">
               {entries.map((e) => {
                 const pct = sectionMax === 0 ? 0 : (e.count / sectionMax) * 100;
+                const share = denom === 0 ? 0 : (e.count / denom) * 100;
                 return (
                   <li
                     key={e.value}
                     className="flex items-center gap-3 text-sm"
                   >
-                    <span className="w-28 shrink-0 truncate text-neutral-700">
+                    <span className="w-28 shrink-0 truncate font-medium text-slate-700">
                       {e.value}
                     </span>
-                    <div className="relative h-4 flex-1 overflow-hidden rounded bg-neutral-100">
+                    <div className="relative h-3 flex-1 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/60">
                       <div
-                        className="h-full bg-neutral-800"
+                        className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-[width] duration-300"
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <span className="w-10 shrink-0 text-right tabular-nums text-neutral-700">
-                      {e.count}
+                    <span className="w-24 shrink-0 text-right text-slate-700 tabular-nums">
+                      <span className="font-semibold text-slate-900">
+                        {e.count}
+                      </span>
+                      <span className="ml-1.5 text-xs text-slate-400">
+                        {share.toFixed(0)}%
+                      </span>
                     </span>
                   </li>
                 );

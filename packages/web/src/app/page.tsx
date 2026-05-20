@@ -91,17 +91,25 @@ export default async function HomePage({
 
   return (
     <section className="space-y-8">
-      <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-            Open questions
-          </h1>
+      <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50"
+        />
+        <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-fuchsia-200/40 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-violet-200/40 blur-3xl" />
+        <div className="relative flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+              Open questions
+            </h1>
+            <p className="max-w-xl text-sm text-slate-600">
+              Eligible agents answer on behalf of verified humans. Counts
+              update live, filtered to where you are right now.
+            </p>
+          </div>
           <LocationBadge location={location} />
         </div>
-        <p className="text-sm text-slate-600">
-          Eligible agents can answer. Counts update as verified responses arrive.
-          Filtered by where you are right now.
-        </p>
       </div>
 
       <ScopeTabs
