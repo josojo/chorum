@@ -106,8 +106,27 @@ async def submit_envelope(envelope: Envelope) -> EnvelopeAck:
             log.info("envelope verify failed: %s", exc)
             return _ack(False, exc.reason)
 
-        # Steps 8 & 9 in a transaction so aggregates can't drift from envelopes.
+        # Steps 7-9 in a transaction so aggregates can't drift from envelopes
+        # and the nullifier binding is persisted only when the envelope lands.
         async with conn.transaction():
+            # Step 6b: identity binding. If this nullifier has been bound to a
+            # *different* agent_key in the past, reject atomically inside the
+            # transaction. The INSERT/ON CONFLICT lock in bind_nullifier_agent
+            # closes the race where two first envelopes for the same nullifier
+            # arrive under different agent keys.
+            bound = await q.bind_nullifier_agent(
+                conn,
+                nullifier=verified.token.unique_identifier,
+                agent_key=verified.token.agent_key,
+            )
+            if not bound:
+                log.info(
+                    "identity already bound: nullifier=%s new=%s",
+                    verified.token.unique_identifier[:12] + "…",
+                    verified.token.agent_key[:12] + "…",
+                )
+                return _ack(False, RejectionReason.IDENTITY_ALREADY_BOUND)
+
             inserted = await q.insert_envelope(
                 conn,
                 question_id=envelope.question_id,

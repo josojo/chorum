@@ -6,6 +6,7 @@ from .schemas import (
     EnvelopeAck,
     Question,
     RejectionReason,
+    ZkPassportProof,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "EnvelopeAck",
     "Question",
     "RejectionReason",
+    "ZkPassportProof",
 ]

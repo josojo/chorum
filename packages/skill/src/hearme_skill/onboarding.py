@@ -7,14 +7,16 @@ Flow:
   2. Skill displays a QR code containing: agent_key.public, hermes node id,
      a fresh onboarding nonce, and the disclosure profiles (§8.3).
   3. User scans QR in ZKPassport app, picks a disclosure profile.
-  4. Phone produces a DelegationToken and sends it to the agent over the
-     paired channel.
-  5. Skill encrypts (STUB: v0 stores plaintext with 0600 perms) and stores
-     at `~/.hermes/hearme/delegation.token`.
+  4. Phone produces a DelegationToken (carrying a structured
+     ``ZkPassportProof`` in ``zkpassport_proof``) and forwards it to the
+     agent over the QR-paired channel.
+  5. Skill runs cheap structural binding checks (scope, nullifier,
+     agent_key, predicates) via ``zk_passport.verify_bindings`` and stores
+     the bundle on disk at ``~/.hermes/hearme/delegation.token``.
 
-For development, `accept_delegation_from_mock_phone()` accepts a
-DelegationToken JSON produced by `scripts/mock-phone.py` and stores it the
-same way as the real flow.
+For development, ``accept_delegation_from_mock_phone()`` accepts a
+DelegationToken JSON produced by ``scripts/mock-phone.py`` and stores it
+the same way as the real flow.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from pathlib import Path
 from .crypto.keystore import load_or_create_agent_keypair
 from .delegation import store_delegation
 from .models import DelegationToken
+from .zk_passport import IdentityBundleError, verify_bindings
 
 # § 8.3 disclosure profiles. Fixed bundles, picked once on the phone.
 DISCLOSURE_PROFILES = {
@@ -119,12 +122,48 @@ def accept_delegation_from_mock_phone(
     raw_json: str,
     delegation_path: Path,
 ) -> DelegationToken:
-    """Accept a DelegationToken JSON from `scripts/mock-phone.py`.
+    """Accept a DelegationToken JSON from ``scripts/mock-phone.py``.
 
     For dev only. The real flow accepts the same JSON shape from the
-    QR-paired channel. Both paths land in the same on-disk format.
+    QR-paired channel — see :func:`accept_identity_bundle` below.
     """
+    return accept_identity_bundle(raw_json=raw_json, delegation_path=delegation_path)
 
+
+def accept_identity_bundle(
+    *,
+    raw_json: str,
+    delegation_path: Path,
+) -> DelegationToken:
+    """Receive a DelegationToken forwarded from the phone, run structural
+    binding checks, and persist it.
+
+    This is the entry point for "forward your identity to the skill" —
+    whether the bundle arrives over the QR-paired channel, via a file the
+    user dropped into ``~/.hermes/hearme/``, or via :func:`accept_delegation_from_mock_phone`
+    in dev.
+
+    Raises:
+        IdentityBundleError: if the embedded ZkPassportProof doesn't
+            structurally bind to the token's agent_key / scope / predicates.
+            (Issuer-signature verification is the broker's job; the skill
+            only catches obvious mismatches early so the user finds out
+            before submitting a doomed envelope.)
+    """
     token = DelegationToken.model_validate_json(raw_json)
+    # Cheap, local-only structural checks. Raises IdentityBundleError on
+    # mismatch — caller surfaces the message to the user.
+    verify_bindings(token)
     store_delegation(delegation_path, token)
     return token
+
+
+__all__ = [
+    "DISCLOSURE_PROFILES",
+    "OnboardingHandoff",
+    "accept_delegation_from_mock_phone",
+    "accept_identity_bundle",
+    "begin_onboarding",
+    "render_qr_ascii",
+    "IdentityBundleError",
+]

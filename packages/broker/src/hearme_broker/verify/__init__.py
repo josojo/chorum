@@ -7,6 +7,12 @@ from .envelope import (
     envelope_signing_input,
     verify_agent_signature,
 )
+from .zkpassport import (
+    VerifyZkPassportError,
+    mint_zkpassport_proof,
+    pack_proof,
+    verify_zkpassport_proof,
+)
 
 __all__ = [
     "canonical_json",
@@ -16,4 +22,8 @@ __all__ = [
     "VerifyEnvelopeError",
     "envelope_signing_input",
     "verify_agent_signature",
+    "VerifyZkPassportError",
+    "mint_zkpassport_proof",
+    "pack_proof",
+    "verify_zkpassport_proof",
 ]

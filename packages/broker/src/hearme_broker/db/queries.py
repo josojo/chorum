@@ -73,6 +73,49 @@ async def is_revoked(conn: asyncpg.Connection, delegation_hash_hex: str) -> bool
     return row is not None
 
 
+# ----- nullifiers --------------------------------------------------------
+
+
+async def bind_nullifier_agent(
+    conn: asyncpg.Connection, *, nullifier: str, agent_key: str
+) -> bool:
+    """Atomically bind ``nullifier`` to ``agent_key``.
+
+    Returns True when the nullifier was newly bound or was already bound to
+    the same agent key. Returns False when the nullifier is already bound to
+    a different agent key.
+
+    This must run inside the same transaction that inserts the envelope. The
+    INSERT/ON CONFLICT statement takes the relevant unique-index lock, so two
+    concurrent first envelopes for the same nullifier cannot both pass under
+    different agent keys.
+    """
+    result = await conn.execute(
+        """
+        INSERT INTO nullifiers (nullifier, agent_key, first_seen_at, last_seen_at)
+        VALUES ($1, $2, now(), now())
+        ON CONFLICT (nullifier) DO UPDATE
+        SET last_seen_at = now()
+        WHERE nullifiers.agent_key = EXCLUDED.agent_key
+        RETURNING agent_key
+        """,
+        nullifier,
+        agent_key,
+    )
+    return result.endswith(" 1")
+
+
+async def get_bound_agent_key(
+    conn: asyncpg.Connection, nullifier: str
+) -> str | None:
+    """Return the agent_key currently bound to ``nullifier`` (None if unbound)."""
+    row = await conn.fetchrow(
+        "SELECT agent_key FROM nullifiers WHERE nullifier = $1",
+        nullifier,
+    )
+    return row["agent_key"] if row else None
+
+
 # ----- envelopes ---------------------------------------------------------
 
 

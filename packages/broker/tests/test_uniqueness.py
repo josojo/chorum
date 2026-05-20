@@ -90,6 +90,56 @@ async def test_revocation_lookup(pg_pool, make_token):
         assert await q.is_revoked(conn, dhash) is True
 
 
+async def test_nullifier_binding_persists_and_is_idempotent(pg_pool, make_token):
+    """First envelope binds (nullifier, agent_key); refresh under same key is OK."""
+    nullifier = base64.b64encode(b"\x33" * 32).decode("ascii")
+    raw = make_token(unique_identifier=nullifier)
+    agent_key = raw["agent_key"]
+
+    async with pg_pool.acquire() as conn:
+        assert await q.get_bound_agent_key(conn, nullifier) is None
+        ok = await q.bind_nullifier_agent(
+            conn, nullifier=nullifier, agent_key=agent_key
+        )
+        assert ok is True
+        bound = await q.get_bound_agent_key(conn, nullifier)
+        assert bound == agent_key
+
+        # Refresh with the same agent_key — UPDATE last_seen_at; row count unchanged.
+        ok = await q.bind_nullifier_agent(
+            conn, nullifier=nullifier, agent_key=agent_key
+        )
+        assert ok is True
+        cnt = await conn.fetchval(
+            "SELECT count(*) FROM nullifiers WHERE nullifier = $1", nullifier
+        )
+        assert cnt == 1
+
+
+async def test_nullifier_binding_rejects_different_agent_key(pg_pool, make_token):
+    """Same passport (nullifier) showing up under a NEW agent_key is the
+    identity-already-bound case. The UPSERT's WHERE guard refuses to
+    overwrite the existing row, so the binding stays intact and the
+    envelope route will reject the second envelope."""
+    nullifier = base64.b64encode(b"\x44" * 32).decode("ascii")
+    first = make_token(unique_identifier=nullifier)
+    other_agent_b64 = base64.b64encode(b"\x77" * 32).decode("ascii")
+
+    async with pg_pool.acquire() as conn:
+        ok = await q.bind_nullifier_agent(
+            conn, nullifier=nullifier, agent_key=first["agent_key"]
+        )
+        assert ok is True
+        # Stray attempt to bind a different agent_key under the same nullifier.
+        ok = await q.bind_nullifier_agent(
+            conn, nullifier=nullifier, agent_key=other_agent_b64
+        )
+        assert ok is False
+        # Binding still maps to the original agent_key.
+        bound = await q.get_bound_agent_key(conn, nullifier)
+        assert bound == first["agent_key"]
+
+
 async def test_different_uids_can_both_answer(pg_pool, make_token, make_envelope):
     qid = await _seed_question(pg_pool, nonce="seed-nonce-2")
     token_a = make_token(

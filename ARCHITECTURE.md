@@ -586,7 +586,7 @@ Marked `# STUB:` in code and listed in each package's README under "Not yet real
 
 - **Payments.** No money flows anywhere in v0. The pitch's "fraction of a cent" is deferred to v0.3. No payment fields in the schema.
 - **Asker auth.** Display name only; anyone can post. Asker accounts and auth land in v0.2.
-- **Real zkPassport proof verification.** v0 verifies the **phone's Ed25519 signature** on the DelegationToken bundle but stubs the underlying zkPassport circuit verification (i.e., we trust that the phone correctly attested to the passport). Wire real ZK verification in v0.2.
+- **Real zkPassport proof verification.** v0.2 verifies a structured `ZkPassportProof` embedded in `zkpassport_proof`: the broker checks an issuer Ed25519 signature plus four bindings (scope, nullifier ↔ unique_identifier, agent_key commitment, predicate commitment), and registers the nullifier so the same passport can't bind multiple agent_keys without revocation. The issuer signature stands in for SNARK verification of the real circuit; v0.3 swaps it for ICAO-CSCA-rooted ZK verification. See `packages/proto/zkpassport.json` and `packages/broker/src/hearme_broker/verify/zkpassport.py`.
 - **Memory provider abstraction.** Skill hard-codes one provider (Mem0 or Holographic). Wire the abstraction in v0.2.
 - **Multi-channel skill UI.** Telegram only in v0.
 - **Revocation propagation.** Broker has the `revocations` table; skill respects expiry; live revocation publishing flow lands in v0.2.

@@ -19,10 +19,10 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "PASS: $*"; }
 
 # 1. Schema applied.
-expected="aggregates askers envelopes questions revocations"
+expected="aggregates askers envelopes nullifiers questions revocations"
 actual=$(admin "SELECT string_agg(tablename, ' ' ORDER BY tablename) FROM pg_tables WHERE schemaname='public';")
 [ "$actual" = "$expected" ] || fail "tables mismatch: got '$actual', want '$expected'"
-pass "schema applied — 5 tables"
+pass "schema applied — 6 tables"
 
 # 2. Writer roles exist.
 for role in hearme_web hearme_broker; do
@@ -60,7 +60,7 @@ if broker "INSERT INTO envelopes(question_id, unique_identifier, answer, disclos
 fi
 pass "composite PK rejects duplicate envelopes"
 
-admin "TRUNCATE envelopes, aggregates, revocations, questions, askers RESTART IDENTITY CASCADE;" > /dev/null
+admin "TRUNCATE envelopes, aggregates, revocations, nullifiers, questions, askers RESTART IDENTITY CASCADE;" > /dev/null
 
 echo
 echo "All DB checks passed."

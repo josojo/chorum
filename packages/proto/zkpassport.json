@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hearme.network/proto/zkpassport.json",
+  "title": "ZkPassportProof",
+  "description": "The ZK-passport-derived proof embedded inside DelegationToken.zkpassport_proof (canonical-JSON-then-base64). v0.2 replaces v0's opaque-stub field with a structurally cryptographic object whose four bindings (scope, nullifier, agent_key, predicates) the broker verifies. See ARCHITECTURE.md §8.5 and IDENTITY.md. The 'issuer_signature' here stands in for the SNARK verification of a real zkPassport circuit — see verify/zkpassport.py for the equivalence note.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "scheme",
+    "issuer_key_id",
+    "scope",
+    "nullifier",
+    "agent_key_commitment",
+    "predicate_commitment",
+    "disclosed",
+    "issued_at",
+    "expires_at",
+    "issuer_signature"
+  ],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "scheme": {
+      "type": "string",
+      "description": "Proof scheme identifier. v0.2 ships 'zkpassport.v1.test'; a real circuit-based scheme replaces this in v0.3."
+    },
+    "issuer_key_id": {
+      "type": "string",
+      "description": "Identifies which issuer pubkey the broker should resolve when verifying issuer_signature. v0.2 uses a hardcoded dev issuer; production looks up the ICAO CSCA pubkey by this id."
+    },
+    "scope": {
+      "type": "string",
+      "description": "Scope-bound identifier for nullifier derivation. MUST equal '<DelegationToken.domain>|<DelegationToken.scope>' (e.g. 'hearme.network|v1')."
+    },
+    "nullifier": {
+      "type": "string",
+      "description": "base64 of 32 bytes. The scope-bound passport-derived nullifier. MUST equal DelegationToken.unique_identifier byte-for-byte."
+    },
+    "agent_key_commitment": {
+      "type": "string",
+      "description": "Hex SHA-256 over the 32 bytes of the agent's Ed25519 public key. Binds the proof to a specific agent — re-using a captured proof with a different agent_key fails this check."
+    },
+    "predicate_commitment": {
+      "type": "string",
+      "description": "Hex SHA-256 over canonical_json(DelegationToken.disclosed_predicates). Detects predicate tampering after issuance."
+    },
+    "disclosed": {
+      "type": "object",
+      "description": "Human-readable selectively-disclosed predicates. MUST equal DelegationToken.disclosed_predicates.",
+      "additionalProperties": { "type": "string" }
+    },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Proof expiry. MUST be >= DelegationToken.expires_at so a still-valid delegation token can never reference an already-expired proof."
+    },
+    "issuer_signature": {
+      "type": "string",
+      "description": "base64 Ed25519 signature (64 bytes) over canonical_json(rest_of_object). The v0.2 stand-in for SNARK verification."
+    }
+  }
+}

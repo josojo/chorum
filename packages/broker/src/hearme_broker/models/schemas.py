@@ -15,6 +15,32 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ZkPassportProof(BaseModel):
+    """ZK-passport-derived proof embedded in ``DelegationToken.zkpassport_proof``.
+
+    Stored on the wire as ``base64(canonical_json(this))``. See
+    ``packages/proto/zkpassport.json`` for the field-by-field description.
+
+    The ``issuer_signature`` in v0.2 stands in for SNARK verification of a
+    real zkPassport circuit. ``verify/zkpassport.py`` checks four bindings
+    (scope, nullifier, agent_key, predicates) on top of the signature.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1]
+    scheme: str
+    issuer_key_id: str
+    scope: str
+    nullifier: str = Field(description="base64, 32 bytes")
+    agent_key_commitment: str = Field(description="hex SHA-256, 64 chars")
+    predicate_commitment: str = Field(description="hex SHA-256, 64 chars")
+    disclosed: dict[str, str]
+    issued_at: datetime
+    expires_at: datetime
+    issuer_signature: str = Field(description="base64 Ed25519 signature, 64 bytes")
+
+
 class DelegationToken(BaseModel):
     """Phone-issued bundle authorizing an agent_key to speak for a user.
 
@@ -25,7 +51,9 @@ class DelegationToken(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: Literal[1]
-    zkpassport_proof: str = Field(description="base64 zkPassport proof bytes")
+    zkpassport_proof: str = Field(
+        description="base64 of canonical_json(ZkPassportProof). Verified by verify/zkpassport.py."
+    )
     domain: Literal["hearme.network"]
     scope: Literal["v1"]
     unique_identifier: str = Field(description="base64, 32 bytes")
@@ -83,6 +111,17 @@ class RejectionReason(str, Enum):
     SCOPE_INELIGIBLE = "scope_ineligible"
     DUPLICATE = "duplicate"
     INTERNAL_ERROR = "internal_error"
+    # ZK passport (verify/zkpassport.py).
+    ZKPASSPORT_PROOF_MALFORMED = "zkpassport_proof_malformed"
+    ZKPASSPORT_ISSUER_UNKNOWN = "zkpassport_issuer_unknown"
+    ZKPASSPORT_SIGNATURE_INVALID = "zkpassport_signature_invalid"
+    ZKPASSPORT_SCOPE_MISMATCH = "zkpassport_scope_mismatch"
+    ZKPASSPORT_NULLIFIER_MISMATCH = "zkpassport_nullifier_mismatch"
+    ZKPASSPORT_AGENT_BINDING_MISMATCH = "zkpassport_agent_binding_mismatch"
+    ZKPASSPORT_PREDICATES_MISMATCH = "zkpassport_predicates_mismatch"
+    ZKPASSPORT_PROOF_EXPIRED = "zkpassport_proof_expired"
+    # Cross-binding (envelope route).
+    IDENTITY_ALREADY_BOUND = "identity_already_bound"
 
 
 class EnvelopeAck(BaseModel):

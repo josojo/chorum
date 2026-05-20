@@ -21,7 +21,7 @@
     "version": { "type": "integer", "const": 1 },
     "zkpassport_proof": {
       "type": "string",
-      "description": "base64-encoded zkPassport proof bytes. v0 stubs full circuit verification (see ARCHITECTURE.md §11)."
+      "description": "base64 of canonical-JSON-encoded ZkPassportProof (see zkpassport.json). v0.2 cryptographically verifies the proof's issuer signature and its bindings to scope, nullifier, agent_key, and disclosed predicates. v0.3 replaces the issuer signature with real SNARK verification against ICAO CSCA keys."
     },
     "domain": { "type": "string", "const": "hearme.network" },
     "scope": { "type": "string", "const": "v1" },

@@ -93,3 +93,14 @@ export const revocations = pgTable("revocations", {
     .notNull()
     .defaultNow(),
 });
+
+export const nullifiers = pgTable("nullifiers", {
+  nullifier: text("nullifier").primaryKey(),
+  agentKey: text("agent_key").notNull(),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

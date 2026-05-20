@@ -36,13 +36,26 @@ def phone_signing_key() -> SigningKey:
     return SigningKey(b"PHONE-KEY-FOR-HEARME-TESTING-32B")
 
 
+@pytest.fixture(scope="session")
+def zk_issuer_signing_key() -> SigningKey:
+    return SigningKey(b"ZK-ISSUER-KEY-FOR-HEARME-TESTING")
+
+
+ZK_TEST_ISSUER_KEY_ID = "icao-csca-test-suite"
+
+
 @pytest.fixture(scope="session", autouse=True)
-def install_phone_pubkey(phone_signing_key: SigningKey):
-    """Make ``well_known.phone_verify_key()`` resolve to our test key."""
+def install_phone_pubkey(
+    phone_signing_key: SigningKey, zk_issuer_signing_key: SigningKey
+):
+    """Resolve well-known pubkeys to our test keys for the whole session."""
     raw = phone_signing_key.verify_key.encode()
     os.environ["HEARME_PHONE_PUBKEY_BASE64"] = base64.b64encode(raw).decode("ascii")
+    issuer_raw = zk_issuer_signing_key.verify_key.encode()
+    os.environ["HEARME_ZK_ISSUERS"] = (
+        f"{ZK_TEST_ISSUER_KEY_ID}:{base64.b64encode(issuer_raw).decode('ascii')}"
+    )
     yield
-    # leave it set; tests share the session-scoped key
 
 
 @pytest.fixture(scope="session")
@@ -54,8 +67,52 @@ def agent_signing_key() -> SigningKey:
 
 
 @pytest.fixture
-def make_token(phone_signing_key: SigningKey, agent_signing_key: SigningKey) -> Callable[..., dict[str, Any]]:
-    """Build a valid DelegationToken dict (already phone-signed)."""
+def make_zk_proof(
+    zk_issuer_signing_key: SigningKey,
+) -> Callable[..., dict[str, Any]]:
+    """Build a valid issuer-signed ZkPassportProof dict.
+
+    Mirrors what mock-phone does, but keyed to the test issuer key so the
+    broker accepts it under ``HEARME_ZK_ISSUERS``. Tests can override any
+    field to construct adversarial proofs.
+    """
+    from hearme_broker.verify.zkpassport import mint_zkpassport_proof
+
+    def _factory(
+        *,
+        agent_key_b64: str,
+        nullifier_b64: str,
+        disclosed: dict[str, str],
+        issued_at: datetime | None = None,
+        expires_at: datetime | None = None,
+        scope: str = "hearme.network|v1",
+        issuer_key_id: str = ZK_TEST_ISSUER_KEY_ID,
+        scheme: str = "zkpassport.v1.test",
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        return mint_zkpassport_proof(
+            issuer_signing_key=zk_issuer_signing_key,
+            issuer_key_id=issuer_key_id,
+            nullifier_b64=nullifier_b64,
+            agent_key_b64=agent_key_b64,
+            disclosed_predicates=disclosed,
+            issued_at=issued_at or now - timedelta(minutes=1),
+            expires_at=expires_at or now + timedelta(days=90),
+            scope=scope,
+            scheme=scheme,
+        )
+
+    return _factory
+
+
+@pytest.fixture
+def make_token(
+    phone_signing_key: SigningKey,
+    agent_signing_key: SigningKey,
+    make_zk_proof: Callable[..., dict[str, Any]],
+) -> Callable[..., dict[str, Any]]:
+    """Build a valid DelegationToken dict (phone-signed, with a valid ZK proof)."""
+    from hearme_broker.verify.zkpassport import pack_proof
 
     def _factory(
         *,
@@ -64,28 +121,44 @@ def make_token(phone_signing_key: SigningKey, agent_signing_key: SigningKey) -> 
         issued_at: datetime | None = None,
         expires_at: datetime | None = None,
         agent_pubkey: bytes | None = None,
+        zk_proof_override: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
+        token_expires = (expires_at or now + timedelta(days=89)).astimezone(
+            timezone.utc
+        )
+
+        uid = unique_identifier or base64.b64encode(b"\x01" * 32).decode("ascii")
+        predicates = disclosed_predicates or {"region": "EU", "age_band": "25-34"}
+        agent_b64 = base64.b64encode(
+            agent_pubkey or agent_signing_key.verify_key.encode()
+        ).decode("ascii")
+
+        if zk_proof_override is not None:
+            proof = zk_proof_override
+        else:
+            proof = make_zk_proof(
+                agent_key_b64=agent_b64,
+                nullifier_b64=uid,
+                disclosed=predicates,
+                issued_at=now - timedelta(minutes=1),
+                # Proof must outlive token.
+                expires_at=token_expires + timedelta(minutes=5),
+            )
+
         token = {
             "version": 1,
-            "zkpassport_proof": base64.b64encode(b"stub-proof").decode("ascii"),
+            "zkpassport_proof": pack_proof(proof),
             "domain": "hearme.network",
             "scope": "v1",
-            "unique_identifier": unique_identifier
-            or base64.b64encode(b"\x01" * 32).decode("ascii"),
-            "disclosed_predicates": disclosed_predicates
-            or {"region": "EU", "age_band": "25-34"},
-            "agent_key": base64.b64encode(
-                agent_pubkey or agent_signing_key.verify_key.encode()
-            ).decode("ascii"),
+            "unique_identifier": uid,
+            "disclosed_predicates": predicates,
+            "agent_key": agent_b64,
             "issued_at": (issued_at or now - timedelta(days=1))
             .astimezone(timezone.utc)
             .isoformat()
             .replace("+00:00", "Z"),
-            "expires_at": (expires_at or now + timedelta(days=89))
-            .astimezone(timezone.utc)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            "expires_at": token_expires.isoformat().replace("+00:00", "Z"),
         }
         # Sign the canonical-JSON of the token-without-signature.
         signing_input = canonical_json(token)
