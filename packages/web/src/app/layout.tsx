@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { LogoWordmark } from "@/components/logo";
+import { HowItWorks } from "@/components/how-it-works";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <LogoWordmark />
             </Link>
             <nav className="flex items-center gap-2 sm:gap-3 text-sm">
+              <HowItWorks />
               <Link
                 href="/"
                 className="rounded-full px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100"
