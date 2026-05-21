@@ -6,7 +6,11 @@ it derives them from the verified Self outputs, never trusting a client copy.
 - ``region``  <- disclosed nationality (ISO-3166 alpha-2) mapped to a continent
   code (AF/AN/AS/EU/NA/OC/SA), matching the questions table + eligibility.py.
   Europe collapses to ``EU`` (the continent code the seed data / scope checks
-  use). The raw country is NOT persisted.
+  use).
+- ``country`` <- the raw ISO-3166 alpha-2 nationality (upper-cased). Disclosing
+  the exact country lets worldwide questions break results down per nation
+  (continent → country drill-down). This narrows the anonymity set versus
+  region-only — a deliberate product choice (ARCHITECTURE.md §5).
 - ``age_band`` <- the set of satisfied "older-than" thresholds from the
   multi-threshold ladder (§8.3). Self can only PRODUCE a proof for a threshold
   the holder satisfies, so the max satisfied threshold fixes the band. A single
@@ -105,8 +109,14 @@ def thresholds_to_age_band(satisfied: list[int]) -> str:
 
 
 def derive_predicates(*, nationality: str, satisfied_thresholds: list[int]) -> dict[str, str]:
-    """Full derivation -> ``{region, age_band}``. Raises ``PredicateError``."""
+    """Full derivation -> ``{region, country, age_band}``. Raises ``PredicateError``.
+
+    ``country_to_region`` doubles as validation: an unmapped/blank nationality
+    raises before we echo it back as ``country``.
+    """
+    region = country_to_region(nationality)
     return {
-        "region": country_to_region(nationality),
+        "region": region,
+        "country": nationality.strip().upper(),
         "age_band": thresholds_to_age_band(satisfied_thresholds),
     }

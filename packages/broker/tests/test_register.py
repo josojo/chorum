@@ -21,7 +21,11 @@ async def test_happy_path_full_ladder(make_enrollment):
     )
     out = await verify_enrollment(bundle)
     assert out.unique_identifier == "self:nullifier-1"
-    assert out.disclosed_predicates == {"region": "EU", "age_band": "35-49"}
+    assert out.disclosed_predicates == {
+        "region": "EU",
+        "country": "DE",
+        "age_band": "35-49",
+    }
 
 
 async def test_single_18_proof_yields_18_plus(make_enrollment):
@@ -29,7 +33,11 @@ async def test_single_18_proof_yields_18_plus(make_enrollment):
         make_enrollment(nationality="US", thresholds=(18,))
     )
     out = await verify_enrollment(bundle)
-    assert out.disclosed_predicates == {"region": "NA", "age_band": "18+"}
+    assert out.disclosed_predicates == {
+        "region": "NA",
+        "country": "US",
+        "age_band": "18+",
+    }
 
 
 async def test_full_senior_band(make_enrollment):
@@ -37,7 +45,11 @@ async def test_full_senior_band(make_enrollment):
         make_enrollment(nationality="JP", thresholds=(18, 25, 35, 50, 65))
     )
     out = await verify_enrollment(bundle)
-    assert out.disclosed_predicates == {"region": "AS", "age_band": "65+"}
+    assert out.disclosed_predicates == {
+        "region": "AS",
+        "country": "JP",
+        "age_band": "65+",
+    }
 
 
 async def test_proof_invalid_rejected(make_enrollment):
