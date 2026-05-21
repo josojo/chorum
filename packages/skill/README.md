@@ -191,6 +191,30 @@ HEARME_USE_HERMES=1 python -m hearme_skill.dev_runner
 | `OPEN_ROUTER_API_KEY` / `OPENROUTER_API_KEY` | (required)                   | OpenRouter inference key.                                |
 | `HERMES_HOME`                  | `~/.hermes/`                               | Where Hermes stores its memory/profile.                  |
 
+## ChatGPT export memory sidewheel
+
+Hearme can also use a local memory DB built from a ChatGPT data export. This
+does **not** read the running ChatGPT macOS app or scrape its private storage;
+the user downloads an export from ChatGPT and imports it explicitly.
+
+```bash
+cd packages/skill
+pip install -e .
+
+# Import a ChatGPT export ZIP, extracted export directory, or conversations.json.
+hearme-skill chatgpt-import ~/Downloads/chatgpt-export.zip
+
+# Optional smoke test against the local DB.
+hearme-skill chatgpt-query "Do I like espresso?" --topic coffee
+
+# Use the imported DB in the standalone/dev host.
+HEARME_SKILL_MEMORY_BACKEND=chatgpt-export python -m hearme_skill.dev_runner
+```
+
+By default the importer indexes only user-authored messages. Add
+`--include-assistant` if you want assistant replies included too. The local DB
+lives at `~/.hermes/hearme/chatgpt_memory.sqlite` unless `--db` is supplied.
+
 ### End-to-end test against real Hermes
 
 The cross-cutting test from ARCHITECTURE.md §12, upgraded to call a real
@@ -225,8 +249,11 @@ missing, or Docker unavailable (and no `HEARME_E2E_PG_DSN`).
 
 - **Payments.** No payment fields on the wire; `policy.min_payment`
   parsed for forward-compat but never read. (ARCHITECTURE.md §11)
-- **Memory provider.** One hardcoded `Mem0StubProvider` returning
-  synthetic, sanitized facts. Real memory abstraction lands in v0.2.
+- **Memory provider.** `Mem0StubProvider` is still the deterministic default.
+  The optional ChatGPT export sidewheel imports a user-provided export into
+  local SQLite FTS and can be selected with
+  `HEARME_SKILL_MEMORY_BACKEND=chatgpt-export`. Hermes memory remains the
+  production integration path.
 - **Multi-channel UI.** Telegram-only in v0; `InMemoryChannel` stub for
   tests. The `Channel` Protocol is the v0.2 plug point.
 - **Live revocation handling.** The skill respects expiry; it does not yet

@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     auto_submit_window_seconds: int = 0
 
     root_dir: Path = Field(default_factory=_default_root)
+    # Memory provider selection for standalone/dev hosts:
+    # "stub" keeps the deterministic test provider, "chatgpt-export" reads the
+    # local SQLite DB produced by `hearme-skill chatgpt-import`.
+    memory_backend: str = Field(default="stub")
 
     @property
     def policy_path(self) -> Path:
@@ -47,6 +51,10 @@ class Settings(BaseSettings):
     @property
     def ledger_path(self) -> Path:
         return self.root_dir / "ledger.sqlite"
+
+    @property
+    def chatgpt_memory_path(self) -> Path:
+        return self.root_dir / "chatgpt_memory.sqlite"
 
 
 def get_settings() -> Settings:

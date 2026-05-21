@@ -60,6 +60,17 @@ YES_NO_STYLE_GUIDE = (
 )
 
 
+def build_configured_memory(settings) -> MemoryProvider:
+    """Build the opt-in standalone memory backend from settings."""
+
+    backend = (settings.memory_backend or "stub").strip().lower()
+    if backend in {"chatgpt", "chatgpt-export", "chatgpt_export"}:
+        from .memory.chatgpt_export import ChatGPTExportMemoryProvider
+
+        return ChatGPTExportMemoryProvider(settings.chatgpt_memory_path)
+    return Mem0StubProvider()
+
+
 async def answer_one(
     question: Question,
     *,
@@ -154,7 +165,7 @@ async def run_loop(host: Any) -> None:
     await ledger.open()
 
     channel: Channel = getattr(host, "channel", None) or InMemoryChannel()
-    memory: MemoryProvider = getattr(host, "memory", None) or Mem0StubProvider()
+    memory: MemoryProvider = getattr(host, "memory", None) or build_configured_memory(settings)
     llm: LLMClient = getattr(host, "llm")  # required from host in production
     ui = UI(channel=channel)
 
@@ -286,6 +297,42 @@ def _cmd_hermes_chat(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_chatgpt_import(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    settings.root_dir.mkdir(parents=True, exist_ok=True)
+    from .memory.chatgpt_export import import_chatgpt_export
+
+    db_path = args.db or settings.chatgpt_memory_path
+    try:
+        stats = import_chatgpt_export(
+            args.export_path,
+            db_path=db_path,
+            include_assistant=args.include_assistant,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"ChatGPT import failed: {exc}", file=sys.stderr)
+        return 2
+    print(
+        f"Imported {stats.conversations} conversations and {stats.chunks} "
+        f"message chunks into {stats.db_path}"
+    )
+    print("Use HEARME_SKILL_MEMORY_BACKEND=chatgpt-export to answer from this memory DB.")
+    return 0
+
+
+def _cmd_chatgpt_query(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    from .memory.chatgpt_export import ChatGPTExportMemoryProvider
+    from .memory.provider import MemoryQuery
+
+    db_path = args.db or settings.chatgpt_memory_path
+    provider = ChatGPTExportMemoryProvider(db_path)
+    snapshot = provider.query(MemoryQuery(topic=args.topic, text=args.text, limit=args.limit))
+    for fact in snapshot.facts:
+        print(f"- {fact}")
+    return 0
+
+
 def cli() -> int:
     parser = argparse.ArgumentParser(prog="hearme-skill")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -336,6 +383,40 @@ def cli() -> int:
         help="Override the Hermes model (default: $HEARME_HERMES_MODEL or a cheap OpenRouter model).",
     )
     p_chat.set_defaults(func=_cmd_hermes_chat)
+
+    p_cg_import = sub.add_parser(
+        "chatgpt-import",
+        help="Import a downloaded ChatGPT export into Hearme's local memory DB",
+    )
+    p_cg_import.add_argument(
+        "export_path",
+        help="Path to ChatGPT export ZIP, extracted directory, or conversations.json",
+    )
+    p_cg_import.add_argument(
+        "--db",
+        default=None,
+        help="Destination SQLite DB (default: ~/.hermes/hearme/chatgpt_memory.sqlite).",
+    )
+    p_cg_import.add_argument(
+        "--include-assistant",
+        action="store_true",
+        help="Also index assistant replies. Default indexes only user-authored messages.",
+    )
+    p_cg_import.set_defaults(func=_cmd_chatgpt_import)
+
+    p_cg_query = sub.add_parser(
+        "chatgpt-query",
+        help="Query the imported ChatGPT memory DB",
+    )
+    p_cg_query.add_argument("text")
+    p_cg_query.add_argument("--topic", default=None)
+    p_cg_query.add_argument("--limit", type=int, default=5)
+    p_cg_query.add_argument(
+        "--db",
+        default=None,
+        help="SQLite DB (default: ~/.hermes/hearme/chatgpt_memory.sqlite).",
+    )
+    p_cg_query.set_defaults(func=_cmd_chatgpt_query)
 
     args = parser.parse_args()
     return args.func(args)

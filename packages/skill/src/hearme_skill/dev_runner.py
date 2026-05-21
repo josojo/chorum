@@ -24,9 +24,10 @@ import asyncio
 import logging
 import os
 
+from .config import get_settings
 from .llm.client import FakeLLMClient
 from .memory.mem0_stub import Mem0StubProvider
-from .skill import run_loop
+from .skill import build_configured_memory, run_loop
 from .ui import InMemoryChannel
 
 log = logging.getLogger("hearme_skill.dev_runner")
@@ -86,8 +87,9 @@ def _build_default_host() -> _DevHost:
     if _truthy(os.environ.get("HEARME_USE_HERMES")):
         log.info("HEARME_USE_HERMES=1 — booting real Hermes-backed host")
         return _build_hermes_host()
-    log.info("stub host (FakeLLMClient + Mem0StubProvider)")
-    return _DevHost()
+    memory = build_configured_memory(get_settings())
+    log.info("standalone host (FakeLLMClient + %s)", getattr(memory, "name", type(memory).__name__))
+    return _DevHost(memory=memory)
 
 
 def main() -> None:
