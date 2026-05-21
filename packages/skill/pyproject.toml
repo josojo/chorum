@@ -47,6 +47,7 @@ hearme = "hearme_skill.skill:entrypoint"
 
 [project.scripts]
 hearme-skill = "hearme_skill.skill:cli"
+hearme-chatgpt-memory = "hearme_skill.memory.chatgpt_export:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/hearme_skill"]

@@ -21,6 +21,22 @@ The agent reasons over rich personal memory locally (or with help of a model pro
 
 > **Why a broker-issued credential (not the raw proof).** Self proofs expire **±1 day** (`SelfBackendVerifier` throws `InvalidTimestamp` outside that window), so the broker *cannot* re-verify a stored proof per envelope over a 90-day token. Hearme therefore **verifies the Self proofs exactly once, at registration** (§8.1), and the broker issues a signed session credential the agent replays per answer (§5). This is not just a performance choice — it is forced by Self's freshness window. It also closes the data-minimization boundary: the raw proof (and the raw nationality inside it) reaches the broker **once at registration**, where it is bucketed (`region`, `age_band`) and the raw form discarded; per-answer, only the bucketed credential travels.
 
+#### 1.2.1 ChatGPT export memory sidewheel
+
+Some users will have the richest self-history in ChatGPT rather than Hermes.
+Hearme may therefore offer an optional sidewheel: the user explicitly downloads
+their ChatGPT data export, and a local CLI imports `conversations.json` into a
+Hearme-owned SQLite FTS database under the same local root as the ledger. The
+skill can then select that database as a `MemoryProvider`.
+
+This sidewheel is **not** app scraping. It must not read private ChatGPT macOS
+app containers, use Accessibility to scrape the UI, or assume OpenAI exposes a
+local chat-history API. It is export/import only, initiated by the user. The
+imported DB is local, deletable, and separate from the broker. The provider
+still returns a question-scoped `MemorySnapshot`; raw conversation IDs and
+source metadata do not leave the memory layer, and nothing from the export is
+sent to the broker.
+
 ### 1.3 Predicate disclosure, fixed at install
 Demographic disclosure is decided **once**, at install, when the user picks a disclosure level on the phone (e.g. age band, region). The chosen predicates are proven via Self, verified once by the broker at registration, and baked into the broker-issued DelegationToken. Every answer reuses the same predicate set; askers do **not** negotiate predicates per question. If an asker needs finer slicing, they slice post-hoc on the aggregate, not by demanding new disclosures from the user.
 
@@ -453,6 +469,7 @@ The cheap gate. Sits between Policy and Persona. Exists to satisfy §1.14: most 
 - Pure function `(question, memory_handle) -> PersonaProjection`.
 - Only runs when Relevance (§7.3) cleared the gate. If `no_signal`, Persona is skipped entirely.
 - Queries Hermes memory through the provider interface; never imports a specific backend.
+- In standalone/dev mode, `HEARME_SKILL_MEMORY_BACKEND=chatgpt-export` swaps the default stub provider for the ChatGPT export sidewheel (§1.2.1), backed by `~/.hermes/hearme/chatgpt_memory.sqlite`.
 - Output is a **minimal sanitized snapshot** scoped to the question. No raw memory IDs, no source quotes, **no demographic fields** (those live in the DelegationToken).
 - Must be deterministic-ish: same question + same memory state → same projection.
 
