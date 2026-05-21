@@ -15,6 +15,7 @@ import { countryFlag } from "@/lib/flags";
 import {
   CONTINENT_NAMES,
   COUNTRY_NAMES,
+  COUNTRY_TO_CONTINENT,
   type Continent,
 } from "@/lib/geo-data";
 
@@ -129,6 +130,41 @@ function partition(byPredicate: ByPredicate) {
   return { geoContinent, geoCountry, geoRegion, age, other };
 }
 
+/**
+ * Which continent the map should open zoomed into. Prefer the question's
+ * declared continent; otherwise, when the data is purely per-country (a
+ * continent-scoped question), infer the continent carrying the most responses.
+ */
+function resolveFocus(
+  question: QuestionDetailProps["question"],
+  parts: ReturnType<typeof partition>,
+): Continent | null {
+  if (
+    question.continent &&
+    KNOWN_CONTINENTS.includes(question.continent as Continent)
+  ) {
+    return question.continent as Continent;
+  }
+  if (parts.geoContinent.length === 0 && parts.geoCountry.length > 0) {
+    const tally = new Map<Continent, number>();
+    for (const c of parts.geoCountry) {
+      const cont = COUNTRY_TO_CONTINENT[c.code] as Continent | undefined;
+      if (!cont) continue;
+      tally.set(cont, (tally.get(cont) ?? 0) + c.yes + c.no);
+    }
+    let best: Continent | null = null;
+    let bestN = -1;
+    for (const [cont, n] of tally) {
+      if (n > bestN) {
+        bestN = n;
+        best = cont;
+      }
+    }
+    return best;
+  }
+  return null;
+}
+
 function SectionHeader({
   title,
   subtitle,
@@ -236,8 +272,13 @@ export function QuestionDetail(props: QuestionDetailProps) {
                 : "by region"
             }
           />
-          {parts.geoContinent.length > 0 ? (
-            <WorldMap data={parts.geoContinent} total={totalAnswers} />
+          {parts.geoContinent.length > 0 || parts.geoCountry.length > 0 ? (
+            <WorldMap
+              continentData={parts.geoContinent}
+              countryData={parts.geoCountry}
+              total={totalAnswers}
+              focusContinent={resolveFocus(question, parts)}
+            />
           ) : null}
           {parts.geoCountry.length > 0 ? (
             <CountryBreakdown

@@ -60,7 +60,10 @@ def test_unknown_thresholds_ignored():
 
 
 def test_derive_predicates():
-    assert derive_predicates(nationality="FR", satisfied_thresholds=[18, 25]) == {
+    # Lower-case input is normalised; the raw country is disclosed alongside the
+    # continent so worldwide questions can break down per nation.
+    assert derive_predicates(nationality="fr", satisfied_thresholds=[18, 25]) == {
         "region": "EU",
+        "country": "FR",
         "age_band": "25-34",
     }
