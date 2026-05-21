@@ -7,8 +7,13 @@
 // It auto-opens once per browser on first visit, gated behind a localStorage
 // flag, then stays available behind the header button forever after.
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  OnboardingDialog,
+  StepNav,
+  primaryButtonClass,
+} from "./onboarding-dialog";
 
 const SEEN_KEY = "hearme:how-it-works-seen-v1";
 
@@ -40,7 +45,6 @@ export function HowItWorks() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
   const router = useRouter();
-  const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const bodyId = useId();
 
@@ -69,23 +73,6 @@ export function HowItWorks() {
     if (!seen) setOpen(true);
   }, []);
 
-  // Escape to close, and lock body scroll while open. Focus the dialog so the
-  // keyboard lands inside it.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    document.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    dialogRef.current?.focus();
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [open, close]);
-
   const isLast = step === STEPS.length - 1;
   const current = STEPS[step];
 
@@ -100,115 +87,55 @@ export function HowItWorks() {
         <span className="hidden sm:inline">How it works</span>
       </button>
 
-      {open ? (
-        <div
-          className="hiw-backdrop fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 backdrop-blur-sm sm:items-center"
-          onClick={close}
-          role="presentation"
+      <OnboardingDialog
+        open={open}
+        onClose={close}
+        labelledBy={titleId}
+        describedBy={bodyId}
+        illustration={current.illustration()}
+      >
+        <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
+          Step {step + 1} of {STEPS.length}
+        </p>
+        <h2
+          id={titleId}
+          className="mt-1 text-xl font-semibold tracking-tight text-slate-900"
         >
-          <div
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            aria-describedby={bodyId}
-            tabIndex={-1}
-            onClick={(e) => e.stopPropagation()}
-            className="hiw-card relative w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl outline-none"
-          >
-            <button
-              type="button"
-              onClick={close}
-              aria-label="Close"
-              className="absolute right-4 top-4 z-10 grid h-8 w-8 place-items-center rounded-full bg-white/70 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-            >
-              <CloseIcon />
-            </button>
+          {current.title}
+        </h2>
+        <p id={bodyId} className="mt-2 text-sm leading-relaxed text-slate-600">
+          {current.body}
+        </p>
 
-            {/* Illustration stage. */}
-            <div className="relative flex h-56 items-center justify-center overflow-hidden bg-gradient-to-br from-violet-50 via-white to-fuchsia-50">
-              <div
-                aria-hidden
-                className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-fuchsia-200/40 blur-3xl"
-              />
-              <div
-                aria-hidden
-                className="pointer-events-none absolute -bottom-20 -left-12 h-48 w-48 rounded-full bg-violet-200/40 blur-3xl"
-              />
-              <div className="relative">{current.illustration()}</div>
-            </div>
-
-            <div className="p-6">
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
-                Step {step + 1} of {STEPS.length}
-              </p>
-              <h2
-                id={titleId}
-                className="mt-1 text-xl font-semibold tracking-tight text-slate-900"
+        <StepNav
+          step={step}
+          count={STEPS.length}
+          onBack={() => setStep((s) => s - 1)}
+          onSkip={close}
+          primary={
+            isLast ? (
+              <button
+                type="button"
+                onClick={() => {
+                  close();
+                  router.push("/ask");
+                }}
+                className={primaryButtonClass}
               >
-                {current.title}
-              </h2>
-              <p id={bodyId} className="mt-2 text-sm leading-relaxed text-slate-600">
-                {current.body}
-              </p>
-
-              {/* Step dots. */}
-              <div className="mt-5 flex items-center gap-1.5" aria-hidden>
-                {STEPS.map((_, i) => (
-                  <span
-                    key={i}
-                    className={
-                      "h-1.5 rounded-full transition-all " +
-                      (i === step ? "w-6 bg-violet-600" : "w-1.5 bg-slate-200")
-                    }
-                  />
-                ))}
-              </div>
-
-              <div className="mt-5 flex items-center justify-between gap-3">
-                {step > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => setStep((s) => s - 1)}
-                    className="rounded-full px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
-                  >
-                    Back
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={close}
-                    className="rounded-full px-4 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100"
-                  >
-                    Skip
-                  </button>
-                )}
-
-                {isLast ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      close();
-                      router.push("/ask");
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-brand-gradient px-6 py-2.5 text-sm font-semibold text-white shadow-glow transition hover:opacity-95"
-                  >
-                    Ask a question <span aria-hidden>→</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setStep((s) => s + 1)}
-                    className="rounded-full bg-brand-gradient px-6 py-2.5 text-sm font-semibold text-white shadow-glow transition hover:opacity-95"
-                  >
-                    Next
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+                Ask a question <span aria-hidden>→</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setStep((s) => s + 1)}
+                className={primaryButtonClass}
+              >
+                Next
+              </button>
+            )
+          }
+        />
+      </OnboardingDialog>
     </>
   );
 }
@@ -224,19 +151,6 @@ function InfoIcon() {
         d="M10 9v5"
         stroke="currentColor"
         strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
-      <path
-        d="M5 5l10 10M15 5L5 15"
-        stroke="currentColor"
-        strokeWidth="1.8"
         strokeLinecap="round"
       />
     </svg>

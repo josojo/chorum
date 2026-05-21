@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { LogoWordmark } from "@/components/logo";
 import { HowItWorks } from "@/components/how-it-works";
+import { EarnExplainer } from "@/components/earn-explainer";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -27,8 +28,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <Link href="/" className="flex items-center" aria-label="Hearme home">
               <LogoWordmark />
             </Link>
-            <nav className="flex items-center gap-2 sm:gap-3 text-sm">
+            <nav className="flex items-center gap-1.5 sm:gap-3 text-sm">
               <HowItWorks />
+              <EarnExplainer />
               <Link
                 href="/"
                 className="rounded-full px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100"

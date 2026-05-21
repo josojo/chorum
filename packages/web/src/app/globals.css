@@ -24,24 +24,24 @@ body {
   filter: drop-shadow(0 4px 14px rgba(124, 58, 237, 0.35));
 }
 
-/* "How it works" modal entrance. */
-@keyframes hiw-fade {
+/* Onboarding modal entrance (How it works / Get heard). */
+@keyframes onb-fade {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-@keyframes hiw-pop {
+@keyframes onb-pop {
   from { opacity: 0; transform: translateY(8px) scale(0.98); }
   to { opacity: 1; transform: none; }
 }
-.hiw-backdrop {
-  animation: hiw-fade 0.15s ease-out;
+.onb-backdrop {
+  animation: onb-fade 0.15s ease-out;
 }
-.hiw-card {
-  animation: hiw-pop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+.onb-card {
+  animation: onb-pop 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 @media (prefers-reduced-motion: reduce) {
-  .hiw-backdrop,
-  .hiw-card {
+  .onb-backdrop,
+  .onb-card {
     animation: none;
   }
 }
