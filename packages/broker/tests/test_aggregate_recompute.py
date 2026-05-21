@@ -44,6 +44,13 @@ def test_compute_by_predicate_handles_missing_field():
     assert compute_by_predicate(envelopes) == {"region:EU": 1}
 
 
+def test_compute_by_predicate_handles_json_string_from_asyncpg():
+    envelopes = [
+        {"disclosed_predicates": '{"region":"EU","age_band":"25-34"}'},
+    ]
+    assert compute_by_predicate(envelopes) == {"region:EU": 1, "age_band:25-34": 1}
+
+
 pytestmark_async = pytest.mark.asyncio
 
 

@@ -194,26 +194,29 @@ def entrypoint(host: Any) -> None:
 def _cmd_onboard(args: argparse.Namespace) -> int:
     settings = get_settings()
     settings.root_dir.mkdir(parents=True, exist_ok=True)
-    bridge_url = args.bridge_url or settings.zkpassport_bridge_url
+    bridge_url = args.bridge_url or settings.self_bridge_url
+    broker_url = getattr(args, "broker_url", None) or settings.broker_url
     request = begin_onboarding(
         agent_key_path=settings.agent_key_path,
         bridge_url=bridge_url,
         profile=args.profile,
     )
-    print("Scan this QR with the ZKPassport app:\n")
-    print(render_qr_ascii(request.url))
-    print(f"\nOr open: {request.url}\n")
+    print("Scan these QR codes with the Self app (one per age threshold):\n")
+    for i, url in enumerate(request.urls, 1):
+        print(f"--- proof {i} of {len(request.urls)} ---")
+        print(render_qr_ascii(url))
+        print(f"Or open: {url}\n")
     if args.no_wait:
-        print(f"request_id={request.request_id} (run with --no-wait off to store the token)")
+        print(f"request_id={request.request_id} (run without --no-wait to store the token)")
         return 0
-    print("Waiting for the proof from your phone...")
+    print("Waiting for the proofs from your phone, then registering with the broker...")
     try:
         token = complete_onboarding(
             bridge_url=bridge_url,
+            broker_url=broker_url,
             request_id=request.request_id,
             agent_public_key=request.agent_public_key,
             delegation_path=settings.delegation_path,
-            ttl_days=args.ttl_days,
             timeout_seconds=args.timeout,
         )
     except OnboardingError as exc:
@@ -279,15 +282,19 @@ def cli() -> int:
 
     p_onboard = sub.add_parser(
         "onboard",
-        help="Generate agent key, print the zkPassport QR, and store the proof",
+        help="Generate agent key, print the Self QR codes, register, and store the token",
     )
     p_onboard.add_argument(
         "--bridge-url",
         default=None,
-        help="zkpassport-bridge URL (default: $HEARME_SKILL_ZKPASSPORT_BRIDGE_URL).",
+        help="self-bridge URL (default: $HEARME_SKILL_SELF_BRIDGE_URL).",
     )
-    p_onboard.add_argument("--profile", default="eu-adult")
-    p_onboard.add_argument("--ttl-days", type=int, default=90)
+    p_onboard.add_argument(
+        "--broker-url",
+        default=None,
+        help="broker URL for /v1/register (default: $HEARME_SKILL_BROKER_URL).",
+    )
+    p_onboard.add_argument("--profile", default="standard")
     p_onboard.add_argument(
         "--timeout",
         type=float,

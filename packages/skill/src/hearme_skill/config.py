@@ -21,9 +21,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="HEARME_SKILL_", extra="ignore")
 
     broker_url: str = Field(default="http://localhost:8000")
-    # zkpassport-bridge used during onboarding to create the request the phone
-    # scans and to receive the relayed proof. Not contacted in steady state.
-    zkpassport_bridge_url: str = Field(default="http://localhost:8787")
+    # self-bridge used during onboarding to create the Self requests the phone
+    # scans and to collect the relayed proofs. Not contacted in steady state
+    # (registration posts the proofs to the broker's /v1/register).
+    self_bridge_url: str = Field(default="http://localhost:8787")
     poll_interval_seconds: float = 30.0
     # § 1.12 override is sacred. 0 = always prompt. Non-zero = preview window
     # in which the user can veto before auto-submit.

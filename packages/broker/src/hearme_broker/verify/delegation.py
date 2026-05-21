@@ -1,17 +1,16 @@
-"""DelegationToken verification.
+"""Per-envelope DelegationToken verification (ARCHITECTURE.md §5).
 
-Steps (ARCHITECTURE.md §5 + IDENTITY.md, in order):
-  1. Check ``expires_at > now()``.
-  2. Verify the zkPassport bundle in ``zkpassport_proof`` — real SNARK
-     verification via the bridge, plus the agent_key / scope / nullifier /
-     predicate bindings (see ``verify/zkpassport.py``).
-  3. Check ``delegation_hash`` not in ``revocations`` table (caller checks DB).
-  4. Check ``(nullifier, agent_key)`` binding in ``nullifiers`` table
-     (caller checks DB).
+This is the answer-time path. It does NOT touch a Self proof or the bridge —
+the proof was verified once at registration. Steps here:
 
-This module handles 1 and 2, and computes the canonical hash callers need for
-the revocation lookup and the agent-signature step. There is no phone
-signature: integrity comes from the SNARK, which binds the agent_key in-circuit.
+  1. Verify the broker's OWN signature on the token (integrity).
+  2. Check ``expires_at > now()``.
+
+The caller then does the DB-backed checks (registrations registry lookup:
+agent_key matches + ``revoked_at IS NULL``; the legacy ``revocations`` table;
+the agent's per-question signature; uniqueness) — see ``routes/envelopes.py``.
+``delegation_hash`` (over the whole token, broker_signature included) is
+computed here so the caller doesn't recompute it.
 """
 
 from __future__ import annotations
@@ -19,10 +18,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from ..config import Settings
+from ..config import Settings, get_settings
 from ..models.schemas import DelegationToken, RejectionReason
 from .canonical import canonical_json, delegation_hash
-from .zkpassport import VerifyZkPassportError, verify_zkpassport_proof
+from .credential import verify_broker_signature
 
 
 class VerifyDelegationError(Exception):
@@ -45,14 +44,7 @@ class VerifiedDelegation:
     disclosed: dict[str, str]
 
 
-def _token_to_dict(token: DelegationToken) -> dict:
-    # mode="json" serializes datetimes as ISO strings, matching what the agent
-    # hashed; ``canonical_json`` sorts keys before serialization.
-    return token.model_dump(mode="json")
-
-
 def check_expiry(token: DelegationToken, *, now: datetime | None = None) -> None:
-    """Step 1: not expired."""
     moment = now or datetime.now(timezone.utc)
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
@@ -66,31 +58,35 @@ def check_expiry(token: DelegationToken, *, now: datetime | None = None) -> None
         )
 
 
-async def verify_delegation(
+def verify_delegation(
     token: DelegationToken,
     *,
     now: datetime | None = None,
     settings: Settings | None = None,
 ) -> VerifiedDelegation:
-    """Run the pre-DB portion of the delegation pipeline.
+    """Per-envelope token verification. Synchronous — no bridge, no proof.
 
     Returns a ``VerifiedDelegation`` carrying the canonical hash so the caller
-    can do the revocations DB lookup and the agent-signature check without
-    recomputing. Async because the SNARK verification calls the bridge.
+    can do the registry/revocation lookups and the agent-signature check
+    without recomputing.
     """
-    check_expiry(token, now=now)
-    try:
-        verified_zk = await verify_zkpassport_proof(token, settings=settings)
-    except VerifyZkPassportError as exc:
-        # Surface the ZK rejection reason through the delegation exception type
-        # so the envelope route keeps its single ``except`` block.
-        raise VerifyDelegationError(exc.reason, exc.detail) from exc
+    settings = settings or get_settings()
 
-    token_dict = _token_to_dict(token)
+    # Step 1: the token must be one THIS broker minted.
+    if not verify_broker_signature(token, settings=settings):
+        raise VerifyDelegationError(
+            RejectionReason.BROKER_SIGNATURE_INVALID,
+            "broker_signature does not verify against the broker key",
+        )
+
+    # Step 2: not expired.
+    check_expiry(token, now=now)
+
+    token_dict = token.model_dump(mode="json")
     return VerifiedDelegation(
         token=token,
         delegation_hash=delegation_hash(token_dict),
         canonical_bytes=canonical_json(token_dict),
-        unique_identifier=verified_zk.unique_identifier,
-        disclosed=verified_zk.disclosed,
+        unique_identifier=token.unique_identifier,
+        disclosed=token.disclosed_predicates,
     )

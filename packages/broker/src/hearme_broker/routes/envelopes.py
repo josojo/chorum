@@ -1,21 +1,21 @@
-"""POST /v1/envelopes — verify and persist.
+"""POST /v1/envelopes — verify and persist (ARCHITECTURE.md §5).
 
-Implements the verification pipeline from ARCHITECTURE.md §5 in order:
+Per-envelope pipeline. NO Self proof, NO bridge call at answer time — the
+proof was verified once at registration and the broker issued the signed
+DelegationToken the agent replays here.
 
   1. Parse with Pydantic (FastAPI does this).
-  2. Verify the zkPassport proof (real SNARK via the zkpassport-bridge) and its
-     bindings: agent_key, scope, nullifier, predicates.
-  3. Check token.expires_at > now().
-  4. Check delegation_hash not in revocations.
-  5. Recompute expected delegation_hash (we do this inside verify_delegation
-     and pass the result forward — that recomputed hash IS the value the
-     agent_signature is checked against, so any tampering of the embedded
-     token would break step 6).
-  6. Verify agent_signature over H(question_id || answer || nonce || delegation_hash).
-  7. Check question_id exists, status='open', closes_at > now(), nonce matches,
-     and the signed demographic predicates are eligible for the question scope.
-  8. INSERT envelope (UNIQUE constraint = duplicate rejection).
-  9. Increment aggregates row for question_id.
+  2. Verify the broker's OWN signature on the token + expiry (verify_delegation).
+  3. Registry: the registrations row for unique_identifier must exist, bind the
+     SAME agent_key, and not be revoked. Also honor the legacy revocations table
+     (by delegation_hash).
+  4. Recompute delegation_hash (done in verify_delegation) — it's the value the
+     agent_signature is checked against, so tampering the token breaks step 5.
+  5. Verify agent_signature over H(question_id || answer || nonce || delegation_hash).
+  6. Question exists, status='open', closes_at > now(), nonce matches, predicates
+     eligible for the question scope.
+  7. INSERT envelope (UNIQUE constraint = duplicate rejection).
+  8. Increment the aggregate row.
 """
 
 from __future__ import annotations
@@ -30,10 +30,7 @@ from ..db import get_pool
 from ..db import queries as q
 from ..eligibility import is_scope_eligible
 from ..models.schemas import Envelope, EnvelopeAck, RejectionReason
-from ..verify import (
-    VerifyEnvelopeError,
-    verify_agent_signature,
-)
+from ..verify import VerifyEnvelopeError, verify_agent_signature
 from ..verify.delegation import VerifyDelegationError, verify_delegation
 
 log = logging.getLogger("hearme_broker.envelopes")
@@ -44,37 +41,38 @@ router = APIRouter(prefix="/v1", tags=["envelopes"])
 def _ack(accepted: bool, reason: RejectionReason | None = None) -> EnvelopeAck:
     settings = get_settings()
     if not accepted and not settings.expose_rejection_reasons:
-        # Production posture: do not reveal which step failed.
-        # STUB: still emits ``accepted=False`` but always with reason=None.
         return EnvelopeAck(accepted=False, reason=None)
     return EnvelopeAck(accepted=accepted, reason=reason)
 
 
 @router.post("/envelopes", response_model=EnvelopeAck)
 async def submit_envelope(envelope: Envelope) -> EnvelopeAck:
-    # Step 1: parsing already happened (FastAPI ran Pydantic v2 with extra="forbid").
-
-    # Steps 2 & 3 & 5 (and prep for 6). Async: real SNARK verification of the
-    # zkPassport proof runs through the zkpassport-bridge.
+    # Steps 2 & 4: broker-signature + expiry (synchronous; no bridge).
     try:
-        verified = await verify_delegation(envelope.delegation_token)
+        verified = verify_delegation(envelope.delegation_token)
     except VerifyDelegationError as exc:
         log.info("delegation verify failed: %s", exc)
         return _ack(False, exc.reason)
 
+    token = verified.token
     pool = get_pool()
     async with pool.acquire() as conn:
-        # Step 4: revocation lookup.
+        # Step 3a: legacy revocation list (by delegation_hash).
         if await q.is_revoked(conn, verified.delegation_hash):
             return _ack(False, RejectionReason.TOKEN_REVOKED)
 
-        # Steps 6 & 7 are interleaved: we must know the question's nonce to
-        # confirm the agent signed the right one. But the cryptographic check
-        # binds (question_id, answer, nonce, delegation_hash); a mismatched
-        # nonce will already fail step 6. We additionally enforce a literal
-        # nonce-equality check below for a clearer rejection reason.
+        # Step 3b: the identity must be a live registration bound to THIS
+        # agent_key. (Registration happened once at /v1/register.)
+        registration = await q.get_registration(conn, verified.unique_identifier)
+        if registration is None:
+            return _ack(False, RejectionReason.REGISTRATION_NOT_FOUND)
+        if registration["revoked_at"] is not None:
+            return _ack(False, RejectionReason.TOKEN_REVOKED)
+        if registration["agent_key"] != token.agent_key:
+            # Old token after a re-registration under a different agent_key.
+            return _ack(False, RejectionReason.REGISTRATION_AGENT_MISMATCH)
 
-        # Step 7a: question exists?
+        # Step 6a: question exists / open / not closed / nonce / eligibility.
         question = await q.get_question_for_verify(conn, envelope.question_id)
         if question is None:
             return _ack(False, RejectionReason.QUESTION_NOT_FOUND)
@@ -90,14 +88,14 @@ async def submit_envelope(envelope: Envelope) -> EnvelopeAck:
             return _ack(False, RejectionReason.NONCE_MISMATCH)
         if not is_scope_eligible(
             question=question,
-            disclosed_predicates=verified.token.disclosed_predicates,
+            disclosed_predicates=token.disclosed_predicates,
         ):
             return _ack(False, RejectionReason.SCOPE_INELIGIBLE)
 
-        # Step 6: agent signature.
+        # Step 5: agent signature over the per-question payload.
         try:
             verify_agent_signature(
-                agent_pubkey_base64=verified.token.agent_key,
+                agent_pubkey_base64=token.agent_key,
                 question_id=envelope.question_id,
                 answer=envelope.answer,
                 nonce=envelope.nonce,
@@ -108,33 +106,14 @@ async def submit_envelope(envelope: Envelope) -> EnvelopeAck:
             log.info("envelope verify failed: %s", exc)
             return _ack(False, exc.reason)
 
-        # Steps 7-9 in a transaction so aggregates can't drift from envelopes
-        # and the nullifier binding is persisted only when the envelope lands.
+        # Steps 7-8 in a transaction so aggregates can't drift from envelopes.
         async with conn.transaction():
-            # Step 6b: identity binding. If this nullifier has been bound to a
-            # *different* agent_key in the past, reject atomically inside the
-            # transaction. The INSERT/ON CONFLICT lock in bind_nullifier_agent
-            # closes the race where two first envelopes for the same nullifier
-            # arrive under different agent keys.
-            bound = await q.bind_nullifier_agent(
-                conn,
-                nullifier=verified.token.unique_identifier,
-                agent_key=verified.token.agent_key,
-            )
-            if not bound:
-                log.info(
-                    "identity already bound: nullifier=%s new=%s",
-                    verified.token.unique_identifier[:12] + "…",
-                    verified.token.agent_key[:12] + "…",
-                )
-                return _ack(False, RejectionReason.IDENTITY_ALREADY_BOUND)
-
             inserted = await q.insert_envelope(
                 conn,
                 question_id=envelope.question_id,
-                unique_identifier=verified.token.unique_identifier,
+                unique_identifier=verified.unique_identifier,
                 answer=envelope.answer,
-                disclosed_predicates=verified.token.disclosed_predicates,
+                disclosed_predicates=token.disclosed_predicates,
                 agent_signature=envelope.agent_signature,
                 delegation_hash_hex=verified.delegation_hash,
             )
@@ -144,10 +123,8 @@ async def submit_envelope(envelope: Envelope) -> EnvelopeAck:
             await q.increment_aggregate(
                 conn,
                 question_id=envelope.question_id,
-                disclosed_predicates=verified.token.disclosed_predicates,
+                disclosed_predicates=token.disclosed_predicates,
             )
 
-        # STUB: honeypot signal handling. v0 does no scoring on accepted
-        # envelopes; v0.2 surfaces a per-user honeypot signal here
-        # (ARCHITECTURE.md §11).
+        # STUB: honeypot signal handling — v0.2 (ARCHITECTURE.md §11).
         return _ack(True)

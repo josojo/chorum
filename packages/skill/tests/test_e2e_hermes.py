@@ -291,13 +291,14 @@ def tmp_skill_root(tmp_path, monkeypatch):
 
 
 def _mint_delegation(skill_root: Path) -> None:
-    """Install a DelegationToken from a captured zkPassport bridge result.
+    """Install a broker-issued DelegationToken from a captured Self bridge result.
 
-    After the SNARK migration there is no way to fabricate a valid proof: the
-    broker re-verifies it via the zkpassport-bridge. To run this end-to-end
+    Verify-once: there is no way to fabricate a valid token — the broker issues
+    it after verifying the Self proofs at /v1/register. To run this end-to-end
     flow, capture a verified ``GET /requests/<id>`` response (scan a mock
-    passport in devMode) whose bundle is bound to THIS skill's agent key, then
-    point ``HEARME_E2E_ZK_FIXTURE`` at it. Without that, skip.
+    passport in staging) whose proofs are bound to THIS skill's agent key, point
+    ``HEARME_E2E_ZK_FIXTURE`` at it, and ``HEARME_E2E_BROKER_URL`` at the broker.
+    Without those, skip.
     """
 
     import json as _json
@@ -306,13 +307,14 @@ def _mint_delegation(skill_root: Path) -> None:
     from hearme_skill.onboarding import accept_delegation_from_mock_phone
 
     fixture = os.environ.get("HEARME_E2E_ZK_FIXTURE")
-    if not fixture or not Path(fixture).exists():
+    broker_url = os.environ.get("HEARME_E2E_BROKER_URL")
+    if not fixture or not Path(fixture).exists() or not broker_url:
         pytest.skip(
-            "HEARME_E2E_ZK_FIXTURE (a captured, verified zkPassport bridge "
-            "result bound to the skill agent key) is required for the e2e flow."
+            "HEARME_E2E_ZK_FIXTURE (a captured, verified Self bridge result bound "
+            "to the skill agent key) and HEARME_E2E_BROKER_URL are required."
         )
 
-    # Load mock-onboard's token builder to convert the bridge result -> token.
+    # Reuse scripts/mock-onboard.py to register the proofs and get the token.
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
@@ -324,7 +326,8 @@ def _mint_delegation(skill_root: Path) -> None:
 
     load_or_create_agent_keypair(skill_root / "agent_key")
     bridge_result = _json.loads(Path(fixture).read_text())
-    token = mock_onboard.build_token(bridge_result, ttl_days=90)
+    enrollment = mock_onboard._enrollment_from_bridge(bridge_result)
+    token = mock_onboard._register(broker_url, enrollment)
     accept_delegation_from_mock_phone(
         raw_json=_json.dumps(token),
         delegation_path=skill_root / "delegation.token",

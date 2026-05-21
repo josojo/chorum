@@ -14,6 +14,8 @@ from fastapi import FastAPI
 from .db import close_pool, init_pool
 from .routes.envelopes import router as envelopes_router
 from .routes.questions import router as questions_router
+from .routes.register import router as register_router
+from .self_revocations import SelfRevocationListener
 
 
 def create_app() -> FastAPI:
@@ -21,10 +23,13 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        await init_pool()
+        pool = await init_pool()
+        listener = SelfRevocationListener(pool=pool)
+        listener.start()
         try:
             yield
         finally:
+            await listener.stop()
             await close_pool()
 
     app = FastAPI(
@@ -34,6 +39,7 @@ def create_app() -> FastAPI:
         description="Hearme v0 dispatcher and envelope verifier. See ARCHITECTURE.md §5.",
     )
     app.include_router(questions_router)
+    app.include_router(register_router)
     app.include_router(envelopes_router)
 
     @app.get("/healthz")

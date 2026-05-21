@@ -1,0 +1,20 @@
+{
+  "name": "hearme-self-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node sidecar wrapping @selfxyz/core: Self (self.xyz) request creation, off-chain SNARK verification, and a one-time on-chain Celo registry/root check for the hearme broker and skill.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@selfxyz/core": "^1.0.0",
+    "@selfxyz/qrcode": "^1.0.0",
+    "express": "^4.19.2"
+  }
+}

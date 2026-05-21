@@ -1,16 +1,14 @@
 # Build context is the repo root (matches packages/broker + packages/web).
-# @zkpassport/sdk requires Node >= 22.
 FROM node:22-slim
 
 WORKDIR /app
 
-COPY packages/zkpassport-bridge/package.json ./
+COPY packages/self-bridge/package.json ./
 RUN npm install --omit=dev
 
-COPY packages/zkpassport-bridge/src ./src
+COPY packages/self-bridge/src ./src
 
-ENV PORT=8787 \
-    ZKPASSPORT_WRITING_DIR=/tmp
+ENV PORT=8787
 
 EXPOSE 8787
 

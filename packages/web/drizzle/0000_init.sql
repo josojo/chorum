@@ -73,20 +73,45 @@ CREATE TABLE revocations (
   revoked_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- ZK-passport-derived nullifier registry. One row per verified human, keyed
--- by the scope-bound passport nullifier (== DelegationToken.unique_identifier).
--- ``agent_key`` is the base64 Ed25519 public key the broker first saw bound
--- to this nullifier; refreshes are accepted if the agent_key matches, and
--- attempts to bind a *different* agent_key to a known nullifier (without
--- the previous delegation being revoked) are rejected as
--- ``identity_already_bound``. See ARCHITECTURE.md §1.4 and §8 + verify/zkpassport.py.
-CREATE TABLE nullifiers (
-  nullifier      TEXT PRIMARY KEY,
-  agent_key      TEXT NOT NULL,
-  first_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  last_seen_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Self nullifier registry. Written ONCE per verified human at POST /v1/register
+-- (verify-once-at-registration). Keyed by the scope-bound Self nullifier
+-- (== DelegationToken.unique_identifier). ``agent_key`` is the base64 Ed25519
+-- public key bound to this nullifier; re-registration is accepted if the
+-- agent_key matches (refresh), and an attempt to bind a *different* agent_key
+-- to a known, non-revoked nullifier is rejected as ``identity_already_bound``
+-- (the atomic Sybil bind). This table also backs the broker-issued
+-- DelegationToken: the per-envelope path checks agent_key matches and
+-- revoked_at IS NULL here. See ARCHITECTURE.md §3, §5, §8 + verify/self_identity.py.
+CREATE TABLE registrations (
+  unique_identifier    TEXT PRIMARY KEY,
+  agent_key            TEXT NOT NULL,
+  disclosed_predicates JSONB NOT NULL,
+  issued_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at           TIMESTAMPTZ NOT NULL,
+  revoked_at           TIMESTAMPTZ
+);
+
+-- Broker-side record of Self on-chain invalidation events that revoked a
+-- previously accepted nullifier. The broker treats these as authoritative:
+-- future envelopes from that nullifier reject, and already accepted envelopes
+-- are removed from aggregates when the invalidation is applied.
+CREATE TABLE self_nullifier_invalidations (
+  unique_identifier TEXT PRIMARY KEY,
+  source            TEXT NOT NULL,
+  chain_id          TEXT,
+  block_number      BIGINT NOT NULL,
+  log_index         INTEGER NOT NULL,
+  tx_hash           TEXT NOT NULL,
+  observed_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Cursor for the broker's Self on-chain invalidation listener.
+CREATE TABLE self_chain_cursors (
+  name        TEXT PRIMARY KEY,
+  last_block  BIGINT NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX envelopes_question_id_idx ON envelopes(question_id);
 CREATE INDEX envelopes_submitted_at_idx ON envelopes(submitted_at);
-CREATE INDEX nullifiers_agent_key_idx ON nullifiers(agent_key);
+CREATE INDEX registrations_agent_key_idx ON registrations(agent_key);

@@ -5,11 +5,10 @@ Usage::
     python -m hearme_skill.identity_cli accept ./from-phone.json
     cat ./from-phone.json | python -m hearme_skill.identity_cli accept -
 
-The accepted bundle is a DelegationToken JSON (carrying a structured
-``ZkPassportProof`` inside ``zkpassport_proof``) produced by the user's phone
-(or by ``scripts/mock-phone.py`` in dev). The skill runs structural
-binding checks and stores the token at the path resolved from
-``HEARME_SKILL_ROOT_DIR`` (default ``/data`` inside the container,
+The accepted bundle is a broker-issued ``DelegationToken`` JSON (produced by the
+broker's ``/v1/register``, e.g. via ``scripts/mock-onboard.py`` in dev). The
+skill runs cheap structural checks and stores the token at the path resolved
+from ``HEARME_SKILL_ROOT_DIR`` (default ``/data`` inside the container,
 ``~/.hermes/hearme`` elsewhere).
 """
 

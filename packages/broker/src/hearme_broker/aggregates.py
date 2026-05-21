@@ -12,12 +12,17 @@ for the question.
 
 from __future__ import annotations
 
+import json
 from typing import Any
+
+
 def compute_by_predicate(envelopes: list[dict[str, Any]]) -> dict[str, int]:
     """Pure function — easy to unit-test."""
     out: dict[str, int] = {}
     for env in envelopes:
         preds = env.get("disclosed_predicates") or {}
+        if isinstance(preds, str):
+            preds = json.loads(preds)
         for k, v in preds.items():
             key = f"{k}:{v}"
             out[key] = out.get(key, 0) + 1

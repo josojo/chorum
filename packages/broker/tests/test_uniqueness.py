@@ -1,8 +1,7 @@
-"""DB-level uniqueness — same (question_id, unique_identifier) twice → reject.
+"""DB-level uniqueness + the registrations registry (atomic Sybil bind).
 
-Runs against a real Postgres via ``testcontainers``. Skipped if Docker
-is unavailable. Also exercises the revocations path end-to-end (the DB
-lookup in routes/envelopes.py).
+Runs against a real Postgres via ``testcontainers``. Skipped if Docker is
+unavailable. Also exercises the revocations path used by routes/envelopes.py.
 """
 
 from __future__ import annotations
@@ -20,6 +19,11 @@ from hearme_broker.verify.delegation import verify_delegation
 
 
 pytestmark = pytest.mark.asyncio
+
+
+def _window():
+    now = datetime.now(timezone.utc)
+    return now, now + timedelta(days=90)
 
 
 async def _seed_question(pool, *, nonce: str, status: str = "open") -> uuid.UUID:
@@ -43,18 +47,16 @@ async def _seed_question(pool, *, nonce: str, status: str = "open") -> uuid.UUID
 async def test_duplicate_envelope_rejected_at_db(pg_pool, make_token, make_envelope):
     qid = await _seed_question(pg_pool, nonce="seed-nonce-1")
     token_dict = make_token()
-    env_dict = make_envelope(
-        token_dict, question_id=qid, answer="first", nonce="seed-nonce-1"
+    env = Envelope.model_validate(
+        make_envelope(token_dict, question_id=qid, answer="first", nonce="seed-nonce-1")
     )
-
-    env = Envelope.model_validate(env_dict)
-    verified = await verify_delegation(env.delegation_token)
+    verified = verify_delegation(env.delegation_token)
 
     async with pg_pool.acquire() as conn:
         ok1 = await q.insert_envelope(
             conn,
             question_id=env.question_id,
-            unique_identifier=verified.token.unique_identifier,
+            unique_identifier=verified.unique_identifier,
             answer=env.answer,
             disclosed_predicates=verified.token.disclosed_predicates,
             agent_signature=env.agent_signature,
@@ -62,18 +64,13 @@ async def test_duplicate_envelope_rejected_at_db(pg_pool, make_token, make_envel
         )
         assert ok1 is True
 
-        # Second insert with same unique_identifier for same question must fail.
-        env2_dict = make_envelope(
-            token_dict, question_id=qid, answer="second", nonce="seed-nonce-1"
-        )
-        env2 = Envelope.model_validate(env2_dict)
         ok2 = await q.insert_envelope(
             conn,
-            question_id=env2.question_id,
-            unique_identifier=verified.token.unique_identifier,
-            answer=env2.answer,
+            question_id=env.question_id,
+            unique_identifier=verified.unique_identifier,
+            answer="second",
             disclosed_predicates=verified.token.disclosed_predicates,
-            agent_signature=env2.agent_signature,
+            agent_signature=env.agent_signature,
             delegation_hash_hex=verified.delegation_hash,
         )
         assert ok2 is False
@@ -90,76 +87,136 @@ async def test_revocation_lookup(pg_pool, make_token):
         assert await q.is_revoked(conn, dhash) is True
 
 
-async def test_nullifier_binding_persists_and_is_idempotent(pg_pool, make_token):
-    """First envelope binds (nullifier, agent_key); refresh under same key is OK."""
-    nullifier = base64.b64encode(b"\x33" * 32).decode("ascii")
-    raw = make_token(unique_identifier=nullifier)
-    agent_key = raw["agent_key"]
+async def test_registration_created_then_refreshed_same_key(pg_pool):
+    nullifier = "self:" + base64.b64encode(b"\x33" * 32).decode("ascii")
+    agent_key = base64.b64encode(b"\x33" * 32).decode("ascii")
+    issued, expires = _window()
 
     async with pg_pool.acquire() as conn:
-        assert await q.get_bound_agent_key(conn, nullifier) is None
-        ok = await q.bind_nullifier_agent(
-            conn, nullifier=nullifier, agent_key=agent_key
+        assert await q.get_registration(conn, nullifier) is None
+        status = await q.upsert_registration(
+            conn,
+            unique_identifier=nullifier,
+            agent_key=agent_key,
+            disclosed_predicates={"region": "EU", "age_band": "18+"},
+            issued_at=issued,
+            expires_at=expires,
         )
-        assert ok is True
-        bound = await q.get_bound_agent_key(conn, nullifier)
-        assert bound == agent_key
+        assert status == "created"
 
-        # Refresh with the same agent_key — UPDATE last_seen_at; row count unchanged.
-        ok = await q.bind_nullifier_agent(
-            conn, nullifier=nullifier, agent_key=agent_key
+        row = await q.get_registration(conn, nullifier)
+        assert row["agent_key"] == agent_key
+        assert row["revoked_at"] is None
+
+        # Re-register with the SAME agent_key (refresh): one row, predicates updated.
+        status = await q.upsert_registration(
+            conn,
+            unique_identifier=nullifier,
+            agent_key=agent_key,
+            disclosed_predicates={"region": "EU", "age_band": "35-49"},
+            issued_at=issued,
+            expires_at=expires,
         )
-        assert ok is True
+        assert status == "refreshed"
         cnt = await conn.fetchval(
-            "SELECT count(*) FROM nullifiers WHERE nullifier = $1", nullifier
+            "SELECT count(*) FROM registrations WHERE unique_identifier = $1",
+            nullifier,
         )
         assert cnt == 1
+        row = await q.get_registration(conn, nullifier)
+        assert row["agent_key"] == agent_key
 
 
-async def test_nullifier_binding_rejects_different_agent_key(pg_pool, make_token):
-    """Same passport (nullifier) showing up under a NEW agent_key is the
-    identity-already-bound case. The UPSERT's WHERE guard refuses to
-    overwrite the existing row, so the binding stays intact and the
-    envelope route will reject the second envelope."""
-    nullifier = base64.b64encode(b"\x44" * 32).decode("ascii")
-    first = make_token(unique_identifier=nullifier)
-    other_agent_b64 = base64.b64encode(b"\x77" * 32).decode("ascii")
+async def test_registration_rejects_different_agent_key(pg_pool):
+    """Same passport (nullifier) under a NEW agent_key is identity-already-bound."""
+    nullifier = "self:" + base64.b64encode(b"\x44" * 32).decode("ascii")
+    first_key = base64.b64encode(b"\x44" * 32).decode("ascii")
+    other_key = base64.b64encode(b"\x77" * 32).decode("ascii")
+    issued, expires = _window()
 
     async with pg_pool.acquire() as conn:
-        ok = await q.bind_nullifier_agent(
-            conn, nullifier=nullifier, agent_key=first["agent_key"]
+        assert (
+            await q.upsert_registration(
+                conn,
+                unique_identifier=nullifier,
+                agent_key=first_key,
+                disclosed_predicates={"region": "EU"},
+                issued_at=issued,
+                expires_at=expires,
+            )
+            == "created"
         )
-        assert ok is True
-        # Stray attempt to bind a different agent_key under the same nullifier.
-        ok = await q.bind_nullifier_agent(
-            conn, nullifier=nullifier, agent_key=other_agent_b64
+        # Different agent_key, not revoked → must refuse.
+        assert (
+            await q.upsert_registration(
+                conn,
+                unique_identifier=nullifier,
+                agent_key=other_key,
+                disclosed_predicates={"region": "EU"},
+                issued_at=issued,
+                expires_at=expires,
+            )
+            is None
         )
-        assert ok is False
-        # Binding still maps to the original agent_key.
-        bound = await q.get_bound_agent_key(conn, nullifier)
-        assert bound == first["agent_key"]
+        row = await q.get_registration(conn, nullifier)
+        assert row["agent_key"] == first_key
+
+
+async def test_registration_rebind_allowed_after_revocation(pg_pool):
+    nullifier = "self:" + base64.b64encode(b"\x55" * 32).decode("ascii")
+    first_key = base64.b64encode(b"\x55" * 32).decode("ascii")
+    new_key = base64.b64encode(b"\x66" * 32).decode("ascii")
+    issued, expires = _window()
+
+    async with pg_pool.acquire() as conn:
+        await q.upsert_registration(
+            conn,
+            unique_identifier=nullifier,
+            agent_key=first_key,
+            disclosed_predicates={"region": "EU"},
+            issued_at=issued,
+            expires_at=expires,
+        )
+        await conn.execute(
+            "UPDATE registrations SET revoked_at = now() WHERE unique_identifier = $1",
+            nullifier,
+        )
+        # After revocation a different agent_key may claim the nullifier.
+        status = await q.upsert_registration(
+            conn,
+            unique_identifier=nullifier,
+            agent_key=new_key,
+            disclosed_predicates={"region": "EU"},
+            issued_at=issued,
+            expires_at=expires,
+        )
+        assert status == "refreshed"
+        row = await q.get_registration(conn, nullifier)
+        assert row["agent_key"] == new_key
+        assert row["revoked_at"] is None
 
 
 async def test_different_uids_can_both_answer(pg_pool, make_token, make_envelope):
     qid = await _seed_question(pg_pool, nonce="seed-nonce-2")
     token_a = make_token(
-        unique_identifier=base64.b64encode(b"\x0a" * 32).decode("ascii"),
+        unique_identifier="self:" + base64.b64encode(b"\x0a" * 32).decode("ascii"),
         disclosed_predicates={"region": "EU"},
     )
     token_b = make_token(
-        unique_identifier=base64.b64encode(b"\x0b" * 32).decode("ascii"),
-        disclosed_predicates={"region": "non-EU"},
+        unique_identifier="self:" + base64.b64encode(b"\x0b" * 32).decode("ascii"),
+        disclosed_predicates={"region": "NA"},
     )
 
     async with pg_pool.acquire() as conn:
         for t in (token_a, token_b):
-            env_dict = make_envelope(t, question_id=qid, answer="x", nonce="seed-nonce-2")
-            env = Envelope.model_validate(env_dict)
-            verified = await verify_delegation(env.delegation_token)
+            env = Envelope.model_validate(
+                make_envelope(t, question_id=qid, answer="x", nonce="seed-nonce-2")
+            )
+            verified = verify_delegation(env.delegation_token)
             ok = await q.insert_envelope(
                 conn,
                 question_id=env.question_id,
-                unique_identifier=verified.token.unique_identifier,
+                unique_identifier=verified.unique_identifier,
                 answer=env.answer,
                 disclosed_predicates=verified.token.disclosed_predicates,
                 agent_signature=env.agent_signature,

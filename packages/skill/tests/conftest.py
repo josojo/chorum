@@ -4,10 +4,10 @@ Per ARCHITECTURE.md §12 no test in this suite makes a live LLM or HTTP call.
 All external collaborators are doubles defined here or in the package's
 `memory/` and `llm/` modules.
 
-DelegationTokens now wrap a real zkPassport bundle (no phone signature). The
-fixtures build a bundle of the right shape — bound to the agent key — so the
-skill's cheap structural checks (`zk_passport.verify_bindings`) pass. Full
-SNARK verification is the broker's job and is not exercised here.
+DelegationTokens are now broker-ISSUED (verify-once). The skill treats them as
+opaque; it never verifies the broker signature (only the broker can). So these
+fixtures build a structurally-valid v2 token with a placeholder broker_signature
+— enough for the skill's local checks, hashing, and envelope signing.
 """
 
 from __future__ import annotations
@@ -15,28 +15,13 @@ from __future__ import annotations
 import base64
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from hearme_skill.crypto.canonical import canonical_json_bytes
 from hearme_skill.crypto.ed25519 import Keypair, generate_keypair
 from hearme_skill.models import DelegationToken, Question
-
-
-def _make_bundle(*, agent_key_b64: str, scope: str = "v1") -> dict[str, Any]:
-    """A verifiable-shaped zkPassport bundle bound to ``agent_key_b64``."""
-    return {
-        "version": 1,
-        "proofs": [{"name": "test_circuit", "proof": "00", "version": "1"}],
-        "query": {"bind": {"custom_data": agent_key_b64}},
-        "queryResult": {
-            "age": {"gte": {"result": True}},
-            "nationality": {"in": {"result": True}},
-        },
-        "scope": scope,
-    }
 
 
 def _build_token(
@@ -48,19 +33,16 @@ def _build_token(
     expires_at: datetime,
 ) -> DelegationToken:
     agent_b64 = base64.b64encode(agent_keypair.public_bytes).decode("ascii")
-    bundle = _make_bundle(agent_key_b64=agent_b64)
-    proof_b64 = base64.b64encode(canonical_json_bytes(bundle)).decode("ascii")
     return DelegationToken.model_validate(
         {
-            "version": 1,
-            "zkpassport_proof": proof_b64,
-            "domain": "hearme.network",
-            "scope": "v1",
+            "version": 2,
+            "scope": "hearme-v1",
             "unique_identifier": unique_id,
             "disclosed_predicates": disclosed,
             "agent_key": agent_b64,
             "issued_at": issued_at.isoformat().replace("+00:00", "Z"),
             "expires_at": expires_at.isoformat().replace("+00:00", "Z"),
+            "broker_signature": base64.b64encode(b"\x00" * 64).decode("ascii"),
         }
     )
 
@@ -77,7 +59,7 @@ def now() -> datetime:
 
 @pytest.fixture
 def fresh_token(agent_keypair: Keypair, now: datetime) -> DelegationToken:
-    """A freshly-issued DelegationToken wrapping a (bundle-shaped) zkPassport proof."""
+    """A freshly-issued, broker-signed DelegationToken (placeholder signature)."""
     return _build_token(
         agent_keypair=agent_keypair,
         unique_id=base64.b64encode(b"u" * 32).decode("ascii"),

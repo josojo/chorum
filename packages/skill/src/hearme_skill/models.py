@@ -31,26 +31,24 @@ class Question(BaseModel):
 
 
 class DelegationToken(BaseModel):
-    """Delegation bundle authorizing an agent_key to speak for a human
-    (ARCHITECTURE.md §8.5).
+    """Broker-issued, broker-signed session credential (ARCHITECTURE.md §8.5).
 
-    Integrity comes from the real zkPassport SNARK in `zkpassport_proof`
-    (bound in-circuit to `agent_key`); the broker re-verifies it. No separate
-    signature wraps the bundle. Canonical-JSON-encoded form of this object is
-    the input to `delegation_hash = SHA-256(canonical_json(token))`.
+    The skill receives this from ``POST /v1/register`` after the broker verifies
+    the Self proofs once. It is opaque to the skill (only the broker can mint or
+    validate it); the skill stores it and replays it per answer. Canonical-JSON
+    of this object is the input to ``delegation_hash = SHA-256(canonical_json(token))``.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    version: Literal[1] = 1
-    zkpassport_proof: str
-    domain: Literal["hearme.network"] = "hearme.network"
-    scope: Literal["v1"] = "v1"
+    version: Literal[2] = 2
+    scope: Literal["hearme-v1"] = "hearme-v1"
     unique_identifier: str
     disclosed_predicates: dict[str, str]
     agent_key: str
     issued_at: datetime
     expires_at: datetime
+    broker_signature: str
 
 
 class Envelope(BaseModel):

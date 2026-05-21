@@ -54,13 +54,16 @@ and asserted by `tests/test_identity_inference_separation.py`.
 # from packages/skill/
 pip install -e '.[dev]'
 
-# 1. Generate the agent key, show the zkPassport QR, and wait for the proof.
-#    Scan with the ZKPassport app (a mock passport works with the bridge in
-#    devMode). Requires the zkpassport-bridge running (see packages/zkpassport-bridge).
-hearme-skill onboard --bridge-url http://localhost:8787
+# 1. Generate the agent key, show the Self QR codes (one per age threshold),
+#    collect the proofs, and register with the broker (verify-once). Scan with
+#    the Self app (a mock passport works with SELF_MOCK_PASSPORT=1). Requires the
+#    self-bridge (packages/self-bridge) and the broker running.
+hearme-skill onboard --bridge-url http://localhost:8787 --broker-url http://localhost:8000
 
-# 2. (Dev only) Replay a captured proof fixture instead of scanning live:
-python ../../scripts/mock-onboard.py --from-bridge /tmp/bridge-result.json > /tmp/token.json
+# 2. (Dev only) Replay a captured proof fixture through /v1/register instead of
+#    scanning live (prints the broker-issued token):
+python ../../scripts/mock-onboard.py --from-bridge /tmp/bridge-result.json \
+    --broker-url http://localhost:8000 > /tmp/token.json
 hearme-skill accept-mock-delegation /tmp/token.json
 
 # 3. Configure policy (sample below). Hearme defaults to off.
@@ -209,10 +212,11 @@ The test:
 5. Asserts the envelope landed and the answer reflects the prior chat.
 
 Mocked / out-of-scope (matches v0 §11): payments don't exist. The
-DelegationToken now wraps a **real** zkPassport bundle, so this e2e flow
-needs a captured proof fixture (`HEARME_E2E_ZK_FIXTURE`, replayed via
-`mock-onboard.py`) bound to the skill's agent key — otherwise it skips.
-Real Hermes inference is the one piece that's *not* mocked.
+DelegationToken is now **broker-issued** (verify-once), so this e2e flow needs
+a captured Self proof fixture (`HEARME_E2E_ZK_FIXTURE`) registered through the
+broker (`HEARME_E2E_BROKER_URL`, via `mock-onboard.py`) and bound to the skill's
+agent key — otherwise it skips. Real Hermes inference is the one piece that's
+*not* mocked.
 
 Skips cleanly when: `hermes-agent` not installed, `OPEN_ROUTER_API_KEY`
 missing, or Docker unavailable (and no `HEARME_E2E_PG_DSN`).
@@ -233,9 +237,9 @@ missing, or Docker unavailable (and no `HEARME_E2E_PG_DSN`).
 - **Encrypted-at-rest storage.** Both the agent key (`crypto/keystore.py`)
   and the delegation token (`delegation.py`) are written as plaintext with
   0600 perms. SQLCipher / OS keychain in v0.1. Ledger encryption likewise.
-- **Real zkPassport circuit verification.** v0 trusts the phone's Ed25519
-  signature on the bundle; circuit verification is broker-side and lands in
-  v0.2.
+- **Self proof verification is broker-side.** The skill never runs the SNARK; it
+  collects the Self proofs and posts them to the broker's `/v1/register`, which
+  verifies them once and returns the signed DelegationToken the skill replays.
 - **Lost-phone recovery.** Re-enroll from a fresh install.
 
 ## Design choices worth flagging

@@ -9,6 +9,7 @@ import {
   text,
   timestamp,
   integer,
+  bigint,
   jsonb,
   index,
   primaryKey,
@@ -94,13 +95,39 @@ export const revocations = pgTable("revocations", {
     .defaultNow(),
 });
 
-export const nullifiers = pgTable("nullifiers", {
-  nullifier: text("nullifier").primaryKey(),
-  agentKey: text("agent_key").notNull(),
-  firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
+export const registrations = pgTable(
+  "registrations",
+  {
+    uniqueIdentifier: text("unique_identifier").primaryKey(),
+    agentKey: text("agent_key").notNull(),
+    disclosedPredicates: jsonb("disclosed_predicates").notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => ({
+    agentKeyIdx: index("registrations_agent_key_idx").on(t.agentKey),
+  }),
+);
+
+export const selfNullifierInvalidations = pgTable("self_nullifier_invalidations", {
+  uniqueIdentifier: text("unique_identifier").primaryKey(),
+  source: text("source").notNull(),
+  chainId: text("chain_id"),
+  blockNumber: bigint("block_number", { mode: "number" }).notNull(),
+  logIndex: integer("log_index").notNull(),
+  txHash: text("tx_hash").notNull(),
+  observedAt: timestamp("observed_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-  lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+});
+
+export const selfChainCursors = pgTable("self_chain_cursors", {
+  name: text("name").primaryKey(),
+  lastBlock: bigint("last_block", { mode: "number" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });

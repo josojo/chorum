@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hearme.network/proto/self.json",
+  "title": "SelfProofBundle",
+  "description": "One verifiable Self (self.xyz) proof, as produced by the Self app and verified by @selfxyz/core's SelfBackendVerifier on the self-bridge. The skill collects one bundle per age threshold into an EnrollmentBundle (enrollment.json) and POSTs it to the broker's POST /v1/register. The broker re-verifies each bundle once (off-chain SNARK + a one-time on-chain Celo registry/root check), then issues a broker-signed DelegationToken (delegation.json). Bundles are NOT stored after registration and never travel per answer. See ARCHITECTURE.md §5/§8.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["attestationId", "proof", "publicSignals", "userContextData"],
+  "properties": {
+    "attestationId": {
+      "type": "integer",
+      "description": "Self attestation type (e.g. passport). Must be in the bridge's SELF_ALLOWED_IDS."
+    },
+    "proof": {
+      "description": "The zk-SNARK proof object emitted by the Self app (opaque to the broker; verified by @selfxyz/core)."
+    },
+    "publicSignals": {
+      "type": "array",
+      "description": "Public signals array from the prover; verified together with proof.",
+      "items": {}
+    },
+    "userContextData": {
+      "type": "string",
+      "description": "Hex string committing to (destChainId, userIdentifier, userDefinedData). userDefinedData carries the agent's Ed25519 public key (the agent-key bind); the broker checks the verified userDefinedData equals the EnrollmentBundle's agent_key."
+    }
+  }
+}

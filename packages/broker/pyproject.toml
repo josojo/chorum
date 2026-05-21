@@ -18,7 +18,7 @@ dependencies = [
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
     "python-dateutil>=2.9",
-    # Used at runtime to call the zkpassport-bridge /verify endpoint.
+    # Used at registration to call the self-bridge /verify endpoint.
     "httpx>=0.27",
 ]
 

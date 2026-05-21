@@ -1,48 +1,36 @@
 #!/usr/bin/env python3
-"""Build a DelegationToken from a captured zkpassport-bridge result.
+"""Register a captured self-bridge result with the broker and print the token.
 
-Replaces the old ``mock-phone.py``. There is no more phone-signed token: a
-DelegationToken now just wraps a real zkPassport bundle, and its integrity
-comes from the SNARK (the broker re-verifies it via the zkpassport-bridge).
+Verify-once (ARCHITECTURE.md §5/§8): a DelegationToken is now ISSUED BY THE
+BROKER after it verifies the Self proofs. So this script no longer fabricates a
+token — it replays a captured set of proofs through ``POST /v1/register`` and
+prints the broker-signed token the broker returns.
 
-So this script does no cryptography — it reassembles JSON. Capture a bundle
-once by scanning a **mock passport** (zkPassport app, devMode) against the QR
-from the bridge's ``POST /requests``, then save the bridge's
-``GET /requests/<id>`` response. Replay it offline with this script:
+Capture a bridge result once by scanning a **mock passport** (Self app, staging)
+against the QR codes from the bridge's ``POST /requests``, then save the bridge's
+``GET /requests/<id>`` response (it contains ``bundles[]`` and ``boundAgentKey``).
+Replay it:
 
-    # 1. capture (one time), e.g.:
-    #    curl -s localhost:8787/requests/<id> > fixture.json
-    # 2. replay into a DelegationToken:
-    ./scripts/mock-onboard.py --from-bridge fixture.json > delegation.token
+    # 1. capture (one time):  curl -s localhost:8787/requests/<id> > fixture.json
+    # 2. register + print the token:
+    ./scripts/mock-onboard.py --from-bridge fixture.json \
+        --broker-url http://localhost:8000 > delegation.token
 
-The bundle is bound (in-circuit) to a specific agent_key, so the agent that
-replays it MUST own the matching agent private key. The token's ``agent_key``
-is read straight from the bundle's ``query.bind.custom_data``.
+The proofs are bound (in-circuit) to a specific agent_key, so the agent that
+uses the token MUST own the matching agent private key.
 
 Usage:
-    mock-onboard.py --from-bridge <file|->  [--ttl-days N]   > delegation.token
+    mock-onboard.py --from-bridge <file|-> [--broker-url URL] > delegation.token
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+import urllib.error
+import urllib.request
 from typing import Any
-
-
-def _canonical_json_bytes(value: Any) -> bytes:
-    # Mirrors packages/{broker,skill} canonical JSON for non-datetime values:
-    # sorted keys (recursive), no whitespace, ensure_ascii=False.
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
-
-
-def _iso_z(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _read(arg: str) -> str:
@@ -52,39 +40,37 @@ def _read(arg: str) -> str:
         return fh.read()
 
 
-def build_token(bridge_result: dict[str, Any], *, ttl_days: int) -> dict[str, Any]:
+def _enrollment_from_bridge(bridge_result: dict[str, Any]) -> dict[str, Any]:
     if not bridge_result.get("verified"):
-        raise SystemExit(
-            "bridge result is not verified=true; capture a verified proof first"
-        )
-    bundle = bridge_result.get("bundle")
-    if not isinstance(bundle, dict):
-        raise SystemExit("bridge result missing 'bundle' object")
-    unique_identifier = bridge_result.get("uniqueIdentifier")
-    if not unique_identifier:
-        raise SystemExit("bridge result missing 'uniqueIdentifier'")
-    disclosed = bridge_result.get("disclosed") or {}
-
-    agent_key = (
-        ((bundle.get("query") or {}).get("bind") or {}).get("custom_data")
-    )
+        raise SystemExit("bridge result is not verified=true; capture verified proofs first")
+    bundles = bridge_result.get("bundles")
+    if not isinstance(bundles, list) or not bundles:
+        raise SystemExit("bridge result missing 'bundles' (the self_proofs[])")
+    agent_key = bridge_result.get("boundAgentKey")
     if not agent_key:
-        raise SystemExit("bundle.query.bind.custom_data (agent_key) missing")
+        raise SystemExit("bridge result missing 'boundAgentKey' (the agent_key)")
+    return {"self_proofs": bundles, "agent_key": agent_key}
 
-    now = datetime.now(timezone.utc)
-    return {
-        "version": 1,
-        "zkpassport_proof": base64.b64encode(_canonical_json_bytes(bundle)).decode(
-            "ascii"
-        ),
-        "domain": "hearme.network",
-        "scope": "v1",
-        "unique_identifier": unique_identifier,
-        "disclosed_predicates": disclosed,
-        "agent_key": agent_key,
-        "issued_at": _iso_z(now),
-        "expires_at": _iso_z(now + timedelta(days=ttl_days)),
-    }
+
+def _register(broker_url: str, enrollment: dict[str, Any]) -> dict[str, Any]:
+    url = f"{broker_url.rstrip('/')}/v1/register"
+    body = json.dumps(enrollment).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=body, headers={"content-type": "application/json"}, method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            ack = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise SystemExit(f"broker /v1/register HTTP {exc.code}: {exc.read()[:200]!r}")
+    except urllib.error.URLError as exc:
+        raise SystemExit(f"broker /v1/register unreachable: {exc}")
+    if not ack.get("accepted"):
+        raise SystemExit(f"broker rejected registration: {ack.get('reason')}")
+    token = ack.get("delegation_token")
+    if not token:
+        raise SystemExit("broker accepted but returned no delegation_token")
+    return token
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,11 +80,12 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="Path to a captured GET /requests/<id> JSON, or '-' for stdin.",
     )
-    parser.add_argument("--ttl-days", type=int, default=90)
+    parser.add_argument("--broker-url", default="http://localhost:8000")
     args = parser.parse_args(argv)
 
     bridge_result = json.loads(_read(args.from_bridge))
-    token = build_token(bridge_result, ttl_days=args.ttl_days)
+    enrollment = _enrollment_from_bridge(bridge_result)
+    token = _register(args.broker_url, enrollment)
     json.dump(token, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0

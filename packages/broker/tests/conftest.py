@@ -1,13 +1,17 @@
 """Shared test fixtures.
 
-The zkPassport SNARK verification is delegated to the Node bridge in
-production; in tests we replace that one network call with a deterministic
-fake (``mock_bridge``, autouse) and steer its outputs via test-only fields
-embedded in the bundle (``query._test_outputs``). Everything else — the
-binding checks, the agent signature, the DB constraints — runs for real.
+Verify-once model (ARCHITECTURE.md §5/§8): the skill posts an EnrollmentBundle
+(Self proofs + agent_key) to POST /v1/register; the broker verifies the proofs
+ONCE (off-chain SNARK via the self-bridge + on-chain registry check) and issues
+a broker-signed DelegationToken the agent replays per answer.
 
-The Postgres-dependent suite (test_uniqueness, test_aggregate_recompute)
-spins up a real Postgres via ``testcontainers``; skipped if Docker is absent.
+In tests we replace the one network call to the self-bridge (``verify_self_proof``)
+with a deterministic fake (``mock_bridge``, autouse) steered by a ``_test`` blob
+embedded in each proof. Everything else — bindings, predicate derivation, the
+broker signature, the DB constraints — runs for real.
+
+The Postgres-dependent suite (test_uniqueness, test_aggregate_recompute) spins up
+a real Postgres via ``testcontainers``; skipped if Docker is absent.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ import pytest_asyncio
 from nacl.signing import SigningKey
 
 from hearme_broker.verify.bridge_client import BridgeVerifyResult
-from hearme_broker.verify.canonical import canonical_json
+from hearme_broker.verify.credential import issue_delegation_token
 
 
 # ----- crypto helpers ----------------------------------------------------
@@ -35,88 +39,101 @@ def agent_signing_key() -> SigningKey:
     return SigningKey(b"AGENT-KEY-FOR-HEARME-TESTING-32B")
 
 
-# ----- mocked zkpassport-bridge -----------------------------------------
+@pytest.fixture(scope="session")
+def agent_key_b64(agent_signing_key: SigningKey) -> str:
+    return base64.b64encode(agent_signing_key.verify_key.encode()).decode("ascii")
+
+
+# ----- mocked self-bridge ------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
 def mock_bridge(monkeypatch):
-    """Replace the bridge ``verify_bundle`` call with a deterministic fake.
+    """Replace the bridge ``verify_self_proof`` call with a deterministic fake.
 
-    The fake echoes test-controlled outputs embedded in the bundle's
-    ``query._test_outputs`` so each test can steer verified / uniqueIdentifier
-    / disclosed without a real Node bridge or any network.
+    Each proof carries a ``_test`` dict that drives the fake's output, so a test
+    can steer verified / uniqueIdentifier / nationality / older_than /
+    registryConfirmed / boundAgentKey without a real Node bridge or any network.
     """
 
-    async def _fake_verify_bundle(
-        *, bridge_url, proofs, query, query_result, timeout=30.0
+    async def _fake_verify_self_proof(
+        *, bridge_url, attestation_id, proof, public_signals, user_context_data, timeout=30.0
     ):
-        outputs = (query or {}).get("_test_outputs") or {}
-        bound = ((query or {}).get("bind") or {}).get("custom_data")
+        t = (proof or {}).get("_test") or {}
+        disclosed: dict[str, Any] = {}
+        if t.get("nationality") is not None:
+            disclosed["nationality"] = t["nationality"]
+        if t.get("older_than") is not None:
+            disclosed["older_than"] = t["older_than"]
         return BridgeVerifyResult(
-            verified=outputs.get("verified", True),
-            unique_identifier=outputs.get("uniqueIdentifier"),
-            disclosed=outputs.get("disclosed") or {},
-            bound_agent_key=bound,
+            verified=t.get("verified", True),
+            unique_identifier=t.get("uniqueIdentifier"),
+            disclosed=disclosed,
+            bound_agent_key=t.get("boundAgentKey", user_context_data),
+            registry_confirmed=t.get("registryConfirmed", True),
         )
 
     monkeypatch.setattr(
-        "hearme_broker.verify.zkpassport.verify_bundle", _fake_verify_bundle
+        "hearme_broker.verify.self_identity.verify_self_proof", _fake_verify_self_proof
     )
-    return _fake_verify_bundle
+    return _fake_verify_self_proof
 
 
-# ----- bundle + token + envelope factories ------------------------------
-
-
-def _make_bundle(
-    *,
-    agent_key_b64: str,
-    unique_identifier: str,
-    disclosed: dict[str, str],
-    scope: str = "v1",
-    bound_agent_key: str | None = None,
-    verified: bool = True,
-    verified_uid: str | None = None,
-    verified_disclosed: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    """A verifiable-shaped zkPassport bundle with test-only verify outputs."""
-    return {
-        "version": 1,
-        "proofs": [{"name": "test_circuit", "proof": "00", "version": "1"}],
-        "query": {
-            "bind": {
-                "custom_data": bound_agent_key
-                if bound_agent_key is not None
-                else agent_key_b64
-            },
-            "_test_outputs": {
-                "verified": verified,
-                "uniqueIdentifier": verified_uid
-                if verified_uid is not None
-                else unique_identifier,
-                "disclosed": verified_disclosed
-                if verified_disclosed is not None
-                else disclosed,
-            },
-        },
-        "queryResult": {
-            "age": {"gte": {"result": True}},
-            "nationality": {"in": {"result": True}},
-        },
-        "scope": scope,
-    }
+# ----- factories ---------------------------------------------------------
 
 
 @pytest.fixture
-def make_bundle() -> Callable[..., dict[str, Any]]:
-    return _make_bundle
+def make_enrollment(agent_key_b64: str) -> Callable[..., dict[str, Any]]:
+    """Build an EnrollmentBundle dict (proto/enrollment.json) for /v1/register.
+
+    The Self proofs are mock-verifiable via the ``_test`` blob the autouse
+    ``mock_bridge`` reads.
+    """
+
+    def _factory(
+        *,
+        agent_key: str | None = None,
+        unique_identifier: str = "self:nullifier-1",
+        nationality: str = "DE",
+        thresholds: tuple[int, ...] = (18, 25, 35),
+        verified: bool = True,
+        registry_confirmed: bool = True,
+        bound_agent_key: str | None = None,
+        per_proof_nullifier: list[str] | None = None,
+    ) -> dict[str, Any]:
+        ak = agent_key or agent_key_b64
+        proofs = []
+        for i, thr in enumerate(thresholds):
+            uid = (
+                per_proof_nullifier[i]
+                if per_proof_nullifier is not None
+                else unique_identifier
+            )
+            proofs.append(
+                {
+                    "attestationId": 1,
+                    "proof": {
+                        "_test": {
+                            "verified": verified,
+                            "uniqueIdentifier": uid,
+                            "nationality": nationality,
+                            "older_than": thr,
+                            "registryConfirmed": registry_confirmed,
+                            "boundAgentKey": bound_agent_key if bound_agent_key is not None else ak,
+                        }
+                    },
+                    "publicSignals": [],
+                    "userContextData": ak,
+                }
+            )
+        return {"self_proofs": proofs, "agent_key": ak}
+
+    return _factory
 
 
 @pytest.fixture
-def make_token(
-    agent_signing_key: SigningKey,
-) -> Callable[..., dict[str, Any]]:
-    """Build a DelegationToken dict wrapping a (mock-verifiable) zkPassport bundle."""
+def make_token(agent_key_b64: str) -> Callable[..., dict[str, Any]]:
+    """Build a broker-issued DelegationToken dict (signed with the dev broker key)."""
 
     def _factory(
         *,
@@ -124,56 +141,23 @@ def make_token(
         disclosed_predicates: dict[str, str] | None = None,
         issued_at: datetime | None = None,
         expires_at: datetime | None = None,
-        agent_pubkey: bytes | None = None,
-        scope: str = "v1",
-        bound_agent_key: str | None = None,
-        verified: bool = True,
-        verified_unique_identifier: str | None = None,
-        verified_disclosed: dict[str, str] | None = None,
-        bundle: dict[str, Any] | None = None,
+        agent_key: str | None = None,
     ) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
-        token_expires = (expires_at or now + timedelta(days=89)).astimezone(
-            timezone.utc
-        )
-        uid = unique_identifier or "zkp:" + base64.b64encode(b"\x01" * 32).decode(
-            "ascii"
-        )
-        predicates = (
+        uid = unique_identifier or "self:" + base64.b64encode(b"\x01" * 32).decode("ascii")
+        preds = (
             disclosed_predicates
             if disclosed_predicates is not None
-            else {"region": "EU", "age_band": "18+"}
+            else {"region": "EU", "age_band": "35-49"}
         )
-        agent_b64 = base64.b64encode(
-            agent_pubkey or agent_signing_key.verify_key.encode()
-        ).decode("ascii")
-
-        the_bundle = bundle or _make_bundle(
-            agent_key_b64=agent_b64,
+        token = issue_delegation_token(
             unique_identifier=uid,
-            disclosed=predicates,
-            scope=scope,
-            bound_agent_key=bound_agent_key,
-            verified=verified,
-            verified_uid=verified_unique_identifier,
-            verified_disclosed=verified_disclosed,
+            disclosed_predicates=preds,
+            agent_key=agent_key or agent_key_b64,
+            issued_at=issued_at or (now - timedelta(days=1)),
+            expires_at=expires_at or (now + timedelta(days=89)),
         )
-        proof_b64 = base64.b64encode(canonical_json(the_bundle)).decode("ascii")
-
-        return {
-            "version": 1,
-            "zkpassport_proof": proof_b64,
-            "domain": "hearme.network",
-            "scope": "v1",
-            "unique_identifier": uid,
-            "disclosed_predicates": predicates,
-            "agent_key": agent_b64,
-            "issued_at": (issued_at or now - timedelta(days=1))
-            .astimezone(timezone.utc)
-            .isoformat()
-            .replace("+00:00", "Z"),
-            "expires_at": token_expires.isoformat().replace("+00:00", "Z"),
-        }
+        return token.model_dump(mode="json")
 
     return _factory
 
@@ -209,7 +193,6 @@ def make_envelope(agent_signing_key: SigningKey):
 
 
 def _read_schema() -> str:
-    # tests/conftest.py → packages/broker/tests → 3 up == repo root.
     repo_root = Path(__file__).resolve().parents[3]
     schema = repo_root / "packages" / "web" / "drizzle" / "0000_init.sql"
     return schema.read_text()
@@ -217,10 +200,7 @@ def _read_schema() -> str:
 
 @pytest_asyncio.fixture
 async def pg_pool():
-    """Spin up an ephemeral Postgres, apply the web schema, yield an asyncpg pool.
-
-    Skipped if Docker / testcontainers isn't usable on the host.
-    """
+    """Spin up an ephemeral Postgres, apply the web schema, yield an asyncpg pool."""
     try:
         from testcontainers.postgres import PostgresContainer  # type: ignore
     except Exception as exc:  # noqa: BLE001

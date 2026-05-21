@@ -36,8 +36,8 @@ class SpyingLLM(LLMClient):
             "DelegationToken",
             "delegation_token",
             "unique_identifier",
-            "zkpassport_proof",
-            "phone_signature",
+            "broker_signature",
+            "self_proofs",
         ):
             assert forbidden not in flat, (
                 f"LLM request leaked identity field {forbidden!r}: {flat!r}"
@@ -55,7 +55,7 @@ def test_answer_signature_has_no_identity_params():
 
 def test_llm_request_has_no_identity_fields():
     field_names = {f.name for f in dataclasses.fields(LLMRequest)}
-    forbidden = {"delegation_token", "unique_identifier", "passport", "phone_signature"}
+    forbidden = {"delegation_token", "unique_identifier", "passport", "broker_signature"}
     assert field_names & forbidden == set()
 
 

@@ -1,51 +1,77 @@
 """Pydantic models for the broker wire formats.
 
-Mirror packages/proto/{delegation,envelope,question}.json. `extra="forbid"`
-matches the boundary-leakage assertion in ARCHITECTURE.md §12: an envelope
-body MUST contain exactly five top-level fields.
+Mirror packages/proto/{self,enrollment,delegation,envelope,question}.json.
+``extra="forbid"`` matches the boundary-leakage assertion in ARCHITECTURE.md
+§12: an envelope body MUST contain exactly five top-level fields.
+
+Identity model (verify-once — ARCHITECTURE.md §5/§8): the skill posts an
+``EnrollmentBundle`` (Self proofs + agent_key) to ``POST /v1/register`` once;
+the broker verifies the proofs and returns a broker-signed ``DelegationToken``
+(the session credential) the agent replays in every ``Envelope``.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class DelegationToken(BaseModel):
-    """Bundle authorizing an agent_key to speak for a unique human.
+class SelfProofBundle(BaseModel):
+    """One verifiable Self proof (mirror packages/proto/self.json).
 
-    Integrity comes from the real zkPassport SNARK in ``zkpassport_proof``:
-    the proof is bound (in-circuit) to the ``agent_key`` (via the SDK's
-    ``custom_data`` bind) and yields the scope-bound ``unique_identifier``
-    (nullifier). The broker re-verifies the proof and validates every claim
-    below against the verified outputs, so no separate signature wraps the
-    bundle. Canonical-JSON of this object is the input to
+    Field aliases are the camelCase keys the Self app / bridge use; populate by
+    either form. Re-serialize with ``by_alias=True`` when forwarding to the
+    self-bridge ``POST /verify``.
+    """
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    attestation_id: int = Field(alias="attestationId")
+    proof: Any
+    public_signals: list[Any] = Field(alias="publicSignals")
+    user_context_data: str = Field(alias="userContextData")
+
+
+class EnrollmentBundle(BaseModel):
+    """POST /v1/register body (mirror packages/proto/enrollment.json).
+
+    Install-only; never stored. The broker verifies every proof once, binds the
+    nullifier, and returns a DelegationToken.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    self_proofs: list[SelfProofBundle] = Field(min_length=1)
+    agent_key: str = Field(description="base64 Ed25519 public key, 32 bytes")
+
+
+class DelegationToken(BaseModel):
+    """Broker-issued, broker-signed session credential (proto/delegation.json).
+
+    Returned by ``POST /v1/register``; replayed by the agent in every envelope.
+    Integrity is the broker's own signature over canonical_json(token minus
+    ``broker_signature``). Canonical-JSON of the WHOLE object is the input to
     ``delegation_hash = SHA-256(canonical_json(token))``.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    version: Literal[1]
-    zkpassport_proof: str = Field(
-        description=(
-            "base64 of canonical_json of the verifiable zkPassport bundle "
-            "{version, proofs, query, queryResult, scope}. Re-verified by "
-            "verify/zkpassport.py via the zkpassport-bridge."
-        )
-    )
-    domain: Literal["hearme.network"]
-    scope: Literal["v1"]
+    version: Literal[2]
+    scope: Literal["hearme-v1"]
     unique_identifier: str = Field(
-        description="zkPassport unique identifier (scope-bound nullifier)."
+        description="Self nullifier (scope-bound, unique-per-user-per-scope)."
     )
     disclosed_predicates: dict[str, str]
     agent_key: str = Field(description="base64 Ed25519 public key, 32 bytes")
     issued_at: datetime
     expires_at: datetime
+    broker_signature: str = Field(
+        description="base64 Ed25519 signature by the broker over the token claims."
+    )
 
 
 class Envelope(BaseModel):
@@ -74,7 +100,7 @@ class Question(BaseModel):
 
 
 class RejectionReason(str, Enum):
-    """Specific reasons the broker rejects an envelope.
+    """Specific reasons the broker rejects a registration or an envelope.
 
     Returned in the ack body when ``expose_rejection_reasons`` is True (v0
     default for debugging). Production should set this False so the broker
@@ -82,8 +108,27 @@ class RejectionReason(str, Enum):
     """
 
     SCHEMA_INVALID = "schema_invalid"
+    INTERNAL_ERROR = "internal_error"
+
+    # --- registration (POST /v1/register; verify/self_identity.py) ---
+    ENROLLMENT_MALFORMED = "enrollment_malformed"
+    SELF_PROOF_INVALID = "self_proof_invalid"
+    SELF_PROOF_EXPIRED = "self_proof_expired"  # Self ±1 day window (InvalidTimestamp)
+    SELF_BRIDGE_ERROR = "self_bridge_error"
+    SELF_SCOPE_MISMATCH = "self_scope_mismatch"
+    SELF_NULLIFIER_MISMATCH = "self_nullifier_mismatch"  # proofs disagree
+    SELF_AGENT_BINDING_MISMATCH = "self_agent_binding_mismatch"
+    SELF_REGISTRY_UNCONFIRMED = "self_registry_unconfirmed"  # on-chain root check
+    PREDICATE_DERIVATION_FAILED = "predicate_derivation_failed"
+    IDENTITY_ALREADY_BOUND = "identity_already_bound"  # nullifier→different agent_key
+    IDENTITY_REVOKED = "identity_revoked"  # Self on-chain invalidation already seen
+
+    # --- per envelope (POST /v1/envelopes) ---
     TOKEN_EXPIRED = "token_expired"
     TOKEN_REVOKED = "token_revoked"
+    BROKER_SIGNATURE_INVALID = "broker_signature_invalid"
+    REGISTRATION_NOT_FOUND = "registration_not_found"
+    REGISTRATION_AGENT_MISMATCH = "registration_agent_mismatch"
     DELEGATION_HASH_MISMATCH = "delegation_hash_mismatch"
     AGENT_SIGNATURE_INVALID = "agent_signature_invalid"
     AGENT_KEY_INVALID = "agent_key_invalid"
@@ -93,17 +138,6 @@ class RejectionReason(str, Enum):
     NONCE_MISMATCH = "nonce_mismatch"
     SCOPE_INELIGIBLE = "scope_ineligible"
     DUPLICATE = "duplicate"
-    INTERNAL_ERROR = "internal_error"
-    # ZK passport (verify/zkpassport.py — real SNARK verification via the bridge).
-    ZKPASSPORT_PROOF_MALFORMED = "zkpassport_proof_malformed"
-    ZKPASSPORT_PROOF_INVALID = "zkpassport_proof_invalid"
-    ZKPASSPORT_BRIDGE_ERROR = "zkpassport_bridge_error"
-    ZKPASSPORT_SCOPE_MISMATCH = "zkpassport_scope_mismatch"
-    ZKPASSPORT_NULLIFIER_MISMATCH = "zkpassport_nullifier_mismatch"
-    ZKPASSPORT_AGENT_BINDING_MISMATCH = "zkpassport_agent_binding_mismatch"
-    ZKPASSPORT_PREDICATES_MISMATCH = "zkpassport_predicates_mismatch"
-    # Cross-binding (envelope route).
-    IDENTITY_ALREADY_BOUND = "identity_already_bound"
 
 
 class EnvelopeAck(BaseModel):
@@ -112,4 +146,18 @@ class EnvelopeAck(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     accepted: bool
+    reason: RejectionReason | None = None
+
+
+class RegisterAck(BaseModel):
+    """Response to POST /v1/register.
+
+    On success, ``delegation_token`` is the broker-signed session credential the
+    agent stores and replays per answer.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: bool
+    delegation_token: DelegationToken | None = None
     reason: RejectionReason | None = None
