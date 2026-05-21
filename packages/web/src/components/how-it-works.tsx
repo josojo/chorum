@@ -26,7 +26,7 @@ const STEPS: Step[] = [
   },
   {
     title: "Real humans answer",
-    body: "Every answer comes from a verified person's agent — proven human with Self, never a bot. Their agent speaks so they don't have to.",
+    body: "Nobody fills out a poll. A person's agent infers their answer from their everyday chats, anonymizes it, and submits it for them — proven human with Self, never a bot. The agent speaks so people don't have to.",
     illustration: AnswerIllustration,
   },
   {
@@ -303,40 +303,76 @@ function ScopeChip({
 }
 
 function AnswerIllustration() {
-  const rows = [
-    { answer: "Yes", tone: "text-emerald-600 bg-emerald-50" },
-    { answer: "No", tone: "text-rose-600 bg-rose-50" },
-    { answer: "Yes", tone: "text-emerald-600 bg-emerald-50" },
-  ];
   return (
     <div className="w-64 space-y-2">
-      {rows.map((r, i) => (
-        <div
-          key={i}
-          className="flex items-center gap-2.5 rounded-xl bg-white p-2.5 shadow-md ring-1 ring-slate-200/70"
-        >
-          <div className="relative">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500" />
-            <CheckBadge className="absolute -bottom-1 -right-1 h-3.5 w-3.5" />
-          </div>
-          <div className="flex-1">
-            <div className="h-2 w-20 rounded-full bg-slate-200" />
-            <div className="mt-1.5 h-2 w-12 rounded-full bg-slate-100" />
-          </div>
-          <span
-            className={
-              "rounded-full px-2 py-0.5 text-[11px] font-semibold " + r.tone
-            }
-          >
-            {r.answer}
-          </span>
+      {/* The everyday chat the agent infers the answer from. */}
+      <div className="rounded-2xl bg-white p-3 shadow-md ring-1 ring-slate-200/70">
+        <div className="mb-2 flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
+          <span className="h-4 w-4 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500" />
+          your daily chat
         </div>
-      ))}
+        <div className="flex justify-end">
+          <div className="rounded-2xl rounded-br-sm bg-violet-600 px-2.5 py-1.5">
+            <span className="block h-1.5 w-20 rounded-full bg-white/70" />
+          </div>
+        </div>
+        <div className="mt-1.5 flex justify-start">
+          <div className="space-y-1 rounded-2xl rounded-bl-sm bg-slate-100 px-2.5 py-1.5">
+            <span className="block h-1.5 w-16 rounded-full bg-slate-300" />
+            <span className="block h-1.5 w-10 rounded-full bg-slate-300" />
+          </div>
+        </div>
+      </div>
+
+      {/* Inferred + anonymized on the way to the poll. */}
+      <div className="flex items-center justify-center gap-1 text-[10px] font-medium text-slate-400">
+        <DownArrow />
+        infers &amp; anonymizes
+      </div>
+
+      {/* The anonymous answer dropped straight into the poll. */}
+      <div className="flex items-center gap-2.5 rounded-xl bg-white p-2.5 shadow-md ring-1 ring-slate-200/70">
+        <div className="grid h-8 w-8 place-items-center rounded-full bg-slate-800">
+          <MaskIcon />
+        </div>
+        <span className="flex-1 text-[11px] font-medium text-slate-600">
+          anonymous answer
+        </span>
+        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">
+          Yes
+        </span>
+      </div>
+
       <div className="flex items-center justify-center gap-1.5 pt-0.5 text-[11px] font-medium text-slate-500">
         <CheckBadge className="h-3.5 w-3.5" />
         Verified human · powered by Self
       </div>
     </div>
+  );
+}
+
+function DownArrow() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M8 3v9M4.5 8.5L8 12l3.5-3.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MaskIcon() {
+  // A domino mask — reads as "anonymous". Eye holes match the slate-800 disc.
+  return (
+    <svg width="15" height="15" viewBox="0 0 20 20" aria-hidden>
+      <rect x="3.5" y="6.5" width="13" height="6.2" rx="3.1" fill="white" />
+      <circle cx="7.4" cy="9.6" r="1.1" fill="#1e293b" />
+      <circle cx="12.6" cy="9.6" r="1.1" fill="#1e293b" />
+    </svg>
   );
 }
 
