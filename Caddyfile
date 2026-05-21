@@ -1,0 +1,19 @@
+# hearme staging — TLS termination + routing.
+# Caddy auto-provisions a Let's Encrypt cert for this sslip.io hostname (which
+# resolves to the box's public IP), so the site is reachable over HTTPS and the
+# Self app has a public HTTPS callback for onboarding.
+3-121-186-133.sslip.io {
+	encode gzip
+
+	# The Self app POSTs zk proofs to the bridge's /callback. Expose the bridge
+	# under /self/* (prefix stripped) so it shares the one TLS cert with the web
+	# app. e.g. POST /self/callback -> self-bridge:8787/callback
+	handle_path /self/* {
+		reverse_proxy self-bridge:8787
+	}
+
+	# Everything else is the Next.js web app.
+	handle {
+		reverse_proxy web:3000
+	}
+}

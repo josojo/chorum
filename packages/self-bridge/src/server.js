@@ -47,8 +47,23 @@ const CELO_RPC_URL = process.env.SELF_CELO_RPC_URL || "";
 const REGISTRY_ADDRESS = process.env.SELF_REGISTRY_ADDRESS || "";
 const PORT = parseInt(process.env.PORT || "8787", 10);
 
-// requestId -> { agentKey, thresholds:[int], results: Map<userId,bundle> }
+// requestId -> { agentKey, thresholds:[int], results: Map<normUserId,bundle> }
 const pending = new Map();
+
+// normUserId(userId hex) -> { requestId, threshold }. Lets /callback route a
+// verified proof back to the request that created it. Keyed by the *numeric*
+// value of the userId (via BigInt) so it survives any 0x-prefix / case /
+// zero-padding differences in how the Self circuit echoes userIdentifier back.
+const byUser = new Map();
+
+function normUserId(h) {
+  try {
+    const s = String(h);
+    return BigInt(s.startsWith("0x") ? s : "0x" + s).toString();
+  } catch {
+    return String(h);
+  }
+}
 
 // Permissive verifier config: minimumAge 18 is the gate; each proof attests its
 // own (higher) threshold, read back from discloseOutput.olderThan. excluded /
@@ -137,7 +152,11 @@ app.post("/requests", async (req, res) => {
     const userDefinedData = b64ToHex(agentKey);
 
     const urls = thresholds.map((threshold) => {
-      const userId = `${requestId}-${threshold}`;
+      // userIdType "hex" requires a 0x-prefixed hex field element; the old
+      // `${requestId}-${threshold}` was not valid hex and made /requests 500.
+      // Mint a fresh random hex id per proof and remember how to route it back.
+      const userId = "0x" + cryptoRandomId();
+      byUser.set(normUserId(userId), { requestId, threshold });
       const selfApp = new SelfAppBuilder({
         appName: "Hearme",
         scope: SCOPE,
@@ -171,11 +190,11 @@ app.post("/callback", async (req, res) => {
       return res.status(400).json({ status: "error", reason: "malformed" });
     }
     const out = await verifyOne({ attestationId, proof, publicSignals, userContextData });
-    // Route by the userIdentifier we set per (requestId, threshold).
-    const reqId = (out.userIdentifier || "").split("-").slice(0, -1).join("-");
-    const entry = pending.get(reqId);
+    // Route by the userId we minted per (requestId, threshold) in /requests.
+    const routed = byUser.get(normUserId(out.userIdentifier || ""));
+    const entry = routed ? pending.get(routed.requestId) : undefined;
     if (entry) {
-      entry.results.set(out.userIdentifier, {
+      entry.results.set(normUserId(out.userIdentifier), {
         bundle: { attestationId, proof, publicSignals, userContextData },
         ...out,
       });

@@ -1,0 +1,36 @@
+# Staging override: terminate TLS at Caddy and route by path.
+#
+#   https://3-121-186-133.sslip.io/        -> web:3000      (the Next.js site)
+#   https://3-121-186-133.sslip.io/self/*  -> self-bridge:8787 (Self callback etc.)
+#
+# Why: the Self app posts onboarding proofs to SELF_ENDPOINT, which must be a
+# public HTTPS URL (endpointType: staging_https). Caddy gives us auto-TLS via a
+# sslip.io hostname that resolves to this box's public IP — no domain to buy.
+# This also makes the website reachable over https:// (browsers that force HTTPS
+# now work). Caddy owns host ports 80/443; web/broker/bridge keep their direct
+# host ports too (handy for the local skill hitting :8000 / :8787 over HTTP).
+services:
+  self-bridge:
+    environment:
+      # The callback the Self app posts proofs to MUST be public HTTPS.
+      SELF_ENDPOINT: https://3-121-186-133.sslip.io/self/callback
+      SELF_ENDPOINT_TYPE: staging_https
+
+  caddy:
+    image: caddy:2
+    container_name: hearme-caddy
+    restart: unless-stopped
+    depends_on:
+      - web
+      - self-bridge
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:
