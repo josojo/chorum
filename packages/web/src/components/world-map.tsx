@@ -46,36 +46,56 @@ const LABEL_POS: Record<Exclude<Continent, "AN">, { x: number; y: number }> = {
 
 const NO_DATA = "#e2e8f0"; // slate-200
 
-// Diverging red→amber→green scale on the yes-share.
-const STRONG_NO = "#b91c1c"; // red-700
-const NO = "#f87171"; // red-400
-const EVEN = "#fcd34d"; // amber-300
-const YES = "#4ade80"; // green-400
-const STRONG_YES = "#15803d"; // green-700
-
-// Legend swatches, low → high yes-share.
-const SCALE = [STRONG_NO, NO, EVEN, YES, STRONG_YES];
+// Continuous diverging spectrum on the yes-share: red (all no) → yellow
+// (even) → green (all yes). The fill is interpolated, not bucketed, so the
+// colour reflects the exact ratio.
+const NO_RGB: [number, number, number] = [220, 38, 38]; // red-600
+const EVEN_RGB: [number, number, number] = [250, 204, 21]; // yellow-400
+const YES_RGB: [number, number, number] = [22, 163, 74]; // green-600
+const SPECTRUM_CSS =
+  "linear-gradient(to right, rgb(220,38,38), rgb(250,204,21), rgb(22,163,74))";
 
 function yesShare(yes: number, no: number): number {
   const total = yes + no;
   return total === 0 ? 0 : yes / total;
 }
 
-function colorForShare(yes: number, no: number): string {
-  if (yes + no === 0) return NO_DATA;
-  const s = yesShare(yes, no);
-  if (s >= 0.66) return STRONG_YES;
-  if (s >= 0.55) return YES;
-  if (s > 0.45) return EVEN;
-  if (s > 0.34) return NO;
-  return STRONG_NO;
+function lerp(a: number, b: number, t: number): number {
+  return Math.round(a + (b - a) * t);
 }
 
-// Dark fills (strong yes / strong no) need light label text.
-function isDarkFill(yes: number, no: number): boolean {
-  if (yes + no === 0) return false;
+/** Interpolated spectrum colour for the yes-share, or null when no votes. */
+function rgbForShare(yes: number, no: number): [number, number, number] | null {
+  if (yes + no === 0) return null;
   const s = yesShare(yes, no);
-  return s >= 0.66 || s <= 0.34;
+  if (s <= 0.5) {
+    const t = s / 0.5;
+    return [
+      lerp(NO_RGB[0], EVEN_RGB[0], t),
+      lerp(NO_RGB[1], EVEN_RGB[1], t),
+      lerp(NO_RGB[2], EVEN_RGB[2], t),
+    ];
+  }
+  const t = (s - 0.5) / 0.5;
+  return [
+    lerp(EVEN_RGB[0], YES_RGB[0], t),
+    lerp(EVEN_RGB[1], YES_RGB[1], t),
+    lerp(EVEN_RGB[2], YES_RGB[2], t),
+  ];
+}
+
+function colorForShare(yes: number, no: number): string {
+  const rgb = rgbForShare(yes, no);
+  return rgb ? `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})` : NO_DATA;
+}
+
+// Use light label text only over the darker red/green ends; the bright yellow
+// midband keeps dark text. Decide from the perceived luminance of the fill.
+function isDarkFill(yes: number, no: number): boolean {
+  const rgb = rgbForShare(yes, no);
+  if (!rgb) return false;
+  const lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
+  return lum < 0.55;
 }
 
 export function WorldMap({ data, total }: WorldMapProps) {
@@ -235,11 +255,10 @@ export function WorldMap({ data, total }: WorldMapProps) {
             <span className="font-medium uppercase tracking-wider text-rose-600">
               More no
             </span>
-            <div className="flex h-3 overflow-hidden rounded-full ring-1 ring-slate-200">
-              {SCALE.map((c, i) => (
-                <span key={i} style={{ background: c, width: 22 }} />
-              ))}
-            </div>
+            <div
+              className="h-3 w-32 rounded-full ring-1 ring-slate-200"
+              style={{ background: SPECTRUM_CSS }}
+            />
             <span className="font-medium uppercase tracking-wider text-emerald-600">
               More yes
             </span>
