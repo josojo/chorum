@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { countryFlag } from "@/lib/flags";
 import { CONTINENT_NAMES, COUNTRY_NAMES, type Continent } from "@/lib/geo-data";
+import { describeClose, formatAbsoluteUTC, formatRelative } from "@/lib/time";
 
 export type QuestionCardProps = {
   id: string;
@@ -13,11 +14,6 @@ export type QuestionCardProps = {
   createdAt: Date;
   answerCount: number;
 };
-
-function fmtDate(d: Date): string {
-  // Stable, locale-free formatting so server and client agree.
-  return d.toISOString().replace("T", " ").slice(0, 16) + " UTC";
-}
 
 function ScopePill(props: {
   scope: QuestionCardProps["scope"];
@@ -80,11 +76,42 @@ export function QuestionCard(props: QuestionCardProps) {
             #{props.topic}
           </span>
         ) : null}
-        <span className="text-slate-400">·</span>
-        <span>opened {fmtDate(props.createdAt)}</span>
-        <span className="text-slate-400">·</span>
-        <span>closes {fmtDate(props.closesAt)}</span>
+        <span className="text-slate-300" aria-hidden>
+          ·
+        </span>
+        <span title={formatAbsoluteUTC(props.createdAt)}>
+          opened {formatRelative(props.createdAt)}
+        </span>
+        <ClosePill closesAt={props.closesAt} />
       </div>
     </Link>
+  );
+}
+
+function ClosePill({ closesAt }: { closesAt: Date }) {
+  const { label, urgency } = describeClose(closesAt);
+  if (urgency === "soon") {
+    return (
+      <span
+        title={formatAbsoluteUTC(closesAt)}
+        className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800"
+      >
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" aria-hidden />
+        {label}
+      </span>
+    );
+  }
+  return (
+    <>
+      <span className="text-slate-300" aria-hidden>
+        ·
+      </span>
+      <span
+        title={formatAbsoluteUTC(closesAt)}
+        className={urgency === "closed" ? "text-slate-400" : undefined}
+      >
+        {label}
+      </span>
+    </>
   );
 }

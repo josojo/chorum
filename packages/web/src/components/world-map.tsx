@@ -253,6 +253,12 @@ export function WorldMap({
 
   const activeName = active ? CONTINENT_NAMES[active] : null;
 
+  // Continents we can drill into that actually have responses — drives the
+  // accessible quick-jump buttons.
+  const drillTargets = DISPLAY_ORDER.filter(
+    (code): code is DrillContinent => isDrill(code) && continentShare(code) !== null,
+  );
+
   return (
     <div className="space-y-3">
       {/* View header: current level + back control. */}
@@ -286,12 +292,43 @@ export function WorldMap({
         </div>
         <div className="hidden text-xs text-slate-500 sm:block">
           {!active
-            ? "Click a continent to drill into its countries"
+            ? "Tap a continent to drill into its countries"
             : activeHasCountryData
-            ? "Click a country for its split · World to zoom out"
+            ? "Tap a country for its split · World to zoom out"
             : "World to zoom out"}
         </div>
       </div>
+
+      {/* Continent quick-jump — a keyboard- and touch-accessible way to drill
+          in, since the country <path>s themselves are pointer-only. */}
+      {drillTargets.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs font-medium text-slate-500">Jump to</span>
+          {drillTargets.map((code) => {
+            const isOn = active === code;
+            return (
+              <button
+                key={code}
+                type="button"
+                aria-pressed={isOn}
+                onClick={() => {
+                  setActive(code);
+                  setSelected(null);
+                  setHover(null);
+                }}
+                className={
+                  "rounded-full px-3 py-1 text-xs font-medium ring-1 transition " +
+                  (isOn
+                    ? "bg-violet-600 text-white ring-violet-600"
+                    : "bg-white text-slate-600 ring-slate-200 hover:text-violet-700 hover:ring-violet-300")
+                }
+              >
+                {CONTINENT_NAMES[code]}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div className="relative">
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-50 via-indigo-50 to-violet-50 p-2 ring-1 ring-slate-200/70">

@@ -23,8 +23,7 @@ export function ScopeTabs({ active, counts, location }: Props) {
   ];
 
   return (
-    <div
-      role="tablist"
+    <nav
       aria-label="Question scope"
       className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm"
     >
@@ -38,8 +37,7 @@ export function ScopeTabs({ active, counts, location }: Props) {
           <Link
             key={t.scope}
             href={href}
-            role="tab"
-            aria-selected={isActive}
+            aria-current={isActive ? "page" : undefined}
             className={
               "group relative flex flex-col items-center justify-center gap-1 rounded-xl px-3 py-3 text-center text-sm font-medium transition " +
               (isActive
@@ -64,6 +62,6 @@ export function ScopeTabs({ active, counts, location }: Props) {
           </Link>
         );
       })}
-    </div>
+    </nav>
   );
 }

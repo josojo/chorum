@@ -62,7 +62,7 @@ export function AgeChart({ data, total }: AgeChartProps) {
               <span className="font-medium text-slate-700">{e.band}</span>
               <span className="text-xs text-slate-500">
                 <YesNoCount yes={e.yes} no={e.no} />
-                <span className="ml-2 text-slate-400 tabular-nums">
+                <span className="ml-2 text-slate-500 tabular-nums">
                   {sharePct.toFixed(1)}%
                 </span>
               </span>

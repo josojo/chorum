@@ -89,15 +89,15 @@ export function AggregateChart({ total, byPredicate }: AggregateChartProps) {
                 const share = denom === 0 ? 0 : (count / denom) * 100;
                 return (
                   <li key={e.value} className="flex items-center gap-3 text-sm">
-                    <span className="w-28 shrink-0 truncate font-medium text-slate-700">
+                    <span className="w-20 shrink-0 truncate font-medium text-slate-700 sm:w-28">
                       {e.value}
                     </span>
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <YesNoBar yes={e.yes} no={e.no} widthPct={pct} />
                     </div>
-                    <span className="w-40 shrink-0 text-right text-xs text-slate-700">
+                    <span className="w-24 shrink-0 text-right text-xs text-slate-700 sm:w-40">
                       <YesNoCount yes={e.yes} no={e.no} />
-                      <span className="ml-1.5 text-slate-400 tabular-nums">
+                      <span className="ml-1.5 hidden text-slate-500 tabular-nums sm:inline">
                         {share.toFixed(0)}%
                       </span>
                     </span>

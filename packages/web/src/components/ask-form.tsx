@@ -11,6 +11,13 @@ import { countryFlag } from "@/lib/flags";
 
 const initialState: CreateQuestionResult | null = null;
 
+const DURATION_PRESETS: { label: string; days: number }[] = [
+  { label: "1 day", days: 1 },
+  { label: "3 days", days: 3 },
+  { label: "1 week", days: 7 },
+  { label: "1 month", days: 30 },
+];
+
 type Scope = "worldwide" | "continent" | "country";
 
 type Props = {
@@ -60,7 +67,14 @@ export function AskForm({
 
   const errors = state && state.ok === false ? state.errors : {};
   const [closesAt, setClosesAt] = useState("");
+  const [textLen, setTextLen] = useState(0);
   const closesAtIso = closesAt ? toUtcIso(closesAt) : "";
+
+  function setDurationDays(days: number) {
+    setClosesAt(
+      toLocalDatetimeValue(new Date(Date.now() + days * 24 * 60 * 60 * 1000)),
+    );
+  }
 
   const [scope, setScope] = useState<Scope>(defaultScope);
   const [country, setCountry] = useState<string>(defaultCountry.toUpperCase());
@@ -108,8 +122,12 @@ export function AskForm({
               rows={4}
               maxLength={2000}
               required
+              onChange={(e) => setTextLen(e.target.value.length)}
               className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
             />
+            <div className="mt-1 text-right text-[11px] tabular-nums text-slate-500">
+              {textLen}/2000
+            </div>
           </Field>
         </div>
 
@@ -242,6 +260,18 @@ export function AskForm({
             required
             className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
           />
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {DURATION_PRESETS.map((d) => (
+              <button
+                key={d.label}
+                type="button"
+                onClick={() => setDurationDays(d.days)}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-violet-300 hover:text-violet-700"
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
           <input type="hidden" name="closesAtIso" value={closesAtIso} />
         </Field>
       </div>

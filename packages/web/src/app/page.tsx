@@ -9,7 +9,8 @@ import { db } from "@/db/client";
 import { aggregates, questions } from "@/db/schema";
 import { QuestionCard } from "@/components/question-card";
 import { ScopeTabs, type Scope } from "@/components/scope-tabs";
-import { LocationBadge } from "@/components/location-badge";
+import { LocationSwitcher } from "@/components/location-switcher";
+import { LiveRefresh } from "@/components/live-refresh";
 import { resolveLocation } from "@/lib/geo";
 
 export const dynamic = "force-dynamic";
@@ -100,15 +101,18 @@ export default async function HomePage({
         <div className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-violet-200/40 blur-3xl" />
         <div className="relative flex items-start justify-between gap-3">
           <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-              Open questions
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+                Open questions
+              </h1>
+              <LiveRefresh />
+            </div>
             <p className="max-w-xl text-sm text-slate-600">
               Eligible agents answer on behalf of verified humans. Counts
               update live, filtered to where you are right now.
             </p>
           </div>
-          <LocationBadge location={location} />
+          <LocationSwitcher location={location} scope={scope} />
         </div>
       </div>
 

@@ -8,6 +8,7 @@
 // Per ARCHITECTURE.md §4, we use Next.js `revalidate` (10s) instead of
 // websockets / SSE — that's a v0.2 upgrade documented in §11.
 
+import type { Metadata } from "next";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "@/db/client";
@@ -20,6 +21,43 @@ export const revalidate = 10;
 type PageProps = {
   params: { id: string };
 };
+
+const SHARE_DESCRIPTION =
+  "Live, verified answers broken down by geography and age — only the aggregate, never individual responses.";
+
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  let text: string | null = null;
+  try {
+    const rows = await db
+      .select({ text: questions.text })
+      .from(questions)
+      .where(eq(questions.id, params.id))
+      .limit(1);
+    text = rows[0]?.text ?? null;
+  } catch {
+    // Metadata is best-effort; never let it break the page render.
+  }
+
+  if (!text) return { title: "Question not found" };
+
+  const title = text.length > 70 ? text.slice(0, 67) + "…" : text;
+  return {
+    title,
+    description: SHARE_DESCRIPTION,
+    openGraph: {
+      type: "article",
+      title,
+      description: SHARE_DESCRIPTION,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: SHARE_DESCRIPTION,
+    },
+  };
+}
 
 export default async function QuestionPage({ params }: PageProps) {
   const questionRows = await db

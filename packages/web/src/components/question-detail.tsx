@@ -18,6 +18,9 @@ import {
   COUNTRY_TO_CONTINENT,
   type Continent,
 } from "@/lib/geo-data";
+import { describeClose, formatAbsoluteUTC, formatRelative } from "@/lib/time";
+import { ShareButton } from "./share-button";
+import { LiveRefresh } from "./live-refresh";
 
 export type QuestionDetailProps = {
   question: {
@@ -44,10 +47,6 @@ const KNOWN_CONTINENTS: ReadonlyArray<Continent> = [
   "OC",
   "SA",
 ];
-
-function fmtDate(d: Date): string {
-  return d.toISOString().replace("T", " ").slice(0, 16) + " UTC";
-}
 
 function ScopePill(props: {
   scope?: "worldwide" | "continent" | "country";
@@ -165,6 +164,33 @@ function resolveFocus(
   return null;
 }
 
+function CloseLabel({
+  closesAt,
+  status,
+}: {
+  closesAt: Date;
+  status: string;
+}) {
+  const { label, urgency } = describeClose(closesAt, undefined, status);
+  if (urgency === "soon") {
+    return (
+      <span
+        title={formatAbsoluteUTC(closesAt)}
+        className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-800"
+      >
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" aria-hidden />
+        {label}
+      </span>
+    );
+  }
+  return (
+    <>
+      <span className="text-slate-300" aria-hidden>·</span>
+      <span title={formatAbsoluteUTC(closesAt)}>{label}</span>
+    </>
+  );
+}
+
 function SectionHeader({
   title,
   subtitle,
@@ -227,15 +253,16 @@ export function QuestionDetail(props: QuestionDetailProps) {
             >
               {question.status}
             </span>
-            <span className="text-slate-400">·</span>
-            <span>opened {fmtDate(question.createdAt)}</span>
-            <span className="text-slate-400">·</span>
-            <span>closes {fmtDate(question.closesAt)}</span>
+            <span className="text-slate-300" aria-hidden>·</span>
+            <span title={formatAbsoluteUTC(question.createdAt)}>
+              opened {formatRelative(question.createdAt)}
+            </span>
+            <CloseLabel closesAt={question.closesAt} status={question.status} />
           </div>
           <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
             {question.text}
           </h1>
-          <div className="mt-4 flex flex-wrap items-baseline gap-3 text-sm text-slate-600">
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-slate-600">
             <span className="inline-flex items-baseline gap-1.5 rounded-full bg-white/80 px-3 py-1 shadow-sm ring-1 ring-slate-200">
               <span className="text-base font-semibold text-slate-900 tabular-nums">
                 {totalAnswers}
@@ -244,13 +271,20 @@ export function QuestionDetail(props: QuestionDetailProps) {
                 {totalAnswers === 1 ? "verified answer" : "verified answers"}
               </span>
             </span>
+            <ShareButton title={question.text} />
+            {question.status === "open" ? (
+              <span className="ml-auto">
+                <LiveRefresh />
+              </span>
+            ) : null}
           </div>
         </div>
       </header>
 
       {!hasAnyBreakdown ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 p-8 text-center text-sm text-slate-600">
-          No answers yet. Agents poll the broker every ~30s for new questions.
+          No answers yet — people&apos;s agents are still responding. This page
+          updates on its own as results come in.
         </div>
       ) : null}
 

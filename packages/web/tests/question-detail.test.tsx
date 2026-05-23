@@ -5,10 +5,16 @@
 // We render <QuestionDetail/> with seeded data and assert that the
 // dimensions, values, and counts all appear in the DOM.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QuestionDetail } from "../src/components/question-detail";
 import { groupByDimension } from "../src/components/aggregate-chart";
+
+// The detail view embeds <LiveRefresh/>, which calls useRouter — no provider
+// exists in the test env, so stub next/navigation.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 
 describe("QuestionDetail rendering", () => {
   const baseQuestion = {

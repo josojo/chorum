@@ -13,10 +13,29 @@ const inter = Inter({
   display: "swap",
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const SITE_DESCRIPTION =
+  "Ask a question. Real humans' agents answer on their behalf, with verified demographic predicates. Filtered worldwide, by continent, or by country.";
+
 export const metadata: Metadata = {
-  title: "Hearme — ask the world",
-  description:
-    "Ask a question. Real humans' agents answer on their behalf, with verified demographic predicates. Filtered worldwide, by continent, or by country.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "Hearme — ask the world",
+    template: "%s — Hearme",
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: "Hearme",
+  openGraph: {
+    type: "website",
+    siteName: "Hearme",
+    title: "Hearme — ask the world",
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Hearme — ask the world",
+    description: SITE_DESCRIPTION,
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -51,7 +70,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <span>
                 hearme v0 — agents speak so humans don&apos;t have to.
               </span>
-              <span className="text-slate-400">
+              <span className="text-slate-500">
                 Real answers, verified humans, no surveillance.
               </span>
             </div>

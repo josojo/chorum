@@ -65,15 +65,15 @@ export function CountryBreakdown({
                   {countryFlag(e.code)}
                 </span>
               ) : null}
-              <span className="w-32 shrink-0 truncate font-medium text-slate-800">
+              <span className="w-20 shrink-0 truncate font-medium text-slate-800 sm:w-32">
                 {labelFor(e.code, variant)}
               </span>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <YesNoBar yes={e.yes} no={e.no} widthPct={widthPct} />
               </div>
-              <span className="w-40 shrink-0 text-right text-xs text-slate-700">
+              <span className="w-24 shrink-0 text-right text-xs text-slate-700 sm:w-40">
                 <YesNoCount yes={e.yes} no={e.no} />
-                <span className="ml-1.5 text-slate-400 tabular-nums">
+                <span className="ml-1.5 hidden text-slate-500 tabular-nums sm:inline">
                   {sharePct.toFixed(0)}%
                 </span>
               </span>
