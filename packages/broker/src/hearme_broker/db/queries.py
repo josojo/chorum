@@ -449,3 +449,30 @@ async def increment_aggregate(
         question_id,
         json.dumps(by_predicate),
     )
+
+
+# ----- platform stats ----------------------------------------------------
+
+
+async def platform_stats(conn: asyncpg.Connection) -> dict[str, Any]:
+    """Privacy-safe site-wide counts for the public stats page.
+
+    Only the broker role can read ``registrations`` and ``envelopes`` (the web
+    role is revoked from both — see db/init/02-roles.sql), so the broker is the
+    single place these aggregates can be computed. We return COUNTs only; no
+    nullifiers, agent keys, or per-row data ever leave this boundary.
+
+    ``registered_agents`` counts active (non-revoked) registrations.
+    ``respondents`` is the number of distinct verified humans who have answered.
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT
+          (SELECT COUNT(*) FROM registrations WHERE revoked_at IS NULL) AS registered_agents,
+          (SELECT COUNT(*) FROM questions)                              AS questions,
+          (SELECT COUNT(*) FROM envelopes)                             AS total_answers,
+          (SELECT COUNT(DISTINCT unique_identifier) FROM envelopes)    AS respondents,
+          (SELECT COUNT(DISTINCT question_id) FROM envelopes)          AS answered_questions
+        """
+    )
+    return dict(row)

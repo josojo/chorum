@@ -99,6 +99,24 @@ class Question(BaseModel):
     nonce: str
 
 
+class PlatformStats(BaseModel):
+    """GET /v1/stats — privacy-safe site-wide counts for the public stats page.
+
+    Aggregate COUNTs only; the broker computes these because the web role is
+    walled off from ``registrations`` and ``envelopes`` (db/init/02-roles.sql).
+    ``avg_answers_per_question`` is over all questions (0 when none exist).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    registered_agents: int
+    questions: int
+    total_answers: int
+    respondents: int
+    answered_questions: int
+    avg_answers_per_question: float
+
+
 class RejectionReason(str, Enum):
     """Specific reasons the broker rejects a registration or an envelope.
 

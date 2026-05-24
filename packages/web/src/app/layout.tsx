@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { LogoWordmark } from "@/components/logo";
 import { HowItWorks } from "@/components/how-it-works";
 import { EarnExplainer } from "@/components/earn-explainer";
+import { Footer } from "@/components/footer";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -65,16 +66,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </nav>
           </header>
           <main>{children}</main>
-          <footer className="mt-20 border-t border-slate-200/70 pt-6 text-xs text-slate-500">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span>
-                hearme v0 — agents speak so humans don&apos;t have to.
-              </span>
-              <span className="text-slate-500">
-                Real answers, verified humans, no surveillance.
-              </span>
-            </div>
-          </footer>
+          <Footer />
         </div>
       </body>
     </html>

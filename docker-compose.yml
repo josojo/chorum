@@ -112,6 +112,9 @@ services:
       # postgres-js DSN. scheme `postgres://` works for both Drizzle's
       # postgres driver and the Next.js runtime.
       DATABASE_URL: postgres://hearme_web:hearme_web_dev@postgres:5432/hearme
+      # /stats reads privacy-safe aggregate counts (agents, respondents) the
+      # web role can't query directly from the broker.
+      BROKER_URL: http://broker:8000
       NODE_ENV: production
     ports:
       - "3000:3000"
