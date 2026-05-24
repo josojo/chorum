@@ -74,6 +74,13 @@ class Settings(BaseSettings):
         description="base64 of the 32-byte Ed25519 seed for the broker signing key.",
     )
 
+    # DANGER — testing only. When True, the broker mounts POST /v1/dev/register,
+    # which mints a DelegationToken for a SYNTHETIC identity WITHOUT any Self
+    # proof or bridge verification. This defeats proof-of-personhood / Sybil
+    # resistance entirely; it exists solely to exercise the answer→aggregate
+    # pipeline end-to-end without a phone. MUST stay False in production.
+    dev_insecure_register: bool = False
+
 
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]

@@ -88,9 +88,16 @@ services:
       SELF_SCOPE: hearme-v1
       SELF_ENDPOINT: http://self-bridge:8787/callback
       SELF_ENDPOINT_TYPE: staging_https
-      # mockPassport=1 accepts mock-passport proofs (staging/Celo Sepolia). Set 0
+      # mockPassport=1 accepts mock-passport proofs (staging/Celo testnet). Set 0
       # (mainnet) in production.
       SELF_MOCK_PASSPORT: "1"
+      # The Self app only offers/accepts a MOCK passport when the request is in
+      # dev mode. Defaults to SELF_MOCK_PASSPORT when unset; set explicitly here.
+      SELF_DEV_MODE: "1"
+      # If a mock-passport scan fails on a network/root mismatch, pin the testnet
+      # chain the deployed @selfxyz/core checks: Celo Alfajores 44787 or Celo
+      # Sepolia 11142220. Leave unset to use the SDK default for the endpointType.
+      # SELF_CHAIN_ID: "44787"
       SELF_AGE_THRESHOLDS: "18,25,35,50,65"
       # Sybil hardening (registration-only on-chain check). Leave empty in dev;
       # set the Celo RPC URL + registry address to enable. See SELF_MIGRATION.md.

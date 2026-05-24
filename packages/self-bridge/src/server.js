@@ -45,6 +45,21 @@ const SCOPE = process.env.SELF_SCOPE || "hearme-v1";
 const ENDPOINT = process.env.SELF_ENDPOINT || "";
 const ENDPOINT_TYPE = process.env.SELF_ENDPOINT_TYPE || "staging_https";
 const MOCK_PASSPORT = (process.env.SELF_MOCK_PASSPORT || "1") === "1";
+// The Self app only offers/accepts a MOCK passport when the request is in dev
+// mode. SelfAppBuilder defaults devMode:false (production), which is why a
+// mock-passport scan against a staging bridge silently fails. Default it to the
+// mock-passport setting so SELF_MOCK_PASSPORT=1 ⇒ devMode:true. Override with
+// SELF_DEV_MODE if needed.
+const DEV_MODE =
+  (process.env.SELF_DEV_MODE ?? (MOCK_PASSPORT ? "1" : "0")) === "1";
+// Optional chainID override. SelfAppBuilder otherwise picks 42220 (Celo
+// mainnet) for endpointType=staging_https — wrong for a mock passport, whose
+// commitment lives on Self's staging/testnet registry. If a mock scan fails on
+// a network/root mismatch, set SELF_CHAIN_ID to the testnet the deployed
+// @selfxyz/core checks (Celo Alfajores 44787 or Celo Sepolia 11142220).
+const CHAIN_ID = process.env.SELF_CHAIN_ID
+  ? parseInt(process.env.SELF_CHAIN_ID, 10)
+  : undefined;
 const PORT = parseInt(process.env.PORT || "8787", 10);
 
 // requestId -> { agentKey, thresholds:[int], results: Map<normUserId,bundle> }
@@ -148,6 +163,8 @@ app.get("/healthz", (_req, res) => {
     ok: true,
     scope: SCOPE,
     mockPassport: MOCK_PASSPORT,
+    devMode: DEV_MODE,
+    chainID: CHAIN_ID ?? null,
     // The on-chain root check is built into @selfxyz/core's verify() (always on).
     registryCheck: true,
     endpointOk: endpointProblem(ENDPOINT) === null,
@@ -183,6 +200,11 @@ app.post("/requests", async (req, res) => {
         userDefinedData,
         disclosures: disclosuresForThreshold(threshold),
         version: 2,
+        // devMode must be true for the Self app to accept a mock passport.
+        devMode: DEV_MODE,
+        // Only override chainID when explicitly configured; otherwise let the
+        // SDK default for the chosen endpointType stand.
+        ...(CHAIN_ID ? { chainID: CHAIN_ID } : {}),
       }).build();
       return getUniversalLink(selfApp);
     });
@@ -276,7 +298,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   app.listen(PORT, () => {
     // eslint-disable-next-line no-console
     console.log(
-      `[self-bridge] listening on :${PORT} scope=${SCOPE} mockPassport=${MOCK_PASSPORT} (on-chain root check via @selfxyz/core)`,
+      `[self-bridge] listening on :${PORT} scope=${SCOPE} mockPassport=${MOCK_PASSPORT} devMode=${DEV_MODE} chainID=${CHAIN_ID ?? "(sdk default)"} (on-chain root check via @selfxyz/core)`,
     );
     const epErr = endpointProblem(ENDPOINT);
     if (epErr) {

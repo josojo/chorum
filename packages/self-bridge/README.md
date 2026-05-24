@@ -92,6 +92,8 @@ session credential, and nothing here is re-checked per answer.
 | `SELF_ENDPOINT` | — | **required, no default.** Public URL of this bridge's `/callback`; must match the SelfApp `endpoint`. **Must not be `localhost`/`127.0.0.1`** — `SelfAppBuilder` rejects those; use an ngrok https URL in dev. `/requests` returns a clear error (and startup logs a warning) if it is missing or localhost. |
 | `SELF_ENDPOINT_TYPE` | `staging_https` | `staging_https` (testnet) or `https` (production) |
 | `SELF_MOCK_PASSPORT` | `1` | `1` = staging: accepts **mock-passport** proofs; `verify()` checks the root against the Alfajores testnet + staging hub. `0` = mainnet: requires a real passport; checks against the mainnet hub. (The Celo RPC URL and registry address are managed by `@selfxyz/core` itself — there is no env knob for them.) |
+| `SELF_DEV_MODE` | = `SELF_MOCK_PASSPORT` | Sets the SelfApp `devMode`. **Required `true` for the Self app to accept a MOCK passport** — `SelfAppBuilder` defaults it `false` (production), which silently makes a mock scan fail. Defaults to the mock-passport setting; override to force. |
+| `SELF_CHAIN_ID` | _(sdk default)_ | Optional `chainID` override for the SelfApp. With `endpointType=staging_https` the SDK defaults to `42220` (Celo **mainnet**), which is wrong for a mock passport. If a mock scan fails on a network/root mismatch, pin the testnet the deployed `@selfxyz/core` checks: Celo Alfajores `44787` or Celo Sepolia `11142220`. |
 | `SELF_ALLOWED_IDS` | `passport` | accepted attestation types (e.g. `passport`, `eu_id_card`) |
 | `SELF_AGE_THRESHOLDS` | `18,25,35,50,65` | the `older-than` ladder for the `standard` profile |
 | `PORT` | `8787` | HTTP port |
@@ -110,7 +112,16 @@ npm test             # node --test (network-free smoke tests)
 
 ## Testing without a real passport
 
-Set `SELF_MOCK_PASSPORT=1` (staging). In the Self app, create a **mock passport**
+Set `SELF_MOCK_PASSPORT=1` (staging) **and** `SELF_DEV_MODE=1` (so the QR is built
+with `devMode:true` — without it the Self app treats the request as production and
+will not offer/accept a mock passport). In the Self app, create a **mock passport**
 (tap the passport button 5×) and scan the QR from `/requests`. Mock proofs verify
 **only** in staging — flip `SELF_MOCK_PASSPORT=0` (mainnet) and the same proof is
 rejected, which is the proof that real SNARK verification is in force.
+
+If the scan still fails on a network/root mismatch, the SelfApp `chainID` is likely
+pointing at mainnet (`42220`) while the mock identity lives on a testnet — set
+`SELF_CHAIN_ID` to the testnet the deployed `@selfxyz/core` checks (Alfajores
+`44787` or Sepolia `11142220`). Confirm what the bridge is emitting via
+`GET /healthz` (now reports `devMode` and `chainID`) or by decoding the `selfApp`
+param in a `/requests` link.
