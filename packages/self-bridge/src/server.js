@@ -37,14 +37,14 @@ import {
   mapDisclosed,
   profileThresholds,
 } from "./disclosure.js";
-import { confirmRegistry } from "./registry.js";
 
 const SCOPE = process.env.SELF_SCOPE || "hearme-v1";
-const ENDPOINT = process.env.SELF_ENDPOINT || "http://localhost:8787/callback";
+// No default: SelfAppBuilder rejects localhost/127.0.0.1, and the Self app POSTs
+// proofs straight to this URL, so it must be publicly reachable (an ngrok https
+// URL in dev). Validated in /requests and at startup via endpointProblem().
+const ENDPOINT = process.env.SELF_ENDPOINT || "";
 const ENDPOINT_TYPE = process.env.SELF_ENDPOINT_TYPE || "staging_https";
 const MOCK_PASSPORT = (process.env.SELF_MOCK_PASSPORT || "1") === "1";
-const CELO_RPC_URL = process.env.SELF_CELO_RPC_URL || "";
-const REGISTRY_ADDRESS = process.env.SELF_REGISTRY_ADDRESS || "";
 const PORT = parseInt(process.env.PORT || "8787", 10);
 
 // requestId -> { agentKey, thresholds:[int], results: Map<normUserId,bundle> }
@@ -65,19 +65,23 @@ function normUserId(h) {
   }
 }
 
-// Permissive verifier config: minimumAge 18 is the gate; each proof attests its
-// own (higher) threshold, read back from discloseOutput.olderThan. excluded /
-// ofac are off in v0.
+// Verifier config. We deliberately DO NOT set `minimumAge`: @selfxyz/core checks
+// the config's minimumAge for EXACT equality against each proof's disclosed
+// threshold (verify() throws ConfigMismatchError otherwise), so one fixed value
+// cannot accept the [18,25,35,50,65] ladder — it would reject every proof except
+// the 18 one. The age bound is still enforced inside each proof's circuit (the
+// frontend requested the threshold); the bridge reads the satisfied threshold
+// back from discloseOutput.minimumAge. `excludedCountries: []` is required shape
+// (the SDK calls excludedCountries.every(...)); ofac is off in v0.
 function makeVerifier() {
   const configStore = new DefaultConfigStore({
-    minimumAge: 18,
     excludedCountries: [],
     ofac: false,
   });
   return new SelfBackendVerifier(
     SCOPE,
     ENDPOINT,
-    MOCK_PASSPORT, // testnet/staging (Celo Sepolia) vs mainnet hub
+    MOCK_PASSPORT, // true = Celo testnet (alfajores) + staging hub; false = mainnet hub
     AllIds,
     configStore,
     "hex",
@@ -94,36 +98,44 @@ const b64ToHex = (b64) => "0x" + Buffer.from(b64, "base64").toString("hex");
 const hexToB64 = (hex) =>
   Buffer.from(hex.startsWith("0x") ? hex.slice(2) : hex, "hex").toString("base64");
 
-// CONFIRM DURING IMPL: where the identity-registry Merkle root sits in the
-// verified output / publicSignals. Isolated here so it's the only thing to fix.
-function extractRoot(result, publicSignals) {
-  return (
-    result?.discloseOutput?.merkleRoot ??
-    result?.merkleRoot ??
-    (Array.isArray(publicSignals) ? publicSignals[0] : null)
-  );
+// SelfAppBuilder rejects localhost/127.0.0.1 and requires a value: the Self app
+// POSTs the proof straight to this endpoint, so it must be publicly reachable
+// (an ngrok https URL in dev). Surface the misconfig early and clearly instead
+// of as a generic 500 from deep inside the builder.
+function endpointProblem(ep) {
+  if (!ep) return "SELF_ENDPOINT is not set";
+  if (ep.includes("localhost") || ep.includes("127.0.0.1")) {
+    return `SELF_ENDPOINT must be publicly reachable, not localhost (got "${ep}") — use an ngrok/https URL`;
+  }
+  return null;
 }
 
 async function verifyOne({ attestationId, proof, publicSignals, userContextData }) {
+  // The on-chain registry/root check is done by @selfxyz/core itself: verify()
+  // reads the IdentityVerificationHub on Celo (mainnet forno when MOCK_PASSPORT
+  // is false; alfajores testnet + staging hub when true), resolves the per-
+  // attestation Registry, and calls checkIdentityCommitmentRoot(root) where
+  // `root` is publicSignals[merkleRootIndex]. If the proof's Merkle root is not
+  // live on-chain it throws (InvalidRoot / "Registry contract not found"). So a
+  // verify() that returns has already confirmed the root against Self's real
+  // registry — that IS the Sybil-hardening anchor (ARCHITECTURE.md §5); the
+  // bridge needs no extra eth_call. (Requires outbound access to the Celo RPC.)
   const result = await verifier().verify(
     attestationId,
     proof,
     publicSignals,
     userContextData,
   );
-  const disclosed = mapDisclosed(result?.discloseOutput);
+  const verified = result?.isValidDetails?.isValid === true;
   const boundHex = result?.userData?.userDefinedData;
-  const reg = await confirmRegistry({
-    rpcUrl: CELO_RPC_URL,
-    registryAddress: REGISTRY_ADDRESS,
-    root: extractRoot(result, publicSignals),
-  });
   return {
-    verified: result?.isValidDetails?.isValid === true,
+    verified,
     uniqueIdentifier: result?.discloseOutput?.nullifier ?? null,
-    disclosed,
+    disclosed: mapDisclosed(result?.discloseOutput),
     boundAgentKey: boundHex ? hexToB64(boundHex) : null,
-    registryConfirmed: reg.confirmed,
+    // verify() throws unless the root is live on-chain, so a verified proof is
+    // necessarily registry-confirmed.
+    registryConfirmed: verified,
     userIdentifier: result?.userData?.userIdentifier ?? null,
   };
 }
@@ -136,7 +148,9 @@ app.get("/healthz", (_req, res) => {
     ok: true,
     scope: SCOPE,
     mockPassport: MOCK_PASSPORT,
-    registryCheck: Boolean(CELO_RPC_URL && REGISTRY_ADDRESS),
+    // The on-chain root check is built into @selfxyz/core's verify() (always on).
+    registryCheck: true,
+    endpointOk: endpointProblem(ENDPOINT) === null,
   });
 });
 
@@ -146,6 +160,8 @@ app.post("/requests", async (req, res) => {
     if (!agentKey || typeof agentKey !== "string") {
       return res.status(400).json({ error: "agentKey (string) is required" });
     }
+    const epErr = endpointProblem(ENDPOINT);
+    if (epErr) return res.status(500).json({ error: epErr });
     const profile = req.body?.profile || DEFAULT_PROFILE;
     const thresholds = profileThresholds(profile);
     const requestId = cryptoRandomId();
@@ -260,10 +276,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   app.listen(PORT, () => {
     // eslint-disable-next-line no-console
     console.log(
-      `[self-bridge] listening on :${PORT} scope=${SCOPE} mockPassport=${MOCK_PASSPORT} registryCheck=${Boolean(
-        CELO_RPC_URL && REGISTRY_ADDRESS,
-      )}`,
+      `[self-bridge] listening on :${PORT} scope=${SCOPE} mockPassport=${MOCK_PASSPORT} (on-chain root check via @selfxyz/core)`,
     );
+    const epErr = endpointProblem(ENDPOINT);
+    if (epErr) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[self-bridge] WARNING: ${epErr} — /requests will fail until SELF_ENDPOINT is fixed`,
+      );
+    }
   });
 }
 

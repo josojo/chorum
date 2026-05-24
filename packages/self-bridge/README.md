@@ -18,14 +18,18 @@ cryptographic check to this service while keeping all the structural/binding
 checks (agent-key bind, scope, nullifier↔unique_identifier, predicate
 re-derivation) in Python.
 
-The SNARK check is **off-chain**: `SelfBackendVerifier` runs entirely on this
-backend. To anchor that off-chain proof to the *real* Self registry (where
-one-passport→one-identity is enforced), `/verify` **also** does a **one-time
-on-chain read of Self's Celo Identity Registry at registration** — confirming the
-proof's Merkle root is current/known and the identity is registered. This is the
-only chain access in the system, and it never happens per answer. Trust
-assumption: the proof is only as trustworthy as this bridge's pinned verification
-keys plus that registry-root confirmation.
+The SNARK check is **off-chain**, but `SelfBackendVerifier.verify()` **also does a
+one-time on-chain read itself**: it queries Self's `IdentityVerificationHub` on
+Celo (mainnet `forno` when `SELF_MOCK_PASSPORT=0`; Alfajores testnet + staging hub
+when `1`), resolves the per-attestation `Registry`, and calls
+`checkIdentityCommitmentRoot(root)`. If the proof's Merkle root is not live
+on-chain, `verify()` throws. So a successful verify anchors the off-chain proof to
+the *real* registry (where one-passport→one-identity is enforced) — the bridge
+needs no extra `eth_call`, and reports `registryConfirmed: true` whenever the
+proof verifies. This on-chain read happens only at registration, never per answer.
+The bridge therefore needs outbound access to the Celo RPC. Trust assumption: the
+proof is only as trustworthy as the SDK's pinned verification keys plus that
+registry-root confirmation.
 
 ## Transport model (differs from zkPassport)
 
@@ -72,22 +76,22 @@ puts in the `EnrollmentBundle.self_proofs[]` it sends to the broker's
 → `{ verified, uniqueIdentifier, disclosed, boundAgentKey, registryConfirmed }`.
 
 A tampered `userContextData` (agent-key bind), wrong scope, expired proof
-(±1 day), or invalid proof fails here. **`registryConfirmed`** is the on-chain
-result: `true` only if the proof's Merkle root is a current/known root in Self's
-Celo Identity Registry and the identity is registered (requires `SELF_CELO_RPC_URL`;
-the broker rejects registration unless it is `true`). This `/verify` output is
-consumed **once at registration** — the broker then mints the session credential,
-and nothing here is re-checked per answer.
+(±1 day), an invalid proof, **or a Merkle root that isn't live in Self's Celo
+Identity Registry** all fail here — `@selfxyz/core`'s `verify()` does the on-chain
+root check itself and throws otherwise. **`registryConfirmed`** therefore mirrors
+`verified`: a proof that verifies has necessarily been confirmed against the real
+on-chain registry. The broker rejects registration unless it is `true`. This
+`/verify` output is consumed **once at registration** — the broker then mints the
+session credential, and nothing here is re-checked per answer.
 
 ## Config (env)
 
 | Var | Default | Meaning |
 |-----|---------|---------|
 | `SELF_SCOPE` | `hearme-v1` | application scope passed to `SelfAppBuilder` / `SelfBackendVerifier`; **part of the nullifier** (≤31 ASCII) |
-| `SELF_ENDPOINT` | — | public URL of this bridge's `/callback`; must match the SelfApp `endpoint` |
+| `SELF_ENDPOINT` | — | **required, no default.** Public URL of this bridge's `/callback`; must match the SelfApp `endpoint`. **Must not be `localhost`/`127.0.0.1`** — `SelfAppBuilder` rejects those; use an ngrok https URL in dev. `/requests` returns a clear error (and startup logs a warning) if it is missing or localhost. |
 | `SELF_ENDPOINT_TYPE` | `staging_https` | `staging_https` (testnet) or `https` (production) |
-| `SELF_MOCK_PASSPORT` | `1` | `1` = staging/Celo Sepolia, accepts **mock-passport** proofs (testing); `0` = mainnet, requires a real passport |
-| `SELF_CELO_RPC_URL` | — | Celo RPC endpoint for the **registration-time** on-chain Identity-Registry / Merkle-root check (Sepolia when `SELF_MOCK_PASSPORT=1`, mainnet when `0`). If unset, `registryConfirmed` is `false` and the broker rejects registration in production. Used **only** at `/verify` (registration), never per answer. |
+| `SELF_MOCK_PASSPORT` | `1` | `1` = staging: accepts **mock-passport** proofs; `verify()` checks the root against the Alfajores testnet + staging hub. `0` = mainnet: requires a real passport; checks against the mainnet hub. (The Celo RPC URL and registry address are managed by `@selfxyz/core` itself — there is no env knob for them.) |
 | `SELF_ALLOWED_IDS` | `passport` | accepted attestation types (e.g. `passport`, `eu_id_card`) |
 | `SELF_AGE_THRESHOLDS` | `18,25,35,50,65` | the `older-than` ladder for the `standard` profile |
 | `PORT` | `8787` | HTTP port |
@@ -100,8 +104,9 @@ npm start            # node src/server.js
 npm test             # node --test (network-free smoke tests)
 ```
 
-> Pin `@selfxyz/core` (experimental SDK) and confirm the supported Node version
-> during implementation.
+> Verified against `@selfxyz/core@1.0.8` + `@selfxyz/qrcode@1.0.24`. Note
+> `@selfxyz/qrcode` declares `engines.node ">=22 <23"` — run on Node 22 (it loads
+> on 20 with an `EBADENGINE` warning, but that is unsupported).
 
 ## Testing without a real passport
 
