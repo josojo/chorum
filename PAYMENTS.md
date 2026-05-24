@@ -22,12 +22,15 @@ dispatched to agents until the asker has deposited a stake into an on-chain
 state machine off-chain, the broker periodically **reserves** the corresponding
 amounts on-chain by publishing a single Merkle root of `address → cumulative
 amount owed`. Each agent then **claims** its balance directly from the contract
-in its own transaction. The broker can move asker deposits into agent buckets
-but can **never** move them to itself, and it never takes custody. Crucially,
+in its own transaction. The broker never takes *direct* custody — there is no
+code path that transfers a pool to the broker. The remaining trust is that the
+broker **allocates honestly** (names real earners, not its own addresses) rather
+than draining a pool to itself via the Merkle leaves; reducing that trust is the
+subject of §12.2 (verifiable settlement). Crucially,
 **neither side depends on broker liveness to get its money**: after a settlement
 grace past the question's end, the asker can unilaterally reclaim any unreserved
 remainder, and agents can claim from the published Merkle data even if the broker
-disappears forever (§12). Funds can never be stuck.
+disappears forever (§12.1). Funds can never be stuck.
 
 ---
 
@@ -76,7 +79,7 @@ each is justified against the existing architecture.
 
 | Fork | Choice | Why |
 |---|---|---|
-| **Custody** | **In-contract allocation** — broker never holds funds | Matches §1.4's "broker is trusted only to publish aggregates." `reserve` can only move `escrow[qid] → claimable[agent]`; there is no code path `→ broker`. A rogue broker can grief (withhold), not steal. |
+| **Custody** | **In-contract allocation** — broker never *directly* holds funds | `settle` can only move `escrow[qid] → claimable[agent]`; there is no code path `→ broker`. **But this alone does not stop theft:** the broker chooses the recipient addresses in the Merkle leaves, so it can name *itself* as the "agent" and drain a funded pool (§12.2). Direct custody is removed; honest *allocation* is still trusted, and §12.2 is how that trust is reduced. |
 | **Token** | **Test ERC-20 stablecoin** (mock USDC, 6 decimals) on Base Sepolia | Matches the $-denominated stake model in VISION ("fund a $1,000 stake → fraction-of-a-cent payouts"). Native ETH would force ETH-denominated math and re-pricing of §14 constants. Cost: one `approve()` before funding. |
 | **Reservation** | **Cumulative Merkle distributor, one root per epoch** | Gas-cheap (one `setRoot` tx amortized over all agents) **and** privacy-preserving (the asker→agent payment graph stays off-chain). The simpler `reserve(agent, amount)` ledger would publish exactly the bipartite "who answered what" graph Hearme exists to keep private. |
 
@@ -84,17 +87,20 @@ each is justified against the existing architecture.
 
 - **Asker** trusts the contract, not the broker: their stake is either reserved
   for real responders or reclaimable by them. They can recover the unreserved
-  remainder *without the broker* once the settlement grace elapses (§12), so a
+  remainder *without the broker* once the settlement grace elapses (§12.1), so a
   dead broker cannot strand their money.
-- **Agent** trusts the broker only to *allocate honestly within the settlement
-  grace*. The broker cannot claw a balance an agent already withdrew, cannot pay
-  it to itself, and — because each settle publishes the leaves on-chain — cannot
-  prevent an agent from claiming an amount already in a published root, even if
-  the broker later disappears (§12). The residual is *withholding during the
-  grace* (broker never allocates what an agent earned); see §11/§12.
+- **Agent** trusts the broker to *allocate honestly* — i.e. to put the agent's
+  real earnings into a published root and **not** route them to the broker's own
+  addresses. The broker cannot claw a balance an agent already withdrew, and —
+  because each settle publishes the leaves on-chain — cannot prevent an agent
+  from claiming an amount already in a published root even if it later disappears
+  (§12.1). The open residual is the **allocation** itself: a dishonest broker can
+  pay fabricated recipients (§12.2). Reducing that trust is what §12.2 is about.
 - **Broker** is trusted exactly as today (honest aggregation, §1.4) plus
-  honest allocation. It holds an **operator key** (EVM secp256k1) that is the
-  contract's `broker` role; this is a *new* key, distinct from the Ed25519
+  **honest allocation** — the largest remaining trust assumption, addressed by
+  the verifiable-settlement ladder in §12.2. It holds an **operator key** (EVM
+  secp256k1) that is the contract's `broker` role; this is a *new* key, distinct
+  from the Ed25519
   DelegationToken signing key (§13 broker-signing-key open question applies to
   it too).
 
@@ -209,7 +215,7 @@ contract HearmeEscrow {
     // global distributor and publish the new cumulative root. `leaves` carries
     // the epoch's (address,cumulative) set as calldata so ANYONE can rebuild
     // their own proof from chain data alone — agents can claim even if the
-    // broker is gone forever (§12). `amount` is the sum of NEW allocations
+    // broker is gone forever (§12.1). `amount` is the sum of NEW allocations
     // attributable to `qid` this settle — for per-question refund math + transparency.
     function settle(bytes32 qid, uint256 amount, bytes32 newRoot, bytes calldata leaves)
         external onlyBroker
@@ -304,12 +310,12 @@ Per epoch the broker:
    contributed new allocations this epoch (each debits its own pool for refund
    accuracy), the last of which carries the final `newRoot`. The `leaves`
    calldata publishes the epoch's `(address, cumulative)` set on-chain so proofs
-   are reconstructible without the broker (§12). *(Alternatively a single
+   are reconstructible without the broker (§12.1). *(Alternatively a single
    `settleBatch(qids[], amounts[], newRoot, leaves)` to keep it one transaction;
    see §16.)*
 5. Persists the epoch, root, and per-leaf proofs so agents can fetch their proof
    from `GET /v1/payouts` (a convenience; the same proofs are derivable from the
-   on-chain `Settled.leaves`, so the API is never load-bearing — §12).
+   on-chain `Settled.leaves`, so the API is never load-bearing — §12.1).
 
 Because only `released` bonuses are ever reserved, the on-chain layer inherits
 §14's honesty guarantee for free: a confabulated answer whose bonus is clawed
@@ -358,7 +364,7 @@ The last two lines are the **trust-minimizing backstop**: the happy path lets th
 asker reclaim leftover stake the moment the broker marks the question done, but if
 the broker never does — or never comes back at all — the asker can reclaim the
 unreserved remainder unilaterally once the settlement grace elapses, and agents
-can still claim their already-settled balances from on-chain data (§12).
+can still claim their already-settled balances from on-chain data (§12.1).
 
 Two gates are new and important:
 
@@ -493,13 +499,13 @@ web client.
 - **Settler** (new periodic task): the §5 loop — read unreserved released
   entitlements, update `agent_cumulative_owed`, build the root, call
   `settle(qid, amount, root, leaves)` with the operator key (publishing the
-  epoch's leaves on-chain so claims survive broker death — §12), persist
+  epoch's leaves on-chain so claims survive broker death — §12.1), persist
   `payout_epochs` + `payout_reservations`.
 - **`GET /v1/payouts/{payout_address}`** (new, read-only **convenience**):
   returns the agent's current `cumulative` and Merkle `proof` for the latest
   epoch so the skill can build `claim` without re-deriving the tree. **Not
   load-bearing** — the same proof is reconstructible from the on-chain
-  `Settled.leaves`, so a down broker never blocks a claim (§12). Leaks nothing
+  `Settled.leaves`, so a down broker never blocks a claim (§12.1). Leaks nothing
   the chain doesn't already expose.
 - **New config** (env, prefix `HEARME_BROKER_`): `BASE_RPC_URL`,
   `ESCROW_ADDRESS`, `ESCROW_TOKEN_ADDRESS`, `CHAIN_ID=84532`,
@@ -532,7 +538,7 @@ and must **not** spill onto a public ledger.
   DB. This is the whole reason for choosing the Merkle distributor over a direct
   `reserve(agent, amount)` ledger.
 - **Liveness↔privacy tradeoff (publishing leaves).** Making claims survive a dead
-  broker (§12) requires the `(address, cumulative)` leaves to be available
+  broker (§12.1) requires the `(address, cumulative)` leaves to be available
   *without* the broker, so each `settle` publishes them as calldata. The cost is
   that the chain now exposes the **set of earner addresses and each one's running
   total** (not just those who have claimed), per epoch. It still does **not** tie
@@ -573,8 +579,8 @@ now lets us prove the settlement loop before adding fiat plumbing.
 
 | Threat | Mitigation |
 |---|---|
-| **Broker steals asker funds** | Impossible by construction — no code path moves pool funds to the broker. `settle` only debits a pool into the distributor; `claim` only pays the proven agent; `refund` only pays the original asker. |
-| **Broker withholds (never settles) / dies forever** | Funds are never *stuck* (§12): after `closesAt + SETTLEMENT_GRACE` the asker reclaims the unreserved remainder with no broker involvement, and agents claim any already-settled balance from on-chain leaves. The irreducible residual is narrower — answers earned *but not yet settled* when the broker dies (the broker is the only party that knows the correct split). Bounded by the grace window; further mitigations: public audit of `Settled` vs. aggregates, a broker bond (§16). |
+| **Broker steals asker funds by self-dealing** | **The main residual trust.** No code path moves a pool *directly* to the broker, but the broker picks the leaf recipients, so it can name its own addresses as "agents" and drain a funded pool (bounded by the stake and the pre-refund window). Direct custody is removed; honest allocation is still trusted. Reduced — not yet eliminated — by §12.2 (anchored evidence + fraud/zk proofs + broker bond) and bounded today by per-question stake caps, the asker refund, public leaves (detectability), and β≈0. |
+| **Broker withholds (never settles) / dies forever** | Funds are never *stuck* (§12.1): after `closesAt + SETTLEMENT_GRACE` the asker reclaims the unreserved remainder with no broker involvement, and agents claim any already-settled balance from on-chain leaves. The irreducible residual is narrower — answers earned *but not yet settled* when the broker dies (the broker is the only party that knows the correct split). Bounded by the grace window; further mitigations: public audit of `Settled` vs. aggregates, a broker bond (§16). |
 | **Agent double-claims** | Structurally impossible: `withdrawn` is monotonic, `claim` pays `cumulative − withdrawn` and reverts on a stale/replayed proof. |
 | **Stale-root claim after a clawback** | `β` that is clawed is *never reserved*, so it never enters a root. A root only ever increases an agent's cumulative; the system never needs to *reduce* an on-chain balance, so there is no clawback-after-reserve race. (Clawbacks happen entirely in the off-chain escrow window, before reservation.) |
 | **Forged "funded" flag by web client** | Only the broker (confirming the on-chain event) flips `funding_state='funded'`; web cannot. DB role grants enforce it. |
@@ -586,12 +592,21 @@ now lets us prove the settlement loop before adding fiat plumbing.
 
 ---
 
-## 12. Liveness: funds can never be stuck (no broker dependency)
+## 12. Trust-minimizing the broker
 
-The single biggest way to *reduce broker trust* is to ensure that **every party
-can get the money it is owed without the broker's cooperation**, so a broker that
-goes down — temporarily or forever — can delay payouts but never strand them.
-Two escape hatches, one per side, achieve this:
+Two distinct trust axes, addressed separately:
+
+- **§12.1 Liveness** — can a *down* broker strand funds? (No.)
+- **§12.2 Allocation correctness** — can a *dishonest* broker pay the wrong
+  people (including itself)? (The main residual; here is the ladder that shrinks
+  it.)
+
+### 12.1 Liveness: funds can never be stuck (no broker dependency)
+
+The first way to *reduce broker trust* is to ensure that **every party can get
+the money it is owed without the broker's cooperation**, so a broker that goes
+down — temporarily or forever — can delay payouts but never strand them. Two
+escape hatches, one per side, achieve this:
 
 **1. Asker escape hatch — unilateral refund after the grace.** Each pool stores
 the question's `closesAt` (asker-supplied, broker-validated before the question
@@ -637,10 +652,95 @@ operator's honesty *while it is alive*" assumption Hearme already makes for
 aggregation (§1.4). Shrinking it further — e.g. a broker bond slashable for
 provable non-settlement, or a fallback settler — is listed in §16.
 
-**Net effect on the trust model:** the broker is demoted from *custodian and
-gatekeeper of withdrawals* to *an allocator that must act within a bounded window
-or forfeit its say*. Asker principal and already-earned agent balances are
-protected by the contract, not by the broker staying up.
+**Net effect on liveness:** the broker is demoted from *custodian and gatekeeper
+of withdrawals* to *an allocator that must act within a bounded window or forfeit
+its say*. Asker principal and already-earned agent balances are protected by the
+contract, not by the broker staying up.
+
+### 12.2 Allocation correctness: who can the broker pay?
+
+§12.1 stops a *dead* broker from stranding funds. It does **not** stop a *live,
+dishonest* broker from paying the **wrong** people. This is the largest residual
+trust in the design and deserves to be named precisely.
+
+**The attack.** `settle(qid, amount, root, leaves)` checks only that
+`amount ≤ pool.funded − pool.settled`. It does **not** check *who* the leaves
+pay. So the broker can publish a root whose leaves credit **its own addresses**,
+move a funded question's stake into the distributor, and claim it. "In-contract
+allocation" removed *direct* custody (no `transfer` to the broker), but the
+broker still **chooses the recipients**, so it can self-deal up to a question's
+stake within the pre-refund window. We must constrain *who counts as a payee*.
+
+**What "correct" means.** A payout leaf `(address, amount)` is legitimate iff:
+
+1. `address` is the `payout_address` of a **really-registered human** (one Self
+   nullifier, §1.4) — not a broker-fabricated identity;
+2. that human submitted **accepted answers** (valid `agent_signature` over real
+   envelopes that passed the broker's verify pipeline, §5);
+3. `amount` equals the **§14 schedule** for those answers — `baseline` per
+   accepted envelope plus only the **released** `bonus`.
+
+**Why a zk proof alone is necessary but not sufficient.** A SNARK proving "root
+`R` was computed correctly from a registry commitment `Rg` and an accepted-
+envelope commitment `Re`" is exactly the right shape — but it is only as honest
+as `Rg` and `Re`, and **both are produced by the broker today** (`registrations`
+and the envelope set live in broker-controlled Postgres; the broker even
+*mediates* Self verification at registration). A dishonest broker simply feeds
+the proof a **fabricated** `Rg` (humans that don't exist) / `Re` (answers it
+signed with keys it controls), and the proof faithfully certifies a fraudulent
+`R`. **zk moves the trust from "broker computes `R` honestly" to "the registry
+and envelope commitments are honest."** Progress — not closure.
+
+**The trust floor is registration (personhood).** Because the broker can mint
+fake `registrations` rows, it can always manufacture "legitimate" payouts.
+*Fully* removing allocation trust therefore requires the registry to be
+**unforgeable** — Self proofs verified in-proof or on-chain so the broker cannot
+insert non-existent humans. That is the same one-passport→one-identity anchor
+§14.4 leans on (and the Celo-registry read already in §5), and it is a
+rollup-grade undertaking.
+
+**The decomposition that makes this tractable.** Reuse the §14.2 split:
+
+- **Baseline `b` is mechanical** — every valid accepted envelope earns a fixed,
+  public amount; **zero broker discretion**. This is exactly the part a proof can
+  pin down end-to-end.
+- **Bonus `β` is discretionary** — it depends on the audit + override oracle
+  (§14.3/§14.5), which is inherently trusted and not fully provable. **But β is
+  kept ≈0 in v0.3** (§14.8, §1 principle 4). So the un-provable surface is, by
+  design, negligible until the §14.8 trust machinery exists.
+
+**The ladder (increasing trust-minimization, increasing cost):**
+
+| Rung | Mechanism | Removes | Still trusts | Fit |
+|---|---|---|---|---|
+| **L0** | today's draft + non-crypto bounds | direct custody | honest allocation | the as-written concept |
+| **L1** | **optimistic**: broker commits `Re` (accepted-envelope root) on-chain; each payout leaf must reference it; a **challenge window** + **fraud proof** (show a leaf references a missing/duplicate/mis-priced/signature-invalid envelope) slashes a **broker bond** > max stake | honest *pricing & envelope-existence* (makes self-dealing negative-EV) | honest `Re`/`Rg` *contents* (fabricated humans/answers) | **recommended near-term**; reuses the §12.1 challenge-window pattern; no proving infra |
+| **L2** | **validity (zk)**: SNARK proves `R = §14-function(Rg, Re)`; no window, instant finality, no watchers | the need to *watch*; computation integrity | honest `Rg`/`Re` inputs | when proving infra is worth it |
+| **L3** | **trustless inputs**: verify Self proofs (personhood) + agent signatures *inside* the proof, so `Rg`/`Re` cannot be fabricated | **broker allocation trust, fully** | only the §14.5 override oracle (β, ≈0) | the endgame; rollup-grade |
+
+**Non-crypto bounds that already cap the damage at L0 (so the rail is usable on
+testnet while L1+ is built):**
+
+- **Per-question stake cap** — a self-dealing broker can take at most one
+  question's funded stake, not a pooled treasury (funds are per-pool until
+  settled).
+- **Settlement window + asker refund (§12.1)** — anything not settled before
+  `closesAt + GRACE` returns to the asker, so the broker must steal *during* the
+  window, in public.
+- **Public leaves (§12.1) ⇒ detectability** — every payout set is on-chain;
+  honest agents see they were omitted/underpaid and honest askers see implausible
+  recipient sets. Fraud is visible and reputationally costly even before it is
+  *provable*. A **broker bond** turns "visible" into "expensive."
+- **β ≈ 0** — caps the *discretionary* (hardest-to-prove) component near zero.
+
+**Recommendation.** Ship L0 with these bounds on testnet (Phase 1); add a
+**broker bond + on-chain `Re` commitment + optimistic fraud proofs (L1)** before
+any non-trivial value (Phase 2); treat **L2/L3 with anchored on-chain
+registration** as the trust-minimization endgame that lets value and `β` scale
+(Phase 3, alongside §14.8). State plainly until then: **honest allocation is a
+trusted assumption**, the same class as the honest-aggregation assumption Hearme
+already documents (§1.4) — now bounded, detectable, and bonded, on a path to
+provable.
 
 ---
 
@@ -667,6 +767,13 @@ protected by the contract, not by the broker staying up.
   **and** `closesAt == questions.closes_at` (a deadline mismatch leaves it
   unfunded/undispatched); dispatch query excludes unfunded questions; **only
   released bonuses are reserved** (a `clawed` bonus never appears in any root).
+- **Allocation correctness (§12.2):** once L1 lands — a payout leaf that
+  references a **non-existent / duplicated / mis-priced / signature-invalid**
+  envelope in the committed `Re` is rejected by the fraud-proof and slashes the
+  bond; a **self-dealing settle** (leaves crediting a broker address with no
+  backing envelope) is challengeable and unprofitable once the bond > stake. At
+  L0, the test asserts only the *bounds*: a self-deal cannot exceed one pool's
+  stake and is fully refundable to the asker after the grace.
 - **End-to-end (`scripts/e2e.sh`):** add a local Base-Sepolia fork (anvil) +
   deployed `HearmeEscrow` + `MockUSDC`; asker funds, agent answers, broker
   settles, agent claims, asker refunds the remainder; **then a "broker goes
@@ -685,7 +792,7 @@ protected by the contract, not by the broker staying up.
 | `β` (`bonus`) | §14.2 grounding bonus; at-risk; reserved only once `escrowed → released`. Kept ≈0 until §14.8 (§1, principle 4). |
 | `escrow_qid` | Question UUID rendered as `bytes32` for on-chain keying. |
 | `closesAt` | Question end timestamp, stored per pool; basis of the unilateral-refund deadline. |
-| `SETTLEMENT_GRACE` | Window after `closesAt` before the asker can refund unilaterally; ≥ §14 audit/override window. Default 14 days (§12). |
+| `SETTLEMENT_GRACE` | Window after `closesAt` before the asker can refund unilaterally; ≥ §14 audit/override window. Default 14 days (§12.1). |
 | `cumulative` | Lifetime amount owed to a payout address; the Merkle leaf value. |
 | `epoch` | One settle cycle; one published root + its on-chain leaves. |
 | Operator key | Broker's EVM secp256k1 key = contract `broker` role; calls `settle`/`closeQuestion` (never moves funds to itself). Distinct from the Ed25519 token-signing key. |
@@ -701,14 +808,19 @@ protected by the contract, not by the broker staying up.
    on-chain leaf publishing) — they are core to the trust model, not an
    afterthought. Keep `β ≈ 0`. Prove the loop end-to-end on testnet, including a
    "broker goes dark" run.
-3. **Phase 2 (privacy + safety hardening):** epoch-rotated payout addresses;
-   broker-withholding *deterrents* beyond the escape hatch (bond slashable for
-   provable non-settlement, public settle-vs-aggregate audit); optional
-   IPFS/Arweave leaf storage; card→sponsored-wallet on-ramp (§10).
-4. **Phase 3 (mainnet):** flip token to real USDC, chain to Base mainnet, key to
-   KMS/HSM; only after §14.8 (tiered vesting) is in place can `β` rise safely
-   (ARCHITECTURE.md §14.8 is explicit that raising `β` earlier re-opens the
-   farming hole).
+3. **Phase 2 (trust-minimization + privacy hardening):** **allocation-correctness
+   L1** (§12.2) — on-chain `Re` (accepted-envelope) commitment, payout leaves
+   that reference it, optimistic challenge window + fraud proofs, and a **broker
+   bond** > max stake slashable for a self-deal or non-settlement; epoch-rotated
+   payout addresses; optional IPFS/Arweave leaf storage; card→sponsored-wallet
+   on-ramp (§10).
+4. **Phase 3 (mainnet + verifiable settlement):** **L2/L3** (§12.2) — a zk
+   validity proof of `R = §14-function(Rg, Re)` and **on-chain/in-proof Self
+   registration** so `Rg`/`Re` cannot be fabricated (this is what removes broker
+   allocation trust); flip token to real USDC, chain to Base mainnet, operator
+   key to KMS/HSM. Only with L3 + §14.8 (tiered vesting) in place can value and
+   `β` rise safely (ARCHITECTURE.md §14.8 is explicit that raising `β` earlier
+   re-opens the farming hole).
 
 ---
 
@@ -722,9 +834,19 @@ protected by the contract, not by the broker staying up.
   the unilateral refund can't reclaim funds an honest agent will still earn, yet
   be short enough that a dead broker doesn't lock asker principal for long. Fixed
   constant vs. per-question (longer questions → longer grace)? Default 14 days.
-- **Residual: answers earned but unsettled when the broker dies** (§12) — bound
+- **Residual: answers earned but unsettled when the broker dies** (§12.1) — bound
   it tighter than the grace with a slashable broker bond, or a permissionless
   fallback settler that can finalize a last published intent? Both undesigned.
+- **Allocation-correctness depth (§12.2)** — how far up the L1→L3 ladder, and
+  when? L1 (optimistic + bond) needs an on-chain `Re` commitment and an on-chain
+  envelope/signature checker for the fraud proof (Ed25519 verification on EVM is
+  non-trivial). L2/L3 need a proving stack and, for L3, **on-chain Self
+  registration** — the biggest open architectural question, since today the
+  broker mediates registration and can fabricate `Rg`. What is the right
+  `Re`/`Rg` commitment cadence and canonical leaf definition?
+- **Bond sizing & griefing** — a broker bond must exceed the largest fundable
+  stake to make self-dealing negative-EV, but an unbounded max stake implies an
+  unbounded bond. Cap per-question stake, or scale the bond with open exposure?
 - **`settle` granularity** — per-question calls (clean refund accounting) vs. a
   single `settleBatch(qids[], amounts[], root, leaves)` per epoch (one tx,
   cheaper). Likely batch, with per-qid amounts as calldata for refund math.
