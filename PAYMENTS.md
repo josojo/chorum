@@ -683,21 +683,49 @@ stake within the pre-refund window. We must constrain *who counts as a payee*.
 **Why a zk proof alone is necessary but not sufficient.** A SNARK proving "root
 `R` was computed correctly from a registry commitment `Rg` and an accepted-
 envelope commitment `Re`" is exactly the right shape — but it is only as honest
-as `Rg` and `Re`, and **both are produced by the broker today** (`registrations`
-and the envelope set live in broker-controlled Postgres; the broker even
-*mediates* Self verification at registration). A dishonest broker simply feeds
-the proof a **fabricated** `Rg` (humans that don't exist) / `Re` (answers it
-signed with keys it controls), and the proof faithfully certifies a fraudulent
-`R`. **zk moves the trust from "broker computes `R` honestly" to "the registry
-and envelope commitments are honest."** Progress — not closure.
+as `Rg` and `Re`. The strength of those inputs depends on **which broker you
+distrust**, and the two cases differ sharply:
 
-**The trust floor is registration (personhood).** Because the broker can mint
-fake `registrations` rows, it can always manufacture "legitimate" payouts.
-*Fully* removing allocation trust therefore requires the registry to be
-**unforgeable** — Self proofs verified in-proof or on-chain so the broker cannot
-insert non-existent humans. That is the same one-passport→one-identity anchor
-§14.4 leans on (and the Celo-registry read already in §5), and it is a
-rollup-grade undertaking.
+- **Honest broker *code*, untrusted *allocation decisions*.** If the deployed
+  service faithfully runs its published verification, it **cannot fabricate
+  agents**: `POST /v1/register` requires `self_proofs` that actually verify
+  (SNARK + the on-chain Celo registry-root check, §5), production rejects mock
+  proofs, and a Self proof needs a **real human to NFC-scan a real passport** and
+  generate it on-device — bound to `userDefinedData = agent_key`, so a legit
+  user's proof can't even be repurposed to the operator's payout key. Under this
+  model every `Rg` leaf is a real, unique human, and L1/L2 genuinely close
+  allocation correctness. **This is the case the identity requirement already
+  covers** — exactly the point that the human must *actively provide* their
+  identity for a registration to exist.
+- **Byzantine *operator* (untrusted code execution).** The gap is not in the
+  protocol but in *enforcement*: nothing **outside the broker's code** ties a
+  `registrations` row to a real proof. The row is plain Postgres TEXT the broker
+  `INSERT`s, and the Self proof is **verified once and discarded** (verify-once),
+  leaving no portable, independently-checkable evidence. An operator running
+  modified code — or writing the DB directly (it holds `INSERT` on
+  `registrations`) — can fabricate `Rg`, and the proof faithfully certifies a
+  fraudulent `R`. **zk then only moves the trust from "broker computes `R`
+  honestly" to "the operator faithfully ran Self verification when it built
+  `Rg`."**
+
+**The trust floor is *verifiable* registration, not registration per se.** So the
+floor is not "the broker can invent humans from nothing" — under honest code it
+demonstrably can't. The floor is **trusting the operator's code execution**.
+*Fully* removing allocation trust therefore requires registration evidence to be
+**portable**: each `Rg` leaf carries a Self proof that anyone (or a circuit) can
+re-check, so personhood holds without trusting the operator ran anything. Two
+ways to get there — verify the Self proof **in-proof / on-chain** (L3), or run
+the registration path in a **TEE with remote attestation** (lighter: attests
+honest execution instead of re-proving it). Either anchors the same
+one-passport→one-identity property §14.4 leans on (and the Celo read already in
+§5).
+
+**Irreducible residual even then.** An operator who controls **real distinct
+passports** can register *those* and self-deal through them. That is bounded by
+how many real passports it holds — the Sybil bound, indistinguishable from "real
+humans colluding" — i.e. the §14.4 "personhood caps it" residual, not a protocol
+bug. Verifiable registration collapses unbounded fabrication to this bounded,
+universal residual.
 
 **The decomposition that makes this tractable.** Reuse the §14.2 split:
 
@@ -714,9 +742,9 @@ rollup-grade undertaking.
 | Rung | Mechanism | Removes | Still trusts | Fit |
 |---|---|---|---|---|
 | **L0** | today's draft + non-crypto bounds | direct custody | honest allocation | the as-written concept |
-| **L1** | **optimistic**: broker commits `Re` (accepted-envelope root) on-chain; each payout leaf must reference it; a **challenge window** + **fraud proof** (show a leaf references a missing/duplicate/mis-priced/signature-invalid envelope) slashes a **broker bond** > max stake | honest *pricing & envelope-existence* (makes self-dealing negative-EV) | honest `Re`/`Rg` *contents* (fabricated humans/answers) | **recommended near-term**; reuses the §12.1 challenge-window pattern; no proving infra |
-| **L2** | **validity (zk)**: SNARK proves `R = §14-function(Rg, Re)`; no window, instant finality, no watchers | the need to *watch*; computation integrity | honest `Rg`/`Re` inputs | when proving infra is worth it |
-| **L3** | **trustless inputs**: verify Self proofs (personhood) + agent signatures *inside* the proof, so `Rg`/`Re` cannot be fabricated | **broker allocation trust, fully** | only the §14.5 override oracle (β, ≈0) | the endgame; rollup-grade |
+| **L1** | **optimistic**: broker commits `Re` (accepted-envelope root) on-chain; each payout leaf must reference it; a **challenge window** + **fraud proof** (show a leaf references a missing/duplicate/mis-priced/signature-invalid envelope) slashes a **broker bond** > max stake | honest *pricing & envelope-existence* (makes self-dealing negative-EV) | honest registration **code** — a Byzantine operator can still fabricate `Rg` | **recommended near-term**; reuses the §12.1 challenge-window pattern; no proving infra |
+| **L2** | **validity (zk)**: SNARK proves `R = §14-function(Rg, Re)`; no window, instant finality, no watchers | the need to *watch*; computation integrity | honest registration **code execution** that built `Rg`/`Re` | when proving infra is worth it |
+| **L3** | **verifiable registration**: re-check each `Rg` leaf's Self proof **in-circuit / on-chain**, *or* run registration in a **TEE with attestation**; + agent signatures verified in-proof | broker allocation trust **down to the §14.4 passport-collusion residual** | only the §14.5 override oracle (β, ≈0) + real-passport collusion (Sybil bound) | the endgame; rollup-grade (zk) or attestation-grade (TEE) |
 
 **Non-crypto bounds that already cap the damage at L0 (so the rail is usable on
 testnet while L1+ is built):**
@@ -735,12 +763,15 @@ testnet while L1+ is built):**
 
 **Recommendation.** Ship L0 with these bounds on testnet (Phase 1); add a
 **broker bond + on-chain `Re` commitment + optimistic fraud proofs (L1)** before
-any non-trivial value (Phase 2); treat **L2/L3 with anchored on-chain
-registration** as the trust-minimization endgame that lets value and `β` scale
-(Phase 3, alongside §14.8). State plainly until then: **honest allocation is a
-trusted assumption**, the same class as the honest-aggregation assumption Hearme
-already documents (§1.4) — now bounded, detectable, and bonded, on a path to
-provable.
+any non-trivial value (Phase 2); treat **L2 (zk validity)** plus **L3 verifiable
+registration (in-proof Self *or* a TEE-attested registration path)** as the
+trust-minimization endgame that lets value and `β` scale (Phase 3, alongside
+§14.8). State the assumption plainly at each rung: through L2 the residual is
+**honest registration code execution** (not "the broker can invent humans" —
+honest code can't), and L3 reduces even that to the §14.4 real-passport-collusion
+residual. This is the same *class* of assumption as the honest-aggregation one
+Hearme already documents (§1.4) — now bounded, detectable, bonded, and on a path
+to provable.
 
 ---
 
@@ -840,10 +871,12 @@ provable.
 - **Allocation-correctness depth (§12.2)** — how far up the L1→L3 ladder, and
   when? L1 (optimistic + bond) needs an on-chain `Re` commitment and an on-chain
   envelope/signature checker for the fraud proof (Ed25519 verification on EVM is
-  non-trivial). L2/L3 need a proving stack and, for L3, **on-chain Self
-  registration** — the biggest open architectural question, since today the
-  broker mediates registration and can fabricate `Rg`. What is the right
-  `Re`/`Rg` commitment cadence and canonical leaf definition?
+  non-trivial). L3 needs **verifiable registration** so a Byzantine operator
+  can't fabricate `Rg` — either re-checking each leaf's Self proof in-circuit/
+  on-chain, or a **TEE-attested registration path** (cheaper; attests execution
+  rather than re-proving it). Which, and is trusting *registration-code
+  execution* (the L1/L2 residual) acceptable given the §12.1 bounds + β≈0? What
+  is the right `Re`/`Rg` commitment cadence and canonical leaf definition?
 - **Bond sizing & griefing** — a broker bond must exceed the largest fundable
   stake to make self-dealing negative-EV, but an unbounded max stake implies an
   unbounded bond. Cap per-question stake, or scale the bond with open exposure?
