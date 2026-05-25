@@ -18,11 +18,12 @@ broker() { docker exec -e PGPASSWORD=hearme_broker_dev "$CONTAINER" psql -h loca
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "PASS: $*"; }
 
-# 1. Schema applied.
-expected="aggregates askers envelopes questions registrations revocations"
+# 1. Schema applied. (Includes the Self revocation-listener tables
+#    self_chain_cursors + self_nullifier_invalidations — ARCHITECTURE.md §5.)
+expected="aggregates askers envelopes questions registrations revocations self_chain_cursors self_nullifier_invalidations"
 actual=$(admin "SELECT string_agg(tablename, ' ' ORDER BY tablename) FROM pg_tables WHERE schemaname='public';")
 [ "$actual" = "$expected" ] || fail "tables mismatch: got '$actual', want '$expected'"
-pass "schema applied — 6 tables"
+pass "schema applied — 8 tables"
 
 # 2. Writer roles exist.
 for role in hearme_web hearme_broker; do
