@@ -1,5 +1,11 @@
-# `docker compose up` brings up the full hearme v0 stack: shared Postgres,
-# broker, web, the self-bridge, and a dev skill instance.
+# `docker compose up` brings up the hearme v0 *server* stack: shared Postgres,
+# broker, web, and the self-bridge. None of these need a model-provider API key.
+#
+# The answering agent (the `hearme` Hermes plugin) is NOT a service here: it
+# runs inside the user's own Hermes agent, which already has a model configured.
+# Install it there with `pip install 'hearme-skill[hermes]'` and onboard:
+#   hearme-skill onboard --bridge-url http://localhost:8787 --broker-url http://localhost:8000
+#   hearme-skill schedule   # registers the answering cron job inside Hermes
 #
 # First run:
 #   docker compose up --build
@@ -7,11 +13,8 @@
 #
 # Onboarding requires REAL Self proofs (verified once at the broker's
 # /v1/register). With SELF_MOCK_PASSPORT=1 (staging) you can scan a *mock
-# passport*:
-#   docker compose exec skill hearme-skill onboard \
-#     --bridge-url http://self-bridge:8787 --broker-url http://broker:8000
-# (Install the Self app, tap the passport button 5x to create a mock passport,
-# scan each QR.)
+# passport* (install the Self app, tap the passport button 5x to create a mock
+# passport, scan each QR).
 #
 # To wipe state and start from scratch:
 #   docker compose down -v && docker compose up --build
@@ -126,30 +129,9 @@ services:
     ports:
       - "3000:3000"
 
-  skill:
-    build:
-      context: .
-      dockerfile: packages/skill/Dockerfile
-    container_name: hearme-skill
-    restart: unless-stopped
-    depends_on:
-      broker:
-        condition: service_healthy
-      self-bridge:
-        condition: service_started
-    environment:
-      HEARME_SKILL_BROKER_URL: http://broker:8000
-      HEARME_SKILL_SELF_BRIDGE_URL: http://self-bridge:8787
-      HEARME_SKILL_ROOT_DIR: /data
-      # Faster poll than the 30s default so the demo feels responsive.
-      HEARME_SKILL_POLL_INTERVAL_SECONDS: "5"
-      # Optional: path (inside the container) to a captured GET /requests/<id>
-      # JSON to replay offline via mock-onboard.py. Without it, onboard by
-      # scanning a (mock) passport — see the header of this file.
-      # HEARME_SKILL_DEV_FIXTURE: /data/fixture.json
-    volumes:
-      - hearme-skill-data:/data
+  # NOTE: the answering agent is intentionally not a service here. It is the
+  # `hearme` Hermes plugin and runs inside the user's Hermes agent (which holds
+  # the model config + API key). See the header of this file to install it.
 
 volumes:
   hearme-pgdata:
-  hearme-skill-data:

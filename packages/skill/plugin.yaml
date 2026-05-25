@@ -1,0 +1,21 @@
+# Hermes plugin manifest (hermes-agent >= 0.14).
+#
+# Primary install is the pip entry point: `pip install hearme-skill` exposes
+# `hermes_agent.plugins -> hearme_skill.plugin:register` (see pyproject.toml),
+# which Hermes auto-discovers — no manifest needed for that path.
+#
+# This manifest supports the alternative directory install: create
+# `~/.hermes/plugins/hearme/` containing this file plus an `__init__.py` whose
+# body is `from hearme_skill.plugin import register` (hearme-skill must still be
+# importable / pip-installed).
+name: hearme
+version: 0.0.1
+description: >-
+  Answer public yes/no questions on the user's behalf, using the host agent's
+  own model and memory. Inference needs no extra API key; a cron job drives the
+  answering cycle.
+author: Hearme
+kind: standalone
+provides_tools:
+  - hearme_list_open_questions
+  - hearme_submit_answer

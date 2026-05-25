@@ -33,17 +33,20 @@ dev = [
 ]
 # Real QR rendering is optional; the v0 onboarding flow falls back to ASCII.
 qr = ["qrcode>=7.4"]
-# Optional: real Hermes Agent runtime (Nous Research, MIT). Without this
-# extra the skill uses FakeLLMClient + Mem0StubProvider. With it, the skill
-# can drive a real Hermes instance and answer questions from the user's
-# actual conversation memory. The e2e suite installs this.
+# Optional: the Hermes Agent runtime (Nous Research, MIT) that HOSTS this
+# plugin. Normally Hermes is already installed in the user's environment; this
+# extra pins it so `pip install 'hearme-skill[hermes]'` gives a self-contained
+# env for testing the plugin + cron registration. Inference uses the host
+# agent's own configured model — no separate model-provider API key.
 hermes = [
     "hermes-agent>=0.14",
-    "python-dotenv>=1.0",
 ]
 
-[project.entry-points."hermes.skills"]
-hearme = "hearme_skill.skill:entrypoint"
+# Discovered by hermes-agent's plugin loader (entry-point group
+# `hermes_agent.plugins`). Hermes calls `register(ctx)` at load time; see
+# plugin.py. Alternatively, install as a directory under ~/.hermes/plugins/.
+[project.entry-points."hermes_agent.plugins"]
+hearme = "hearme_skill.plugin:register"
 
 [project.scripts]
 hearme-skill = "hearme_skill.skill:cli"

@@ -72,6 +72,8 @@ Hermes supports 8 memory backends. The skill talks through Hermes's memory abstr
 ### 1.12 Override is sacred
 The user can preview, edit, or veto any answer before submission. Every submitted answer is revocable post-hoc within the protocol's revocation window.
 
+**v0 cron deployment note.** When the skill runs as the `hearme` Hermes plugin driven by a cron job (§7, the production path), answering is *unattended* — there is no live preview between generation and submission. The pre-submission veto is therefore replaced by an opt-in policy gate: nothing is auto-submitted unless the user sets `auto_answer: true` in `policy.yaml`, and the deterministic policy backstop (topic allow/blocklist, daily cap, replay-safety) is re-checked inside `hearme_submit_answer` on every submit. Post-hoc revocation (above) remains the user's recourse. A future channel-notification mode can restore the live veto for users who want it.
+
 ### 1.13 Phone is the enrollment device, not a hot dependency
 The user's phone (running the Self app) is touched at exactly three moments: **install**, **refresh** (every 90 days), and **revocation**. Because age granularity uses a multi-threshold scheme (§8.3), *install* may run several quick Self proofs back-to-back; this cost is paid once and isolated to these three moments. In steady state, the phone is never contacted.
 
@@ -449,7 +451,9 @@ Three trust boundaries: broker, agent runtime, phone. The phone is touched only 
 
 ## 7. `hearme-skill` — layered architecture
 
-Eight layers. Linear flow, no per-question fork. Layers below never call layers above. The Relevance layer (§7.3) short-circuits the flow past Persona and Answerer when the user has no signal on the question — see §1.14.
+**Production path (v0): a Hermes plugin + cron, not a standalone process.** The skill installs into the user's existing Hermes agent (`hermes_agent.plugins` entry point → `plugin.py:register`) and exposes two tools under the `hearme` toolset: `hearme_list_open_questions` and `hearme_submit_answer` (`tools.py`). A Hermes cron job (`schedule.py`) fires on a schedule; the host agent answers open questions through those tools **using its own configured model and memory**, so there is no second model-provider API key. The privacy-critical work stays deterministic at the tool boundary: the model only sees question text/topic and returns answer text, while policy gating, the delegation token, the nonce, and envelope signing live entirely inside the tools (the model never sees identity material). This realises the local-first decisioning of §1.8 while keeping inference inside the agent the user already trusts and runs.
+
+The layered pipeline below describes the in-process Answerer flow, which v0 retains as the **dev/CI harness** (`dev_runner.py` with `FakeLLMClient`, no network LLM per §12) and as the reference for the deterministic layers the tools reuse (Policy, Envelope, Ledger). Eight layers. Linear flow, no per-question fork. Layers below never call layers above. The Relevance layer (§7.3) short-circuits the flow past Persona and Answerer when the user has no signal on the question — see §1.14.
 
 ```
         ┌────────────────────────┐

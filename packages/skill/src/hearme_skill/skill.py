@@ -1,15 +1,13 @@
 """Hermes skill entrypoint.
 
-Hermes hosts skills via a small entry-point contract. The actual Hermes API
-isn't stable enough at v0 to import here; we expose:
+Production answering runs *inside* the user's Hermes agent: the ``hearme``
+plugin (``plugin.py``) registers the answering tools and a Hermes cron job
+(``schedule.py``) drives the cycle using the host's own configured model — no
+second API key. This module provides:
 
-* ``entrypoint(host)`` — the function Hermes calls when loading the skill.
-  Adapts the host's channel/memory/LLM to the protocols in this package and
-  starts the per-question loop.
-* ``cli()`` — local command-line interface for onboarding + dev runs.
-
-The "host" object is whatever Hermes hands us; the README documents the
-expected attributes (``memory``, ``llm``, ``channel``, ``node_id``).
+* ``cli()`` — local command-line interface for onboarding + scheduling.
+* ``run_loop`` / ``dev_runner`` — a dev-only standalone loop that exercises the
+  pipeline with ``FakeLLMClient`` (no Hermes, no network LLM).
 """
 
 from __future__ import annotations
@@ -200,15 +198,6 @@ async def run_loop(host: Any) -> None:
             await ledger.close()
 
 
-def entrypoint(host: Any) -> None:
-    """Hermes entry point — see README for the host contract.
-
-    Hermes calls this synchronously; we kick off the asyncio loop ourselves.
-    """
-
-    asyncio.run(run_loop(host))
-
-
 # --- CLI ------------------------------------------------------------------
 
 
@@ -244,7 +233,33 @@ def _cmd_onboard(args: argparse.Namespace) -> int:
         print(f"onboarding failed: {exc}", file=sys.stderr)
         return 2
     print(f"Stored delegation token (expires {token.expires_at.isoformat()})")
+    _try_schedule_after_onboard()
     return 0
+
+
+def _try_schedule_after_onboard() -> None:
+    """Best-effort: register the answering cron job once onboarded.
+
+    Only works inside a Hermes environment (the ``cron`` package ships with
+    hermes-agent). Outside Hermes we print a hint instead of failing.
+    """
+
+    try:
+        from .schedule import JOB_NAME, ensure_cron_job
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        result = ensure_cron_job()
+    except Exception as exc:  # noqa: BLE001
+        print(
+            "Note: could not register the Hermes cron job "
+            f"({exc}). Run `hearme-skill schedule` from inside your Hermes "
+            "agent to start the answering cycle.",
+            file=sys.stderr,
+        )
+        return
+    verb = "Registered" if result["created"] else "Found existing"
+    print(f"{verb} Hermes cron job '{JOB_NAME}' (id={result['job_id']}).")
 
 
 def _cmd_accept_mock(args: argparse.Namespace) -> int:
@@ -257,43 +272,30 @@ def _cmd_accept_mock(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_hermes_chat(args: argparse.Namespace) -> int:
-    """Drive a one-shot conversation with the local Hermes agent.
+def _cmd_schedule(args: argparse.Namespace) -> int:
+    """Install/refresh the Hermes cron job that drives the answering cycle.
 
-    Used by the e2e test (and humans) to seed Hermes memory before
-    submitting questions. Requires the ``[hermes]`` extra and an
-    ``OPEN_ROUTER_API_KEY`` / ``OPENROUTER_API_KEY`` in the environment.
-
-    Memory persistence is whatever Hermes itself does — this skill does
-    not modify the user's profile, it just chats. The Hearme ledger is
-    untouched.
+    Must run inside a Hermes environment (the ``cron`` package ships with
+    hermes-agent). Idempotent — re-running reports the existing job.
     """
 
     try:
-        from .llm.hermes_client import HermesLLMClient
-    except ImportError as exc:
-        print(f"hermes-agent not installed: {exc}", file=sys.stderr)
+        from .schedule import JOB_NAME, ensure_cron_job
+    except Exception as exc:  # noqa: BLE001
+        print(f"could not import Hermes cron API: {exc}", file=sys.stderr)
         return 2
-
-    message = args.message
-    if message == "-":
-        message = sys.stdin.read().strip()
-    if not message:
-        print("empty message", file=sys.stderr)
-        return 2
-
-    client = HermesLLMClient(model=args.model) if args.model else HermesLLMClient()
     try:
-        reply = client.chat(message)
-    except ImportError as exc:
-        # The AIAgent import is lazy, so missing-hermes surfaces here.
+        result = ensure_cron_job(
+            schedule=args.schedule, model=args.model, provider=args.provider
+        )
+    except Exception as exc:  # noqa: BLE001
         print(
-            f"hermes-agent not installed: {exc}\n"
-            "Install it: pip install -e '.[hermes]' (from packages/skill).",
+            f"could not register cron job (is this running inside Hermes?): {exc}",
             file=sys.stderr,
         )
         return 2
-    print(reply)
+    verb = "created" if result["created"] else "already present"
+    print(f"cron job '{JOB_NAME}' {verb} (id={result['job_id']}).")
     return 0
 
 
@@ -372,17 +374,26 @@ def cli() -> int:
     p_accept.add_argument("token_path", help="Path to token JSON, or '-' for stdin")
     p_accept.set_defaults(func=_cmd_accept_mock)
 
-    p_chat = sub.add_parser(
-        "hermes-chat",
-        help="Chat once with the local Hermes agent (seeds memory for the e2e flow)",
+    p_sched = sub.add_parser(
+        "schedule",
+        help="Install/refresh the Hermes cron job that answers questions on a schedule",
     )
-    p_chat.add_argument("message", help="Message to send. Use '-' to read stdin.")
-    p_chat.add_argument(
+    p_sched.add_argument(
+        "--schedule",
+        default=None,
+        help="Cron cadence: 'every 15m', a cron expression, or an ISO time (default: every 15m).",
+    )
+    p_sched.add_argument(
         "--model",
         default=None,
-        help="Override the Hermes model (default: $HEARME_HERMES_MODEL or a cheap OpenRouter model).",
+        help="Override the model for this job (default: the Hermes agent's configured model).",
     )
-    p_chat.set_defaults(func=_cmd_hermes_chat)
+    p_sched.add_argument(
+        "--provider",
+        default=None,
+        help="Override the provider for this job (default: the Hermes agent's configured provider).",
+    )
+    p_sched.set_defaults(func=_cmd_schedule)
 
     p_cg_import = sub.add_parser(
         "chatgpt-import",

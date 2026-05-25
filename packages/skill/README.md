@@ -70,23 +70,24 @@ hearme-skill accept-mock-delegation /tmp/token.json
 $EDITOR ~/.hermes/hearme/policy.yaml
 ```
 
-In production, Hermes loads the skill via the entry point
-`hermes.skills = hearme_skill.skill:entrypoint`. Hermes passes a `host`
-object exposing `.memory`, `.llm`, `.channel`, and `.node_id`. The skill
-adapts each to the protocols in `memory/provider.py`, `llm/client.py`, and
-`ui.py`. **Real Hermes integration is wired via a config block in the host
-process** — see the Hermes runtime docs; this package only defines the
-adapter side.
+In production this package is a **Hermes plugin**. Hermes discovers it via the
+`hermes_agent.plugins` entry point (`hearme = hearme_skill.plugin:register`)
+and calls `register(ctx)`, which exposes two tools — `hearme_list_open_questions`
+and `hearme_submit_answer` — under the `hearme` toolset. A Hermes **cron job**
+(`schedule.py`) fires on a schedule and the host agent answers open questions
+through those tools, **using its own configured model and memory**. There is no
+second model-provider API key and no model SDK imported here — see
+[Running inside Hermes](#running-inside-hermes).
 
 ## Sample `policy.yaml`
 
 ```yaml
 # ~/.hermes/hearme/policy.yaml
 #
-# All categories default to off (§1.1). The skill will *prompt* the user
-# even after a policy match unless `auto_answer: true` is set, and even
-# then `auto_submit_window_seconds: 0` means we still preview every answer
-# before submission (§1.12 override is sacred).
+# All categories default to off (§1.1). `auto_answer` is the master switch for
+# the unattended cron flow: the tools only surface and accept a question when
+# the policy gate returns "answer", which requires `auto_answer: true`. Leave it
+# false and the agent will never auto-submit (the §1.12 override stays with you).
 
 topic_allowlist:
   - coffee
@@ -96,8 +97,8 @@ topic_blocklist:
 
 max_answers_per_day: 50
 min_payment: 0.0              # v0: ignored, no payment field on questions
-auto_submit_window_seconds: 0 # 0 = always prompt; non-zero = veto window
-auto_answer: false
+auto_answer: true            # required for the cron job to auto-submit
+auto_submit_window_seconds: 0 # legacy preview window for the dev loop only
 ```
 
 ## Configuration knobs (env vars, prefix `HEARME_SKILL_`)
@@ -109,9 +110,11 @@ auto_answer: false
 | `HEARME_SKILL_AUTO_SUBMIT_WINDOW_SECONDS` | `0`                    | Default preview window (policy.yaml overrides).      |
 | `HEARME_SKILL_ROOT_DIR`                 | `~/.hermes/hearme/`      | Where keys, ledger, and token live.                  |
 
-The polling cursor is stored locally in the ledger from the max
-broker-supplied `Question.created_at` value seen in a response. It does not
-advance from the agent host's wall clock.
+`POLL_INTERVAL_SECONDS` / `AUTO_SUBMIT_WINDOW_SECONDS` apply only to the dev
+loop (`dev_runner`); the production path is the Hermes cron job, whose cadence
+is set with `hearme-skill schedule --schedule ...`. In the agentic tools,
+idempotency comes from the ledger (`has_submission`), not a polling cursor — so
+a question the agent skips reappears next cycle.
 
 ## Privacy guarantees
 
@@ -150,46 +153,62 @@ Mandatory tests (per ARCHITECTURE.md §12, all in `tests/`):
   args; can never receive DelegationToken / `unique_identifier`.
 - `test_no_phone_contact.py` — 100 simulated answers, phone bridge mock
   receives ZERO calls (§1.13).
+- `test_tools.py` — the framework-agnostic answering tools: policy backstop,
+  replay-safety, and that the delegation token never leaves `submit_answer`.
 
 Per §12, **no live LLM calls in CI**. All Answerer tests use the
 deterministic `FakeLLMClient` in `llm/client.py`.
 
-## Real Hermes integration
+## Running inside Hermes
 
-The skill ships two host modes (see `dev_runner.py`):
-
-* **Stub mode** (default): `FakeLLMClient` + `Mem0StubProvider`. No
-  network calls. This is what `docker compose up` runs by default and
-  what CI tests by default (per ARCHITECTURE.md §12).
-* **Hermes mode** (`HEARME_USE_HERMES=1`): instantiates a real
-  `hermes_agent.AIAgent` via `HermesLLMClient` and a
-  `HermesMemoryProvider`. Routes through OpenRouter using a cheap model
-  by default.
-
-### Local run with real Hermes
+Production answering runs inside the user's existing [Hermes
+agent](https://github.com/NousResearch/hermes) (>= 0.14). The agent already has
+a model + provider configured in `~/.hermes/config.yaml`, so Hearme adds **no
+new API key** — inference is whatever model the user already runs.
 
 ```bash
-# 1. Install the [hermes] extra (pulls hermes-agent from PyPI).
-cd packages/skill
-pip install -e '.[hermes]'
+# 1. Install the plugin into the same environment as your Hermes agent.
+#    Hermes auto-discovers it via the `hermes_agent.plugins` entry point.
+#    (The [hermes] extra pins hermes-agent if you don't have it yet.)
+pip install 'hearme-skill[hermes]'
+#    Developing against a checkout? An editable install registers the same
+#    entry point: cd packages/skill && pip install -e '.[hermes]'
 
-# 2. Put your OpenRouter key in repo-root .env (already in .gitignore).
-echo "OPEN_ROUTER_API_KEY=sk-or-..." >> ../../.env
+# 2. Onboard once (verify-once with Self; needs the broker + self-bridge).
+#    On success this also registers the answering cron job for you.
+hearme-skill onboard --bridge-url http://localhost:8787 --broker-url http://localhost:8000
 
-# 3. Seed Hermes memory with one chat turn.
-hearme-skill hermes-chat "Please remember: I really hate cilantro."
+# 3. Author your policy (see the sample above). `auto_answer: true` is what
+#    lets the cron job answer unattended.
+$EDITOR ~/.hermes/hearme/policy.yaml
 
-# 4. Boot the skill in Hermes mode (in another shell).
-HEARME_USE_HERMES=1 python -m hearme_skill.dev_runner
+# 4. If you skipped step 2's auto-registration, (re)install the cron job:
+hearme-skill schedule            # every 15m by default
+# hearme-skill schedule --schedule "0 * * * *"   # or a cron expression
 ```
 
-| Variable                       | Default                                    | Meaning                                                  |
-|--------------------------------|--------------------------------------------|----------------------------------------------------------|
-| `HEARME_USE_HERMES`            | `0`                                        | `1` to enable Hermes-backed host.                        |
-| `HEARME_HERMES_MODEL`          | `openrouter/google/gemini-2.5-flash-lite`  | Hermes model identifier. Override for cheaper/better.    |
-| `HEARME_HERMES_MEMORY_MODE`    | `passthrough`                              | `passthrough` lets Hermes inject memory in the answer call. `extract` does a small extraction call per question first. |
-| `OPEN_ROUTER_API_KEY` / `OPENROUTER_API_KEY` | (required)                   | OpenRouter inference key.                                |
-| `HERMES_HOME`                  | `~/.hermes/`                               | Where Hermes stores its memory/profile.                  |
+### How a cycle runs
+
+1. The `hermes gateway` daemon fires the `hearme-answer-cycle` cron job on its
+   schedule (default every 15 minutes).
+2. Hermes runs **your** configured model with the `hearme` toolset enabled,
+   under the prompt in `schedule.py:ANSWER_PROMPT`.
+3. The agent calls `hearme_list_open_questions`, decides each answer from what
+   it knows about you (its own memory), and calls `hearme_submit_answer`.
+4. `hearme_submit_answer` (deterministic, in `tools.py`) re-checks the policy
+   gate, loads the delegation token + agent key, signs the envelope, and posts
+   it to the broker.
+
+The model never sees the delegation token, `unique_identifier`, or the signing
+nonce — those live only inside the tools. Unattended auto-submit is gated by
+`auto_answer: true` (see the §1.12 note in [ARCHITECTURE.md](../../ARCHITECTURE.md)).
+
+### Dev loop (no Hermes, no key)
+
+`python -m hearme_skill.dev_runner` runs the legacy in-process pipeline against
+the broker with `FakeLLMClient` + `Mem0StubProvider` — no network LLM, no API
+key. This exercises Persona → Answerer → Envelope locally and is what CI uses
+(ARCHITECTURE.md §12, "never live LLM in CI"). It is **not** the production path.
 
 ## ChatGPT export memory sidewheel
 
@@ -214,36 +233,6 @@ HEARME_SKILL_MEMORY_BACKEND=chatgpt-export python -m hearme_skill.dev_runner
 By default the importer indexes only user-authored messages. Add
 `--include-assistant` if you want assistant replies included too. The local DB
 lives at `~/.hermes/hearme/chatgpt_memory.sqlite` unless `--db` is supplied.
-
-### End-to-end test against real Hermes
-
-The cross-cutting test from ARCHITECTURE.md §12, upgraded to call a real
-Hermes via OpenRouter:
-
-```bash
-cd packages/skill
-pip install -e '.[dev,hermes]'
-pip install -e ../broker  # broker is launched as a subprocess
-pytest -v tests/test_e2e_hermes.py
-```
-
-The test:
-1. Spins up Postgres (testcontainers locally; service container in CI).
-2. Tells Hermes "I hate cilantro" via `HermesLLMClient.chat`.
-3. Inserts a question into the DB.
-4. Polls the broker via the same `BrokerClient` the steady-state loop
-   uses; calls `answer_one` to drive Persona → Answerer → Envelope.
-5. Asserts the envelope landed and the answer reflects the prior chat.
-
-Mocked / out-of-scope (matches v0 §11): payments don't exist. The
-DelegationToken is now **broker-issued** (verify-once), so this e2e flow needs
-a captured Self proof fixture (`HEARME_E2E_ZK_FIXTURE`) registered through the
-broker (`HEARME_E2E_BROKER_URL`, via `mock-onboard.py`) and bound to the skill's
-agent key — otherwise it skips. Real Hermes inference is the one piece that's
-*not* mocked.
-
-Skips cleanly when: `hermes-agent` not installed, `OPEN_ROUTER_API_KEY`
-missing, or Docker unavailable (and no `HEARME_E2E_PG_DSN`).
 
 ## Not yet real (every `# STUB:` in code)
 
