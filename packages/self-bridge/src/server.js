@@ -113,6 +113,18 @@ const b64ToHex = (b64) => "0x" + Buffer.from(b64, "base64").toString("hex");
 const hexToB64 = (hex) =>
   Buffer.from(hex.startsWith("0x") ? hex.slice(2) : hex, "hex").toString("base64");
 
+// SDK >= 1.1 stores `userDefinedData` as literal UTF-8 bytes (then hex-encoded into
+// `userContextData`). We pass an "0x" + 64-hex agent key string; recover that ASCII
+// first, then hex-decode it to the raw 32 bytes and base64 to match the skill.
+function decodeBoundAgentKey(boundHex) {
+  if (!boundHex) return null;
+  let ascii;
+  try { ascii = Buffer.from(boundHex, "hex").toString("utf8"); } catch { return null; }
+  const inner = ascii.startsWith("0x") ? ascii.slice(2) : ascii;
+  if (!/^[0-9a-fA-F]+$/.test(inner) || inner.length % 2 !== 0) return null;
+  try { return Buffer.from(inner, "hex").toString("base64"); } catch { return null; }
+}
+
 // SelfAppBuilder rejects localhost/127.0.0.1 and requires a value: the Self app
 // POSTs the proof straight to this endpoint, so it must be publicly reachable
 // (an ngrok https URL in dev). Surface the misconfig early and clearly instead
@@ -147,7 +159,7 @@ async function verifyOne({ attestationId, proof, publicSignals, userContextData 
     verified,
     uniqueIdentifier: result?.discloseOutput?.nullifier ?? null,
     disclosed: mapDisclosed(result?.discloseOutput),
-    boundAgentKey: boundHex ? hexToB64(boundHex) : null,
+    boundAgentKey: decodeBoundAgentKey(boundHex),
     // verify() throws unless the root is live on-chain, so a verified proof is
     // necessarily registry-confirmed.
     registryConfirmed: verified,
