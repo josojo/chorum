@@ -24,9 +24,12 @@ from .config import get_settings
 log = logging.getLogger("hearme_skill.schedule")
 
 JOB_NAME = "hearme-answer-cycle"
-# Hermes accepts "every 15m", a cron expression, or an ISO one-shot. Recurring
-# every 15 minutes balances responsiveness against host model cost.
-DEFAULT_SCHEDULE = "every 15m"
+# Hermes accepts "every 15m", a cron expression, or an ISO one-shot. Defaulting
+# to once a day (09:00 UTC) keeps host-model cost predictable for the steady
+# state — questions on the broker have day-scale closing windows, so daily is
+# plenty responsive for v0. Override per-install for tighter cadence, e.g.
+#   hearme-skill schedule --schedule "every 15m"
+DEFAULT_SCHEDULE = "0 9 * * *"
 
 # The behavioural contract handed to the host agent each cycle. It must answer
 # only from genuine knowledge of the user (the host model + its memory) and
