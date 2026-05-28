@@ -595,7 +595,7 @@ now lets us prove the settlement loop before adding fiat plumbing.
 
 | Threat | Mitigation |
 |---|---|
-| **Broker steals asker funds by self-dealing** | **The main residual trust.** No code path moves a pool *directly* to the broker, but the broker picks the leaf recipients, so it can name its own addresses as "agents" and drain a funded pool (bounded by the stake and the pre-refund window). Direct custody is removed; honest allocation is still trusted. Reduced — not yet eliminated — by §12.2 (anchored evidence + fraud/zk proofs + broker bond) and bounded today by per-question stake caps, the asker refund, public leaves (detectability), and β≈0. |
+| **Broker steals asker funds by self-dealing** | **The main residual trust *until §12.6*.** No code path moves a pool *directly* to the broker, but at L0 the broker picks the leaf recipients, so it can name its own addresses as "agents" and drain a funded pool (bounded by stake + the pre-refund window). **§12.6 closes this on-chain**: `setRoot` requires a zk proof that every new leaf is bound to a user-held `agent_signature` the operator cannot forge, so the broker can only allocate to real participants — the worst it can do reduces to *censorship* (omitting a real user), which is a §12.1 liveness problem, not theft. Today (L0) it is bounded by per-question stake caps, the asker refund, public leaves (detectability), and β≈0. |
 | **Broker withholds (never settles) / dies forever** | Funds are never *stuck* (§12.1): after `closesAt + SETTLEMENT_GRACE` the asker reclaims the unreserved remainder with no broker involvement, and agents claim any already-settled balance from on-chain leaves. The irreducible residual is narrower — answers earned *but not yet settled* when the broker dies (the broker is the only party that knows the correct split). Bounded by the grace window; further mitigations: public audit of `Settled` vs. aggregates, a broker bond (§16). |
 | **Agent double-claims** | Structurally impossible: `withdrawn` is monotonic, `claim` pays `cumulative − withdrawn` and reverts on a stale/replayed proof. |
 | **Stale-root claim after a clawback** | `β` that is clawed is *never reserved*, so it never enters a root. A root only ever increases an agent's cumulative; the system never needs to *reduce* an on-chain balance, so there is no clawback-after-reserve race. (Clawbacks happen entirely in the off-chain escrow window, before reservation.) |
@@ -759,7 +759,7 @@ universal residual.
 |---|---|---|---|---|
 | **L0** | today's draft + non-crypto bounds | direct custody | honest allocation | the as-written concept |
 | **L1** | **optimistic**: broker commits `Re` (accepted-envelope root) on-chain; each payout leaf must reference it; a **challenge window** + **fraud proof** (show a leaf references a missing/duplicate/mis-priced/signature-invalid envelope) slashes a **broker bond** > max stake | honest *pricing & envelope-existence* (makes self-dealing negative-EV) | honest registration **code** — a Byzantine operator can still fabricate `Rg` | **recommended near-term**; reuses the §12.1 challenge-window pattern; no proving infra |
-| **L2** | **validity (zk)**: SNARK proves `R = §14-function(Rg, Re)`; no window, instant finality, no watchers | the need to *watch*; computation integrity | honest registration **code execution** that built `Rg`/`Re` | when proving infra is worth it |
+| **L2** | **validity (zk)**: SNARK proves `R = §14-function(Rg, Re)`; no window, instant finality, no watchers. **Concrete witness format spelled out in §12.6** (signature-attested allocation: every leaf bound to a user-held `agent_signature` the operator cannot forge → kills self-dealing) | the need to *watch*; computation integrity; **self-dealing** | honest registration **code execution** that built `Rg`/`Re` | when proving infra is worth it |
 | **L3** | **verifiable registration**: re-check each `Rg` leaf's Self proof **in-circuit / on-chain**, *or* run registration in a **TEE with attestation**; + agent signatures verified in-proof | broker allocation trust **down to the §14.4 passport-collusion residual** | only the §14.5 override oracle (β, ≈0) + real-passport collusion (Sybil bound) | the endgame; rollup-grade (zk) or attestation-grade (TEE) |
 
 **Non-crypto bounds that already cap the damage at L0 (so the rail is usable on
@@ -1004,6 +1004,143 @@ would expose the answer graph.
 production system — they are what let the user keep "which questions did I answer"
 private *and* keep the operator non-discretionary at the same time.
 
+### 12.6 Signature-attested allocation proof — the concrete L2 realization
+
+§12.2's ladder names L2 ("validity proof of `R = §14-function(Rg, Re)`") but does
+not pin down the witness. The most consequential question — *what stops the
+operator from putting its own addresses in the leaves?* — is answered by binding
+**every allocation leaf to a user signature the operator cannot forge**, then
+proving in zk that the new merkle root respects that binding. The contract
+verifies the proof **before** accepting the new root. After this rung the broker
+**can no longer self-deal**: it can allocate only to addresses for which it holds
+real user signatures (it doesn't hold any for its own wallets), so the worst it
+can do is **omit** real participants — pure censorship, not theft.
+
+**What gets signed (no new user action required).** Every accepted envelope
+already carries an `agent_signature` (ARCHITECTURE §5/§8.5):
+`Sign(agent_key, H(question_id || answer || nonce || delegation_hash))`. The
+agent_key lives **on the user's device** (in the skill — §7.6) and the broker
+never holds the private key, so a signature attributable to a registered
+agent_key is something only that user could have produced. This is the
+"specific message the user signs" — and they sign it for every answer they give,
+as part of normal operation. (Optional consent-clarity refinement: have the
+skill additionally sign an explicit *per-epoch payout-authorization* message
+that the circuit checks alongside the envelope signatures. Same crypto cost,
+cleaner UX/semantics, easy to add later.)
+
+**What the circuit proves.** Public inputs: prior root `R_prev`, new root `R`,
+the committed accepted-envelope root `Re`, the epoch number, and the public
+payout schedule (baseline + released-`β` set). Witness: the new envelopes (with
+their `agent_signature`s), the `registrations` rows that bind each `agent_key`
+to a `payout_address`, and the merkle update path from `R_prev` to `R`. The
+circuit asserts, for **every** new leaf `(payout_address A, cumulative X)`
+delta:
+
+1. There exist accepted envelopes in `Re` whose `agent_signature` verifies
+   under an `agent_key` that the witness `registrations` row binds to `A`.
+2. The amount of `X − X_prev` equals the §14 schedule applied to *those*
+   envelopes (count × baseline + only those `β` rows the public set marks
+   `released`).
+3. Nothing else in `R − R_prev` exists (no unaccounted-for leaves).
+
+Without valid signatures for `A`, the operator literally **cannot** put `A` in
+the proven root.
+
+**Contract change (sketch).**
+
+```solidity
+function setRoot(
+    bytes32  newRoot,
+    bytes32  reCommitment,
+    uint256  newEpoch,
+    bytes    calldata proof
+) external onlyBroker {
+    require(newEpoch == epoch + 1, "epoch");
+    verifier.verifyProof(proof, [bytes32(uint256(uint160(address(this)))),
+                                 root, newRoot, reCommitment, bytes32(newEpoch)]);
+    root  = newRoot;
+    epoch = newEpoch;
+    emit Settled(newEpoch, newRoot, reCommitment);
+}
+```
+
+`onlyBroker` here is a **liveness convenience** (only the broker can post the
+proof), not a trust knob — the proof is what enforces correctness. The verifier
+contract is the standard Groth16 verifier (~230k gas, constant regardless of
+how many allocations the proof covers).
+
+**Trust analysis after §12.6.**
+
+| | Before (today's draft) | After §12.6 |
+|---|---|---|
+| Broker self-deal (route stake to own addresses) | ✅ possible (the §11 main residual) | ❌ proof rejects — **closed** |
+| Broker over-pay a legit user | ✅ possible | ❌ rule-bound, proven |
+| Broker **omit** a legit user (censor) | ✅ possible | ✅ still possible — *liveness* problem; detectable (committed `Re` has the envelope, root doesn't), bounded by §12.1 refund + a §12.2 bond |
+| Broker fabricate participants (Byzantine operator inserts fake `registrations` for keys it controls, signs from them) | ✅ possible | ✅ still possible — **the unchanged `Rg` residual**, only closed by L3 (verifiable registration / TEE) |
+
+So §12.6 takes the broker from *"can steal up to a question's stake"* (today)
+to *"can only censor + the `Rg` residual"* — a **dramatic** trust reduction
+without paying L3's cost. Censorship is qualitatively different from theft: it
+cannot redirect money, only delay/prevent it from reaching a real user, and a
+real user denied a payout has *§12.1's asker-side refund* + a future *bond
+slash* + a permanent **on-chain audit trail** (a committed envelope without a
+matching root entry is provable).
+
+**Proving cost — does this fit a normal computer?** Dominant cost per leaf:
+one in-circuit signature verify + ~25 Poseidon hashes for the merkle path +
+table lookups. With the *current* Ed25519 `agent_key`, ~30–40k constraints per
+signature; with **EdDSA over Baby Jubjub** (SNARK-native), ~3–5k constraints per
+signature. Per-epoch totals scale with **new allocations this epoch** (not
+cumulative):
+
+| New allocations / epoch | Constraints (Ed25519) | Constraints (BabyJubjub) | Prover, native (rapidsnark) | Prover, browser (WASM) |
+|---|---|---|---|---|
+| **10** | ~400k | ~80k | **1–3 s** | **30–60 s** |
+| 100 | ~4M | ~800k | ~15–30 s | minutes |
+| 1,000 | ~40M | ~8M | minutes (server) | impractical |
+| 10,000 | needs Plonky2/Halo2 or recursive batching | | | |
+
+For ~10 allocations/epoch — the realistic scale for early mainnet — **the proof
+is a few seconds on a normal computer with rapidsnark**, well under a minute in
+browser. For larger volumes the operator runs a server-class prover; one
+practical pattern is **proof-per-question** (each question's allocations proven
+independently, then aggregated). Contract verify is constant ~230k gas — *one of
+the killer properties* of validity proofs: doubling allocations does not double
+gas.
+
+**Forward-compat: switch `agent_key` to EdDSA on Baby Jubjub.** ARCHITECTURE
+§8.5 currently specifies Ed25519. Both are EdDSA variants and the migration is
+mechanical (re-register), but it cuts per-signature proving cost ~10×. If §12.6
+is on the mainnet path, schedule this in Phase 2 so Phase 3 deploys against the
+cheaper curve. (Verification of standard Ed25519 in-circuit is feasible — the
+table assumes it — so this is an optimization, not a blocker.)
+
+**Privacy.** Preserves §9 — the chain still sees only the cumulative root, no
+per-question split. §12.6 does **not** itself give §12.5's per-question hiding
+(the operator still knows who answered what; the cumulative leaves still link
+`address ↔ earnings`); for that, layer §12.5's permissionless pooled claims on
+top of (or in place of) the operator-built root.
+
+**Relationship to §12.5 (permissionless pooled claims).** They are
+**complementary**, not alternatives:
+
+- **§12.6 constrains *what the root can contain*** — operator-built, one proof
+  per epoch, **no user-side proving**.
+- **§12.5 changes *how users claim from it*** — pooled commingled pool, zk +
+  scoped nullifier per claim, user-built proof per claim, hides which question.
+
+A mature production stack uses **both**: §12.6 produces a constrained root the
+operator cannot stuff with fakes; §12.5-style claims pull from it without
+revealing which question. They compose cleanly because §12.6's correctness
+property holds regardless of how the resulting balances are eventually claimed.
+
+**Recommendation refinement.** §12.6 is the realistic **mainnet-critical** step:
+it removes the largest concrete trust hole today (self-dealing), at constant
+on-chain verify gas, with proving cost that fits a normal computer at realistic
+volumes. Phase 3 in §15 should specify §12.6 (plus §12.5 for answerer privacy)
+as the production allocation/claim layer; L3 verifiable registration tightens
+the remaining `Rg` residual after that.
+
 ---
 
 ## 13. Testing posture (extends ARCHITECTURE.md §12)
@@ -1081,14 +1218,20 @@ and per-user-contract burden — not merely to bound theft risk.
    that reference it, optimistic challenge window + fraud proofs, and a **broker
    bond** > max stake slashable for a self-deal or non-settlement; epoch-rotated
    payout addresses; optional IPFS/Arweave leaf storage; card→sponsored-wallet
-   on-ramp (§10).
-4. **Phase 3 (mainnet + verifiable settlement):** **L2/L3** (§12.2) — a zk
-   validity proof of `R = §14-function(Rg, Re)` and **verifiable registration**
-   (in-proof Self *or* TEE-attested) so `Rg`/`Re` cannot be fabricated, moving to
-   **claim-by-proof** so the operator has *no* discretion over compensation
-   (§12.3), realized as **permissionless pooled claims (§12.5) — required so users
-   can still hide which questions they answered**; flip token to real USDC,
-   chain to Base mainnet, operator key to KMS/HSM. Only with L3 + §14.8 (tiered
+   on-ramp (§10). **Prepare for §12.6 by migrating `agent_key` from Ed25519 to
+   EdDSA over Baby Jubjub** (~10× cheaper in-circuit) so Phase 3's prover is
+   light.
+4. **Phase 3 (mainnet + verifiable settlement):** **L2 via §12.6** — the
+   signature-attested allocation proof, where every leaf is bound to a
+   user-held `agent_signature` the operator cannot forge, and `setRoot` requires
+   a Groth16 proof the contract verifies before accepting the new root. This
+   **closes broker self-dealing on-chain** and reduces the residual to censorship
+   (a §12.1 liveness problem) + the `Rg` registration trust. Layer **L3
+   verifiable registration** (in-proof Self *or* TEE-attested) to close `Rg`, and
+   **§12.5 permissionless pooled claims** for answerer-privacy (required so users
+   can still hide which questions they answered). The operator now has *no*
+   discretion over compensation (§12.3). Flip token to real USDC, chain to Base
+   mainnet, operator key to KMS/HSM. Only with §12.6 + L3 + §14.8 (tiered
    vesting) in place can value and `β` rise safely (ARCHITECTURE.md §14.8 is
    explicit that raising `β` earlier re-opens the farming hole).
 
