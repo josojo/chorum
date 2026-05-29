@@ -1,0 +1,115 @@
+name: deploy-staging
+
+# Auto-deploy main commits to the staging EC2 box
+# (see project memory: project_staging_deployment.md for the AWS resources).
+#
+# How: GitHub-hosted runner -> AWS API (JIT: open port 22 on the staging SG
+# only for the runner's public IP) -> SSH `git fetch && reset --hard && docker
+# compose up`. The SG rule is revoked in a cleanup step regardless of outcome
+# so the admin-only SSH posture is preserved between deploys.
+#
+# Required repository secrets:
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  - hearme-staging IAM user (the
+#                                               same one already provisioning
+#                                               EC2). Needs ec2:Authorize/
+#                                               RevokeSecurityGroupIngress on
+#                                               sg-05db2170c9271f2c6.
+#   STAGING_SSH_KEY                           - contents of hearme-staging.pem
+#                                               (the EC2 keypair, NOT a GH
+#                                               deploy key).
+
+on:
+  push:
+    branches: [main]
+
+# Serialize deploys so two quick pushes don't fight over the SG rule or the
+# docker daemon. Don't cancel in-flight runs — finish one, then start the next.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: deploy to staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AWS_REGION: eu-central-1
+      STAGING_SG_ID: sg-05db2170c9271f2c6
+      STAGING_HOST: 3.121.186.133
+      STAGING_USER: ubuntu
+
+    steps:
+      - name: Checkout (sanity — confirms the SHA we're shipping)
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Determine runner public IP
+        id: ip
+        run: |
+          ip=$(curl -fsS --max-time 5 https://checkip.amazonaws.com)
+          echo "ip=$ip" >> "$GITHUB_OUTPUT"
+          echo "runner IP = $ip"
+
+      - name: Authorize runner IP on the staging SG (JIT)
+        env:
+          RUNNER_IP: ${{ steps.ip.outputs.ip }}
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id "$STAGING_SG_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP}/32,Description=gha-deploy-${GITHUB_RUN_ID}}]"
+
+      - name: Install staging SSH key
+        env:
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        run: |
+          install -m 0700 -d ~/.ssh
+          printf '%s\n' "$STAGING_SSH_KEY" > ~/.ssh/staging
+          chmod 600 ~/.ssh/staging
+          ssh-keyscan -H "$STAGING_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Pull main and rebuild on staging
+        run: |
+          ssh -i ~/.ssh/staging \
+              -o ConnectTimeout=10 \
+              -o ServerAliveInterval=30 \
+              "$STAGING_USER@$STAGING_HOST" bash -se <<EOF
+          set -eu
+          cd ~/hearme
+
+          # Match main exactly. .env / any gitignored files survive untouched.
+          git fetch --quiet origin main
+          git reset --hard origin/main
+          echo "deploying SHA \$(git rev-parse --short HEAD): \$(git log -1 --pretty=%s)"
+
+          docker compose up -d --build --remove-orphans
+
+          echo "--- container state ---"
+          docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'hearme-|NAMES'
+          EOF
+
+      - name: Revoke runner IP from the staging SG (always)
+        if: always()
+        env:
+          RUNNER_IP: ${{ steps.ip.outputs.ip }}
+        run: |
+          # Best-effort: if the authorize step itself failed before adding the
+          # rule, revoke will 400 — log and continue so the workflow's exit
+          # code reflects the real failure (the ssh/build step).
+          if [ -z "${RUNNER_IP:-}" ]; then
+            echo "no runner IP captured; nothing to revoke"
+            exit 0
+          fi
+          aws ec2 revoke-security-group-ingress \
+            --group-id "$STAGING_SG_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP}/32}]" \
+            || echo "revoke failed (rule may not have been added); continuing"
