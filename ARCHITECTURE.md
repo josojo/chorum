@@ -54,6 +54,13 @@ There is no phone signature on the token; registration integrity comes from the 
 ### 1.6 Coercion resistance
 The skill must never emit a side-channel artifact (signed receipt, plaintext log shipped off-device, screenshot to cloud) that lets a third party prove how the user answered. The user gets a local audit trail. Nobody else does.
 
+**Residual: voluntary key transfer is the dominant bribery attack.** VISION §7's MACI defeats *per-vote* bribery — a coerced user can claim to have voted any way they like and the briber has no way to verify, so the contract "I'll pay you $X per pro-Y vote" is unenforceable. MACI does **not** defeat **agent-key handover**: after enrollment, `agent_key` is just an Ed25519 keypair on disk under a passphrase the user holds, and the user can sell the key file + passphrase + cached DelegationToken in a single off-platform transaction. The briber then runs the answering bot themselves under that `unique_identifier` for the remaining DelegationToken validity (default 90 days, §8.1). There is no ongoing user cooperation, and MACI is structurally irrelevant because **the briber is the agent**. This is qualitatively cheaper than "install a politically-biased plugin" — there is nothing to install, maintain, or pretend about. It is the dominant bribery attack against v0 and is **not currently defended**. The two defenses, both designed but unbuilt (see §13):
+
+- **Hardware-bound non-exportable signing keys.** `agent_key` is generated inside, and never leaves, a hardware key store: Secure Enclave (macOS/iOS), TPM 2.0 (Windows/Linux desktop), StrongBox (Android), WebAuthn passkey (browser-resident), or cloud HSM with remote attestation (managed Hermes). The skill's `crypto/` module holds *handles*, not bytes; signing an envelope becomes a hardware call. Selling the identity then requires shipping the device. `POST /v1/register` must accept a hardware attestation alongside the pubkey so the broker can record the storage class in `registrations` and gate higher trust tiers on enclave-bound keys.
+- **Periodic phone re-attestation.** Hardware-binding alone is necessary but not sufficient — a sophisticated briber can rent or buy the device. Every N answers (~200) or M days (~14), the broker issues a challenge that only the user's phone (Self app) can satisfy; the skill suspends answering until it clears. This forces *ongoing* user cooperation and at that point MACI's per-vote unverifiability bites the renewed contract. It is a deliberate, quantitative softening of §1.13's "phone is not a hot dependency" — from ~3 touches/year to ~1 touch every two weeks — accepted in exchange for closing the key-handover hole.
+
+Implementation cost is real: per-platform native bindings (Hermes is Python; hardware-key APIs are native), a fallback policy for hosts without hardware key stores (older Linux servers, generic VMs), and broker-side attestation handling. Until both ship, the v0 posture is to acknowledge this attack explicitly and rely on §14.8's volume cap + minimal per-answer reward to bound the prize a briber can buy.
+
 ### 1.7 Indistinguishable response fidelity
 Hearme plants honeypot questions to catch lazy agents. The skill must answer real and test questions with identical depth. No "is this a test?" branches — that defeats the mechanism.
 
@@ -834,6 +841,7 @@ Each package has its own test suite; one cross-cutting end-to-end suite at the r
 - **Aggregate semantics for free-form answers.** v0 only aggregates by predicate (e.g., "47 EU users answered"). Semantic clustering of answer text — "65% positive sentiment about X" — is v0.2 and needs careful design to not leak identifying patterns.
 - **Frontend identity for askers.** v0 has no auth. At what scale does this become a problem (spam, abuse)? Likely sooner than we'd like.
 - **What happens if the agent host is compromised mid-session.** Attacker has agent_key + the broker-issued DelegationToken; can submit answers until the registration is revoked (`registrations.revoked_at`) or the token expires. Broker rate-limit per `unique_identifier` is the v0 bound.
+- **Voluntary key transfer (key-handover bribery).** Distinct from host compromise above — there the user is the victim; here the user is the seller. After enrollment the briber needs nothing from the user beyond a one-shot key+token transfer, after which they vote under that `unique_identifier` until expiry (~90 days). MACI is structurally irrelevant because the briber *is* the agent — there is no per-vote contract to unenforce. This is the dominant bribery attack against v0 and is **not currently defended**; see §1.6 for the proposed counter (hardware-bound non-exportable keys + periodic phone re-attestation) and why it is hard: per-platform native bindings (Hermes is Python, hardware-key APIs are native), no-hardware-keystore fallback policy, broker-side attestation acceptance at `POST /v1/register`, and a quantitative softening of §1.13's "phone is cold" property. Until built, the per-answer-reward-minimization posture of §14.8 is the only thing limiting how big a prize a briber can buy.
 - **Memory provider query richness.** Does Hermes's abstraction expose enough for topic-scoped retrieval, or do we need our own layer?
 - **Auto-submit window default.** 0 (always prompt) or non-zero (trust the policy)? Shapes user expectations forever.
 - **Canonical memory leaf + compaction (§14.3).** "The whole memory" is mutable — providers summarize, edit, and compact (§1.11, §1.2.1). A stable Merkle commitment needs a canonical leaf (`item_id` + salted content hash), a deterministic ordering, and a documented policy so legitimate compaction does not read as tampering.
@@ -930,6 +938,27 @@ Two flavors on a privacy/cost ladder (mirroring §13's device → self-consisten
 
 - **Account-existence stamps (cheap).** Prove possession of *aged, independent* accounts (a years-old email, a bank login, a phone number) bound to this identity, without exposing their contents — the model used by **Gitcoin Passport** and already listed in VISION's identity model ("social account verification," "web-of-trust"). Low privacy cost, modest tier boost, kills throwaway personas.
 - **Content cross-consistency (heavyweight; sampled / high-value only).** Check that the persona's memory is consistent with independently-witnessed facts (e.g., chats reference places and times consistent with the user's *own* location timeline), run locally and emitting only a consistency score. Strong fidelity boost, can unlock T3.
+
+**Concrete v1+ attestation menu.** The two flavors above describe *what kinds* of attestation are admissible. The opt-in stamp list below — each one zkTLS proof, with production-grade implementations in Reclaim Protocol, zkPass, and TLSNotary/DECO; the user-side proxy emits a ZK proof binding to a real TLS session with the named service, and the broker learns only the predicate — maps each tier promotion to its sources:
+
+- **Identity-existence (T0 → T1).** Proves the passport corresponds to a real digital life; kills clean-room installs. Predicates:
+  - aged Gmail / X / GitHub account
+  - real phone number bound to passport-country carrier
+  - aged bank account
+- **Information-diet (T1 → T2) — opinion-relevant.** Proves the persona is embedded in an information ecosystem of the type that plausibly produces the claimed opinions. **This is the flavor that maps to opinion-poll correspondence specifically:** what users *consume* is a strong proxy for what they think, even when they produce nothing publicly (the user who discusses politics only with their agent and writes only work emails still has a podcast subscription list, an X follow graph, and a newsletter-sender set). It closes the §14.4 residual for opinion polls — a fabricator now needs a multi-year, multi-platform consumption history matching the persona, which services timestamp server-side and cannot be backfilled. Predicates:
+  - X / Twitter following list snapshot
+  - YouTube subscriptions + watch-category totals
+  - Spotify podcast subscriptions
+  - Substack subscriptions
+  - Reddit subscribed subreddits
+  - Gmail newsletter-sender set (sender addresses only, **no content**)
+  - Patreon active subscriptions
+- **Production / public-record (T2 → T3, where available).** Proves specific historical positions through public acts. Predicates:
+  - public political donations (FEC, EU equivalents)
+  - public voter registration
+  - long-aged public social account with non-trivial posting history
+
+Each stamp is opt-in; refusal is not exclusion. A user who declines all of them stays at T0/T1, throttled by the volume cap and deeper vesting, while their answers still enter the aggregate weighted at read time (§14.7) — preserving access for VISION §5's censored-country users.
 
 **Slash triggers — integrity failures only, never crowd-divergence.** The escrow is slashed only on a *detected integrity failure*: a failed honeypot (§14.6), a failed grounding audit (§14.3), or a failed sampled correspondence audit. It is **never** slashed for disagreeing with the aggregate — punishing contrarians would destroy the minority signal that is the platform's product (VISION §5). Slashing is **graduated and appealable**: a first strike claws back only that answer's `β`; the escrow is slashed only on strong or repeated evidence. The deterrent is bounded by the unvested balance (once `β` vests and is withdrawn there is no custody to claw); the volume cap bounds the rest.
 
