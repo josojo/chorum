@@ -35,6 +35,9 @@ jobs:
   deploy:
     name: deploy to staging
     runs-on: ubuntu-latest
+    # The AWS_* and STAGING_SSH_KEY secrets live under this GitHub Environment,
+    # not at the repo level, so this job must opt into it to see them.
+    environment: staging
     timeout-minutes: 20
     env:
       AWS_REGION: eu-central-1
