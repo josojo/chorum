@@ -62,6 +62,14 @@ const CHAIN_ID = process.env.SELF_CHAIN_ID
   : undefined;
 const PORT = parseInt(process.env.PORT || "8787", 10);
 
+// Verbose request tracing for incident investigation. When on, every /requests,
+// /callback, and /requests/:id poll is logged. Off by default so production
+// logs stay focused on actual problems (which are always logged regardless).
+const DEBUG_LOG = process.env.SELF_BRIDGE_DEBUG_LOG === "1";
+function dbg(...args) {
+  if (DEBUG_LOG) console.log("[self-bridge:debug]", ...args);
+}
+
 // requestId -> { agentKey, thresholds:[int], results: Map<normUserId,bundle> }
 const pending = new Map();
 
@@ -164,6 +172,10 @@ async function verifyOne({ attestationId, proof, publicSignals, userContextData 
     // necessarily registry-confirmed.
     registryConfirmed: verified,
     userIdentifier: result?.userData?.userIdentifier ?? null,
+    // Surfaced so /callback can log a meaningful reason when verify() returns
+    // isValid:false (otherwise the failure is silently swallowed as 200 with
+    // `result:false` — debugging the verify ladder is impossible without it).
+    _isValidDetails: result?.isValidDetails ?? null,
   };
 }
 
@@ -226,6 +238,10 @@ app.post("/requests", async (req, res) => {
       thresholds,
       results: new Map(),
     });
+    dbg(
+      `/requests created requestId=${requestId} thresholds=${JSON.stringify(thresholds)} ` +
+      `pending.size=${pending.size} byUser.size=${byUser.size}`,
+    );
     return res.json({ requestId, urls });
   } catch (e) {
     return res.status(500).json({ error: String(e?.message || e) });
@@ -236,32 +252,70 @@ app.post("/requests", async (req, res) => {
 app.post("/callback", async (req, res) => {
   try {
     const { attestationId, proof, publicSignals, userContextData } = req.body || {};
+    dbg(
+      `/callback IN attestationId=${attestationId} ` +
+      `proof?=${!!proof} publicSignals.len=${Array.isArray(publicSignals) ? publicSignals.length : "?"}`,
+    );
     if (attestationId == null || !proof || !publicSignals || !userContextData) {
+      console.warn("[self-bridge] /callback rejected: malformed body");
       return res.status(400).json({ status: "error", reason: "malformed" });
     }
     const out = await verifyOne({ attestationId, proof, publicSignals, userContextData });
+    // Always log the WHY when a proof fails: today this is silently swallowed
+    // as 200 + {result:false}, which makes debugging the verify ladder (mock
+    // vs real, scope/endpoint mismatch, expired root, …) impossible.
+    if (out.verified !== true) {
+      console.warn(
+        "[self-bridge] /callback verify returned isValid:false " +
+          `isValidDetails=${JSON.stringify(out._isValidDetails)}`,
+      );
+    }
     // Route by the userId we minted per (requestId, threshold) in /requests.
-    const routed = byUser.get(normUserId(out.userIdentifier || ""));
+    const normUid = normUserId(out.userIdentifier || "");
+    const routed = byUser.get(normUid);
     const entry = routed ? pending.get(routed.requestId) : undefined;
     if (entry) {
-      entry.results.set(normUserId(out.userIdentifier), {
+      entry.results.set(normUid, {
         bundle: { attestationId, proof, publicSignals, userContextData },
         ...out,
       });
+      dbg(
+        `/callback stored requestId=${routed.requestId} threshold=${routed.threshold} ` +
+        `now=${entry.results.size}/${entry.thresholds.length}`,
+      );
+    } else {
+      // Either the Self app echoed an unexpected userIdentifier or the bridge
+      // was restarted between /requests and the proof landing. Either way the
+      // skill will poll forever waiting for a bundle that won't arrive.
+      console.warn(
+        `[self-bridge] /callback could not route userIdentifier=${out.userIdentifier} ` +
+        `(byUser.size=${byUser.size}) — proof discarded`,
+      );
     }
     // Ack shape the Self app expects.
     return res.json({ status: "success", result: out.verified === true });
   } catch (e) {
+    console.error("[self-bridge] /callback 500:", e?.stack || e);
     return res.status(500).json({ status: "error", reason: String(e?.message || e) });
   }
 });
 
 app.get("/requests/:id", (req, res) => {
   const entry = pending.get(req.params.id);
-  if (!entry) return res.status(404).json({ error: "unknown requestId" });
+  if (!entry) {
+    console.warn(
+      `[self-bridge] /requests/${req.params.id} unknown (pending.size=${pending.size}) ` +
+      `— skill polling for a requestId this bridge never minted (likely a restart)`,
+    );
+    return res.status(404).json({ error: "unknown requestId" });
+  }
 
   const results = [...entry.results.values()];
   const complete = results.length >= entry.thresholds.length && results.length > 0;
+  dbg(
+    `/requests/${req.params.id} poll ` +
+    `results=${results.length}/${entry.thresholds.length} status=${complete ? "complete" : "pending"}`,
+  );
   const body = { status: complete ? "complete" : "pending" };
   if (complete) {
     const allVerified = results.every((r) => r.verified);
@@ -310,7 +364,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   app.listen(PORT, () => {
     // eslint-disable-next-line no-console
     console.log(
-      `[self-bridge] listening on :${PORT} scope=${SCOPE} mockPassport=${MOCK_PASSPORT} devMode=${DEV_MODE} chainID=${CHAIN_ID ?? "(sdk default)"} (on-chain root check via @selfxyz/core)`,
+      `[self-bridge] listening on :${PORT} scope=${SCOPE} mockPassport=${MOCK_PASSPORT} devMode=${DEV_MODE} chainID=${CHAIN_ID ?? "(sdk default)"} debugLog=${DEBUG_LOG} (on-chain root check via @selfxyz/core)`,
     );
     const epErr = endpointProblem(ENDPOINT);
     if (epErr) {
