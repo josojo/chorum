@@ -122,7 +122,7 @@ forthcoming `hearme-skill` package must mirror it byte-for-byte.
 
 ## Database role grants required
 
-The broker connects as `hearme_broker`, which `db/init/02-roles.sql`
+The broker connects as `hearme_broker`, which `db/init/02-roles.sh`
 defines with:
 
 ```sql

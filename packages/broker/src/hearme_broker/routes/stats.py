@@ -1,7 +1,7 @@
 """GET /v1/stats — public, privacy-safe site-wide counts.
 
 The web role is revoked from ``registrations`` and ``envelopes`` (the privacy
-boundary in db/init/02-roles.sql), so the broker — which owns those tables — is
+boundary in db/init/02-roles.sh), so the broker — which owns those tables — is
 the only place agent/respondent counts can be computed. This endpoint returns
 aggregate COUNTs only; no nullifiers, agent keys, or per-row data cross the
 boundary. The public stats page (packages/web) fetches it.

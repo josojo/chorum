@@ -75,7 +75,7 @@ Open <http://localhost:3000>.
 - `SELECT` on `aggregates`
 
 The dev compose stack provisions a `hearme_web` role with exactly these grants
-(see `db/init/02-roles.sql`). The web package only inserts into `questions`
+(see `db/init/02-roles.sh`). The web package only inserts into `questions`
 and `askers` from the `createQuestion` server action; raw envelopes,
 revocations, and aggregate writes are the broker's job and are explicitly
 **denied** to the web role by Postgres.

@@ -1,7 +1,7 @@
 // Site-wide stats for /stats.
 //
 // The web Postgres role is walled off from `registrations` and `envelopes`
-// (db/init/02-roles.sql), so agent + respondent counts can only come from the
+// (db/init/02-roles.sh), so agent + respondent counts can only come from the
 // broker, which owns those tables and exposes them as privacy-safe COUNTs at
 // GET /v1/stats. We fetch that first. If the broker is unreachable we fall
 // back to the web-readable subset (questions + aggregates) so the page still

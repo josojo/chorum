@@ -1,15 +1,29 @@
--- Role grants for hearme v0.
--- Runs after 01-schema.sql (numbered ordering in /docker-entrypoint-initdb.d).
---
--- Enforcement boundary (ARCHITECTURE.md §2, §4):
---   hearme_web    — writes questions only; reads public aggregates.
---   hearme_broker — writes envelopes, aggregates, revocations, registrations, Self invalidation state; reads questions, askers.
---
--- Passwords here are dev-only. Production deploys must override these
--- via secrets injection before the init script runs.
+#!/usr/bin/env bash
+set -euo pipefail
 
-CREATE ROLE hearme_web    LOGIN PASSWORD 'hearme_web_dev';
-CREATE ROLE hearme_broker LOGIN PASSWORD 'hearme_broker_dev';
+# Local dev defaults are intentionally low-value. Public staging/prod overlays
+# must provide these through a gitignored .env / secret manager.
+: "${HEARME_DB_WEB_PASSWORD:=hearme_web_dev}"
+: "${HEARME_DB_BROKER_PASSWORD:=hearme_broker_dev}"
+: "${HEARME_DB_ADMIN_PASSWORD:=${POSTGRES_PASSWORD:-hearme_admin_dev}}"
+
+psql -v ON_ERROR_STOP=1 \
+  --username "$POSTGRES_USER" \
+  --dbname "$POSTGRES_DB" \
+  -v admin_user="$POSTGRES_USER" \
+  -v admin_password="$HEARME_DB_ADMIN_PASSWORD" \
+  -v web_password="$HEARME_DB_WEB_PASSWORD" \
+  -v broker_password="$HEARME_DB_BROKER_PASSWORD" <<'SQL'
+ALTER ROLE :"admin_user" WITH LOGIN PASSWORD :'admin_password';
+
+SELECT format('CREATE ROLE hearme_web LOGIN PASSWORD %L', :'web_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_web')\gexec
+
+SELECT format('CREATE ROLE hearme_broker LOGIN PASSWORD %L', :'broker_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_broker')\gexec
+
+ALTER ROLE hearme_web    WITH LOGIN PASSWORD :'web_password';
+ALTER ROLE hearme_broker WITH LOGIN PASSWORD :'broker_password';
 
 GRANT USAGE ON SCHEMA public TO hearme_web, hearme_broker;
 
@@ -40,3 +54,4 @@ GRANT SELECT, INSERT, UPDATE  ON self_nullifier_invalidations TO hearme_broker;
 GRANT SELECT, INSERT, UPDATE  ON self_chain_cursors           TO hearme_broker;
 GRANT SELECT, UPDATE          ON questions     TO hearme_broker;
 GRANT SELECT                  ON askers        TO hearme_broker;
+SQL

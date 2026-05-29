@@ -12,9 +12,8 @@
 # Then open http://localhost:3000.
 #
 # Onboarding requires REAL Self proofs (verified once at the broker's
-# /v1/register). With SELF_MOCK_PASSPORT=1 (staging) you can scan a *mock
-# passport* (install the Self app, tap the passport button 5x to create a mock
-# passport, scan each QR).
+# /v1/register). Local dev defaults to mock-passport mode; public staging uses
+# docker-compose.staging.yml to force real identity mode and non-dev secrets.
 #
 # To wipe state and start from scratch:
 #   docker compose down -v && docker compose up --build
@@ -36,7 +35,7 @@ services:
       # 02: roles + grants
       # 03: demo seed data (questions/envelopes/aggregates across scopes)
       - ./packages/web/drizzle/0000_init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./db/init/02-roles.sql:/docker-entrypoint-initdb.d/02-roles.sql:ro
+      - ./db/init/02-roles.sh:/docker-entrypoint-initdb.d/02-roles.sh:ro
       - ./db/init/03-seed.sql:/docker-entrypoint-initdb.d/03-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hearme_admin -d hearme"]

@@ -17,6 +17,13 @@ name: deploy-staging
 #   STAGING_SSH_KEY                           - contents of hearme-staging.pem
 #                                               (the EC2 keypair, NOT a GH
 #                                               deploy key).
+#
+# Required on the staging host in /home/ubuntu/hearme/.env:
+#   HEARME_STAGING_POSTGRES_ADMIN_PASSWORD
+#   HEARME_STAGING_POSTGRES_WEB_PASSWORD
+#   HEARME_STAGING_POSTGRES_BROKER_PASSWORD
+#   HEARME_STAGING_BROKER_SIGNING_KEY
+#   HEARME_STAGING_SELF_ENDPOINT
 
 on:
   push:
@@ -94,7 +101,26 @@ jobs:
           git reset --hard origin/main
           echo "deploying SHA \$(git rev-parse --short HEAD): \$(git log -1 --pretty=%s)"
 
-          docker compose up -d --build --remove-orphans
+          test -f .env
+          set -a
+          . ./.env
+          set +a
+
+          # Existing Postgres volumes do not re-run /docker-entrypoint-initdb.d.
+          # Re-apply the role script inside the running container so staging can
+          # rotate away from the committed dev passwords without wiping data.
+          if docker ps --format '{{.Names}}' | grep -qx hearme-postgres; then
+            docker exec -i \
+              -e POSTGRES_USER=hearme_admin \
+              -e POSTGRES_DB=hearme \
+              -e HEARME_DB_ADMIN_PASSWORD="\$HEARME_STAGING_POSTGRES_ADMIN_PASSWORD" \
+              -e HEARME_DB_WEB_PASSWORD="\$HEARME_STAGING_POSTGRES_WEB_PASSWORD" \
+              -e HEARME_DB_BROKER_PASSWORD="\$HEARME_STAGING_POSTGRES_BROKER_PASSWORD" \
+              hearme-postgres bash -s < db/init/02-roles.sh
+          fi
+
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build --remove-orphans
 
           echo "--- container state ---"
           docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'hearme-|NAMES'
