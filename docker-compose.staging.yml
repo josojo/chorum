@@ -1,0 +1,60 @@
+# Staging overlay: production-like runtime settings for the public EC2 box.
+#
+# Use explicitly:
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build
+#
+# Required values live in the host's gitignored .env file. Compose fails fast
+# if any are missing, so staging cannot silently boot with committed dev
+# passwords, the dev broker signing key, mock passports, or disabled registry
+# confirmation.
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${HEARME_STAGING_POSTGRES_ADMIN_PASSWORD:?set in staging .env}
+      HEARME_DB_ADMIN_PASSWORD: ${HEARME_STAGING_POSTGRES_ADMIN_PASSWORD:?set in staging .env}
+      HEARME_DB_WEB_PASSWORD: ${HEARME_STAGING_POSTGRES_WEB_PASSWORD:?set in staging .env}
+      HEARME_DB_BROKER_PASSWORD: ${HEARME_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}
+
+  broker:
+    environment:
+      HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:${HEARME_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}@postgres:5432/hearme
+      HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "1"
+      HEARME_BROKER_EXPOSE_REJECTION_REASONS: "0"
+      HEARME_BROKER_SIGNING_KEY: ${HEARME_STAGING_BROKER_SIGNING_KEY:?set in staging .env}
+
+  self-bridge:
+    environment:
+      # The callback the Self app posts proofs to MUST be public HTTPS.
+      SELF_ENDPOINT: ${HEARME_STAGING_SELF_ENDPOINT:?set in staging .env}
+      SELF_ENDPOINT_TYPE: https
+      # Public staging should exercise the real identity path. Use an isolated
+      # non-public dev stack if mock-passport onboarding is needed.
+      SELF_MOCK_PASSPORT: "0"
+      SELF_DEV_MODE: "0"
+
+  migrator:
+    environment:
+      MIGRATOR_DATABASE_URL: postgres://hearme_admin:${HEARME_STAGING_POSTGRES_ADMIN_PASSWORD:?set in staging .env}@postgres:5432/hearme
+
+  web:
+    environment:
+      DATABASE_URL: postgres://hearme_web:${HEARME_STAGING_POSTGRES_WEB_PASSWORD:?set in staging .env}@postgres:5432/hearme
+
+  caddy:
+    image: caddy:2
+    container_name: hearme-caddy
+    restart: unless-stopped
+    depends_on:
+      - web
+      - self-bridge
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

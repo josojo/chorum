@@ -1,7 +1,7 @@
 """Broker runtime configuration.
 
 Environment-driven. The DATABASE_URL points at the shared Postgres using the
-``hearme_broker`` role (see /db/init/02-roles.sql and the README).
+``hearme_broker`` role (see /db/init/02-roles.sh and the README).
 """
 
 from __future__ import annotations

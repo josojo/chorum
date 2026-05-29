@@ -4,7 +4,7 @@
 //
 // Inserts an asker display row and a question, then redirects to /q/[id].
 // The web role is allowed INSERT on `askers` and `questions` only (see
-// db/init/02-roles.sql).
+// db/init/02-roles.sh).
 //
 // This action MUST NOT write to envelopes or aggregates. The DB grants
 // enforce that, but we don't even attempt it here.

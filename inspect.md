@@ -23,7 +23,7 @@ sqlite3 -header -column ~/.hermes/hearme/ledger.sqlite \
 
 # Server: any envelopes arrive at the broker?
 ssh -i ~/.ssh/hearme-staging.pem ubuntu@3.121.186.133 \
-  'cd ~/hearme && docker compose logs broker --since=1h | grep -E "envelopes|register"'
+  'cd ~/hearme && docker compose -f docker-compose.yml -f docker-compose.staging.yml logs broker --since=1h | grep -E "envelopes|register"'
 ```
 
 ---
@@ -174,21 +174,22 @@ Deployed at `3.121.186.133` under `/home/ubuntu/hearme` (proper git checkout of
 ```bash
 ssh -i ~/.ssh/hearme-staging.pem ubuntu@3.121.186.133
 cd ~/hearme
+dc='docker compose -f docker-compose.yml -f docker-compose.staging.yml'
 ```
 
 ### Container status
 
 ```bash
-docker compose ps
+$dc ps
 # expect 5 services: broker, self-bridge, web, postgres, caddy — all Up + healthy
 ```
 
 ### Broker logs (HTTP wire + skill events)
 
 ```bash
-docker compose logs broker --since=30m
-docker compose logs broker --since=1h | grep -E "register|envelope|verify|reason"
-docker compose logs broker -f
+$dc logs broker --since=30m
+$dc logs broker --since=1h | grep -E "register|envelope|verify|reason"
+$dc logs broker -f
 ```
 
 Useful patterns to grep for:
@@ -202,15 +203,16 @@ Useful patterns to grep for:
 ### Self-bridge logs (Self proof verification)
 
 ```bash
-docker compose logs self-bridge --since=30m
+$dc logs self-bridge --since=30m
 curl -s http://localhost:8787/healthz | python3 -m json.tool
-# expect: {mockPassport, devMode, chainID, registryCheck, endpointOk}
+# public staging overlay expects mockPassport:false, devMode:false,
+# registryCheck:true, endpointOk:true
 ```
 
 ### Caddy access logs (the HTTPS edge for the Self-app callback)
 
 ```bash
-docker compose logs caddy --since=30m | grep -E '"method":|/self/'
+$dc logs caddy --since=30m | grep -E '"method":|/self/'
 ```
 
 This is where you see incoming proof POSTs from the Self relayer
@@ -219,20 +221,18 @@ This is where you see incoming proof POSTs from the Self relayer
 ### Postgres — broker DB directly
 
 ```bash
-docker compose exec postgres \
+$dc exec postgres \
   psql -U hearme_admin hearme -c 'SELECT count(*) FROM registrations;'
-docker compose exec postgres \
+$dc exec postgres \
   psql -U hearme_admin hearme \
   -c 'SELECT question_id, count(*) FROM envelopes GROUP BY question_id ORDER BY 2 DESC LIMIT 10;'
-docker compose exec postgres psql -U hearme_admin hearme -c '\d envelopes'
+$dc exec postgres psql -U hearme_admin hearme -c '\d envelopes'
 ```
 
 ### Health probes (no SSH needed)
 
 ```bash
 curl -s -o /dev/null -w "web (https):  HTTP %{http_code}\n"  https://3-121-186-133.sslip.io/
-curl -s http://3.121.186.133:8000/healthz                       ; echo
-curl -s http://3.121.186.133:8787/healthz                       ; echo
 curl -s https://3-121-186-133.sslip.io/self/healthz             ; echo
 ```
 
@@ -248,7 +248,7 @@ journalctl --user -u hermes-gateway.service -f
 
 # Terminal B — broker on staging
 ssh -i ~/.ssh/hearme-staging.pem ubuntu@3.121.186.133 \
-  'cd ~/hearme && docker compose logs broker -f'
+  'cd ~/hearme && docker compose -f docker-compose.yml -f docker-compose.staging.yml logs broker -f'
 
 # Terminal C — fire the cron
 hermes cron run hearme-answer-cycle
@@ -275,5 +275,5 @@ If any of those is missing, the absence tells you where the cycle stalled.
 | Is my delegation token still valid? | `python3 -m json.tool < ~/.hermes/hearme/delegation.token` (check `expires_at`) |
 | Are the staging services healthy? | The `curl … /healthz` block in §3. |
 | Did the proof reach the bridge during onboarding? | Caddy logs filtered to `/self/`. |
-| Why did the broker reject? | `docker compose logs broker | grep -E "register|envelope" | grep -i fail` |
-| How many answers from my agent landed? | `docker compose exec postgres psql -U hearme_admin hearme -c "SELECT count(*) FROM envelopes WHERE delegation_hash = decode('<hex>','hex');"` (hash is in the `submissions` ledger) |
+| Why did the broker reject? | `$dc logs broker | grep -E "register|envelope" | grep -i fail` |
+| How many answers from my agent landed? | `$dc exec postgres psql -U hearme_admin hearme -c "SELECT count(*) FROM envelopes WHERE delegation_hash = decode('<hex>','hex');"` (hash is in the `submissions` ledger) |

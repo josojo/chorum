@@ -459,7 +459,7 @@ CREATE TABLE escrow_chain_cursors (
 );
 ```
 
-**Role grants** (`db/init/02-roles.sql`):
+**Role grants** (`db/init/02-roles.sh`):
 
 ```sql
 GRANT SELECT, INSERT, UPDATE ON payout_epochs           TO hearme_broker;

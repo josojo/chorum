@@ -44,12 +44,13 @@ matching its region/country.
 
 ---
 
-## B. Real Self mock passport (staging)
+## B. Real Self mock passport (isolated dev/testnet)
 
 A Self **mock passport** is a feature of the Self mobile app on the
 staging/testnet hub. There is **no phone-free way** to mint a real Self proof —
 the zk proof is generated on-device — so each mock passport = one identity, and
-you need the Self app on a phone.
+you need the Self app on a phone. Do this on a local or isolated testnet stack;
+the public staging overlay disables mock passports and dev mode.
 
 ### One-time: the bridge must request `devMode:true`
 
@@ -58,13 +59,12 @@ silently fails. The bridge now sets `devMode` from `SELF_DEV_MODE` (which
 defaults to `SELF_MOCK_PASSPORT`). Confirm what a bridge is emitting:
 
 ```sh
-curl -s https://3-121-186-133.sslip.io/self/healthz   # expect mockPassport:true, devMode:true
+curl -s https://<test-host>/self/healthz   # expect mockPassport:true, devMode:true
 ```
 
-Redeploy staging with the fix (SSH is restricted to the admin IP):
+Redeploy the isolated testnet stack with the fix:
 
 ```sh
-ssh -i ~/.ssh/hearme-staging.pem ubuntu@3.121.186.133
 cd ~/hearme && git pull && docker compose up --build -d self-bridge
 curl -s http://localhost:8787/healthz                 # devMode:true
 ```
@@ -74,8 +74,8 @@ curl -s http://localhost:8787/healthz                 # devMode:true
 ```sh
 # From the machine running your Hermes agent / skill:
 hearme-skill onboard \
-  --bridge-url http://3.121.186.133:8787 \
-  --broker-url http://3.121.186.133:8000
+  --bridge-url http://<test-host>:8787 \
+  --broker-url http://<test-host>:8000
 # Scan each QR with the Self app (create a mock passport: tap the passport 5×).
 # On success a DelegationToken is stored; the agent can now answer.
 ```

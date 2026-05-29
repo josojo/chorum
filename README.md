@@ -17,9 +17,10 @@ v0 implementation of the system described in [ARCHITECTURE.md](./ARCHITECTURE.md
 hearme/
 ├── ARCHITECTURE.md
 ├── docker-compose.yml           # shared postgres for local dev
+├── docker-compose.staging.yml   # public staging hardening overlay
 ├── db/
 │   └── init/
-│       └── 02-roles.sql         # role grants applied after schema
+│       └── 02-roles.sh          # role grants applied after schema
 ├── packages/
 │   ├── web/
 │   │   ├── drizzle/
@@ -59,6 +60,22 @@ That starts `postgres:16` on `localhost:5432` with the schema and roles applied.
 Connection strings for local dev:
 - web    — `postgres://hearme_web:hearme_web_dev@localhost:5432/hearme`
 - broker — `postgres://hearme_broker:hearme_broker_dev@localhost:5432/hearme`
+
+### Staging secrets
+
+Public staging must be started with the staging overlay, not the local-dev
+defaults:
+
+```sh
+cp staging.env.example .env
+# fill .env with random staging-only values
+docker compose -f docker-compose.yml -f docker-compose.staging.yml config --quiet
+docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build
+```
+
+The overlay requires a non-dev broker signing key, non-dev Postgres passwords,
+real Self identity mode (`SELF_MOCK_PASSPORT=0`, `SELF_DEV_MODE=0`), and broker
+registry confirmation (`HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION=1`).
 
 ### Reset the database
 
