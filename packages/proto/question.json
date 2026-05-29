@@ -5,11 +5,18 @@
   "description": "Shape returned by GET /v1/questions/open. See ARCHITECTURE.md §5.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["question_id", "text", "created_at", "closes_at", "nonce"],
+  "required": ["question_id", "text", "options", "created_at", "closes_at", "nonce"],
   "properties": {
     "question_id": { "type": "string", "format": "uuid" },
     "text": { "type": "string" },
     "topic": { "type": ["string", "null"] },
+    "options": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 8,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Ordered list of poll options. The agent must answer with one of these labels (case-insensitive leading-word match). Default ['yes','no'] preserves the legacy yes/no flow."
+    },
     "created_at": {
       "type": "string",
       "format": "date-time",

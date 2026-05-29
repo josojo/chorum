@@ -119,7 +119,15 @@ def test_list_results_never_carry_nonce_or_identity(tmp_root, fresh_token):
     blob = repr(result)
     assert q.nonce not in blob
     assert fresh_token.unique_identifier not in blob
-    assert set(result["questions"][0]) == {"question_id", "text", "topic", "closes_at"}
+    # `options` joined the surfaced fields so the agent can pick a valid label;
+    # `nonce`/identity still must not leak.
+    assert set(result["questions"][0]) == {
+        "question_id",
+        "text",
+        "topic",
+        "options",
+        "closes_at",
+    }
 
 
 # --- submit_answer --------------------------------------------------------

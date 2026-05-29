@@ -23,6 +23,9 @@ class LLMRequest:
     question_text: str
     persona_facts: tuple[str, ...]
     style_hints: tuple[str, ...]
+    # Ordered list of allowed answer labels. The model MUST lead with one of
+    # these (case-insensitive). Default ['yes','no'] keeps the legacy flow.
+    options: tuple[str, ...] = ("yes", "no")
     style_guide: str = ""
 
 
@@ -57,4 +60,8 @@ class FakeLLMClient:
         if req.question_text in self.responses:
             return self.responses[req.question_text]
         body = "; ".join(req.persona_facts) if req.persona_facts else "no opinion"
-        return LLMResponse(text=f"[fake-answer] {body}", rationale="fake rationale")
+        # Lead with the first allowed option so the broker's classifier
+        # has a clean leading-word match without any prompt-engineering work
+        # in the test surface.
+        lead = req.options[0] if req.options else "yes"
+        return LLMResponse(text=f"{lead} — {body}", rationale="fake rationale")

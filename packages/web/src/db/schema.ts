@@ -39,6 +39,12 @@ export const questions = pgTable(
       .defaultNow(),
     closesAt: timestamp("closes_at", { withTimezone: true }).notNull(),
     status: text("status").notNull().default("open"),
+    // Ordered list of poll options. Default ['yes','no'] keeps every legacy
+    // poll a two-option poll; arbitrary labels are allowed (2..8).
+    options: jsonb("options")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'["yes","no"]'::jsonb`),
     scope: text("scope").notNull().default("worldwide"),
     country: text("country"),
     continent: text("continent"),
@@ -51,6 +57,10 @@ export const questions = pgTable(
     scopeChk: check(
       "questions_scope_chk",
       sql`${t.scope} IN ('worldwide','continent','country')`,
+    ),
+    optionsChk: check(
+      "questions_options_chk",
+      sql`jsonb_typeof(${t.options}) = 'array' AND jsonb_array_length(${t.options}) BETWEEN 2 AND 8`,
     ),
   }),
 );

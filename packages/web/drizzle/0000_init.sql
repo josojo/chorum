@@ -24,6 +24,11 @@ CREATE TABLE questions (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   closes_at   TIMESTAMPTZ NOT NULL,
   status      TEXT NOT NULL DEFAULT 'open',
+  -- Ordered list of poll options the agents pick from. The classifier matches
+  -- the leading word of the answer (case-insensitive) against these labels;
+  -- yes/no is the 2-option default and still uses the multilingual yes/no
+  -- synonym table (see packages/broker/.../aggregates.py).
+  options     JSONB NOT NULL DEFAULT '["yes","no"]'::jsonb,
   -- Geographic scope of the question. 'worldwide' is the broadest;
   -- 'continent' restricts to a region (continent column required);
   -- 'country' restricts to a single country (country column required,
@@ -43,6 +48,10 @@ CREATE TABLE questions (
     (scope = 'worldwide' AND country IS NULL AND continent IS NULL)
     OR (scope = 'continent' AND country IS NULL AND continent IS NOT NULL)
     OR (scope = 'country' AND country IS NOT NULL AND continent IS NOT NULL)
+  ),
+  CONSTRAINT questions_options_chk CHECK (
+    jsonb_typeof(options) = 'array'
+    AND jsonb_array_length(options) BETWEEN 2 AND 8
   )
 );
 
@@ -64,7 +73,11 @@ CREATE TABLE envelopes (
 CREATE TABLE aggregates (
   question_id    UUID PRIMARY KEY REFERENCES questions(id),
   total_answers  INTEGER NOT NULL DEFAULT 0,
-  -- yes/no tally per bucket: {"region:EU": {"yes": 30, "no": 12}, ...}
+  -- Per-option tally per bucket. Each tally is a map from the question's
+  -- option labels to counts; yes/no is the 2-option case, e.g.
+  --   {"region:EU": {"yes": 30, "no": 12}, ...}
+  -- For an N-option poll the same shape carries arbitrary labels, e.g.
+  --   {"region:EU": {"pizza": 22, "pasta": 14, "sushi": 9}, ...}
   by_predicate   JSONB NOT NULL DEFAULT '{}',
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );

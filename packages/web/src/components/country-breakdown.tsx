@@ -1,21 +1,21 @@
 // Country breakdown — used when a question's geography dimension is a list
 // of countries (continent-scoped questions) or sub-national regions
 // (country-scoped questions). Renders a ranked list of pill-cards with flag
-// emojis and a green/rose bar showing how each place voted yes vs no.
+// emojis and an option-split bar showing how each place voted.
 
 import { countryFlag } from "@/lib/flags";
 import { COUNTRY_NAMES } from "@/lib/geo-data";
-import { YesNoBar, YesNoCount } from "./yes-no-bar";
+import { OptionsBar, OptionsCount, type OptionTally, tallyTotal } from "./options-bar";
 
 export type CountryDatum = {
   code: string;
-  yes: number;
-  no: number;
+  tally: OptionTally;
 };
 
 export type CountryBreakdownProps = {
   data: CountryDatum[];
   total: number;
+  options: readonly string[];
   /** "country" renders flag emojis; "region" treats codes as opaque labels. */
   variant?: "country" | "region";
 };
@@ -30,11 +30,12 @@ function labelFor(code: string, variant: "country" | "region"): string {
 export function CountryBreakdown({
   data,
   total,
+  options,
   variant = "country",
 }: CountryBreakdownProps) {
-  const sorted = [...data].sort((a, b) => b.yes + b.no - (a.yes + a.no));
-  const max = sorted.reduce((m, e) => (e.yes + e.no > m ? e.yes + e.no : m), 0);
-  const cohortSum = sorted.reduce((s, e) => s + e.yes + e.no, 0);
+  const sorted = [...data].sort((a, b) => tallyTotal(b.tally) - tallyTotal(a.tally));
+  const max = sorted.reduce((m, e) => Math.max(m, tallyTotal(e.tally)), 0);
+  const cohortSum = sorted.reduce((s, e) => s + tallyTotal(e.tally), 0);
   const denom = total > 0 ? total : cohortSum;
 
   if (sorted.length === 0) {
@@ -48,7 +49,7 @@ export function CountryBreakdown({
   return (
     <ol className="space-y-2">
       {sorted.map((e, i) => {
-        const count = e.yes + e.no;
+        const count = tallyTotal(e.tally);
         const widthPct = max === 0 ? 0 : (count / max) * 100;
         const sharePct = denom === 0 ? 0 : (count / denom) * 100;
         return (
@@ -69,10 +70,10 @@ export function CountryBreakdown({
                 {labelFor(e.code, variant)}
               </span>
               <div className="min-w-0 flex-1">
-                <YesNoBar yes={e.yes} no={e.no} widthPct={widthPct} />
+                <OptionsBar tally={e.tally} options={options} widthPct={widthPct} />
               </div>
               <span className="shrink-0 text-right text-xs text-slate-700 sm:w-40">
-                <YesNoCount yes={e.yes} no={e.no} />
+                <OptionsCount tally={e.tally} options={options} />
                 <span className="ml-1.5 hidden text-slate-500 tabular-nums sm:inline">
                   {sharePct.toFixed(0)}%
                 </span>

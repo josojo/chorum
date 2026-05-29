@@ -49,13 +49,21 @@ from .ui import UI, Channel, InMemoryChannel
 
 log = logging.getLogger("hearme_skill")
 
-# Hearme questions are yes/no, so the agent leads with a clear verdict the
-# broker can tally. The brief reason after it stays local-flavoured but never
-# leaks identity (the Answerer only sees the persona projection).
-YES_NO_STYLE_GUIDE = (
-    "This is a yes/no question. Begin your answer with 'Yes' or 'No', "
-    "then add one short sentence of reasoning."
-)
+# Hearme questions carry an explicit option list (default ['yes','no']). The
+# agent must begin its answer with one of the allowed labels so the broker's
+# leading-word classifier can tally it; the brief reason after that stays
+# local-flavoured but never leaks identity (the Answerer only sees the persona
+# projection, never the DelegationToken).
+def build_style_guide(options: list[str]) -> str:
+    opts = " / ".join(f"'{o}'" for o in options)
+    return (
+        f"Begin your answer with one of these labels exactly: {opts}, "
+        "then add one short sentence of reasoning."
+    )
+
+
+# Back-compat: the default 2-option flow is still yes/no.
+YES_NO_STYLE_GUIDE = build_style_guide(["Yes", "No"])
 
 
 def build_configured_memory(settings) -> MemoryProvider:
@@ -119,7 +127,7 @@ async def answer_one(
     projection = persona_mod.project(question, memory)
     # Answerer NEVER receives token / unique_identifier (§1.4, §7.4).
     answer = answerer_mod.answer(
-        projection, question, llm, style_guide=YES_NO_STYLE_GUIDE
+        projection, question, llm, style_guide=build_style_guide(question.options)
     )
     await ledger.record_answer(question.question_id, answer.text, answer.rationale)
 

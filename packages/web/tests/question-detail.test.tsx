@@ -21,6 +21,7 @@ describe("QuestionDetail rendering", () => {
     id: "q-1",
     text: "Should the EU adopt policy X?",
     topic: "politics",
+    options: ["yes", "no"],
     status: "open",
     createdAt: new Date("2026-05-19T10:00:00Z"),
     closesAt: new Date("2026-05-26T10:00:00Z"),
@@ -135,11 +136,10 @@ describe("groupByDimension", () => {
     });
     expect(Object.keys(grouped).sort()).toEqual(["age_band", "region"]);
     expect(grouped.region.map((e) => e.value)).toEqual(["EU", "non-EU"]);
-    expect(grouped.region[0].yes).toBe(30);
-    expect(grouped.region[0].no).toBe(12);
+    expect(grouped.region[0].tally).toEqual({ yes: 30, no: 12 });
   });
 
-  it("ignores values that are not yes/no tallies", () => {
+  it("ignores values that are not tallies", () => {
     const grouped = groupByDimension({
       "region:EU": { yes: 10, no: 0 },
       // @ts-expect-error — intentionally bad input
@@ -150,6 +150,17 @@ describe("groupByDimension", () => {
 
   it("groups keys without a ':' under 'other'", () => {
     const grouped = groupByDimension({ standalone: { yes: 5, no: 0 } });
-    expect(grouped.other).toEqual([{ value: "standalone", yes: 5, no: 0 }]);
+    expect(grouped.other).toEqual([
+      { value: "standalone", tally: { yes: 5, no: 0 } },
+    ]);
+  });
+
+  it("handles N-option tallies", () => {
+    const grouped = groupByDimension({
+      "region:EU": { pizza: 22, pasta: 14, sushi: 9 },
+      "region:AS": { pizza: 3, pasta: 5, sushi: 18 },
+    });
+    expect(grouped.region.map((e) => e.value)).toEqual(["EU", "AS"]);
+    expect(grouped.region[0].tally).toEqual({ pizza: 22, pasta: 14, sushi: 9 });
   });
 });

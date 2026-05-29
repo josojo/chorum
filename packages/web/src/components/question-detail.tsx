@@ -10,7 +10,7 @@ import { AggregateChart, isTally, type ByPredicate } from "./aggregate-chart";
 import { AgeChart } from "./age-chart";
 import { CountryBreakdown } from "./country-breakdown";
 import { WorldMap, type ContinentDatum } from "./world-map";
-import { YesNoLegend } from "./yes-no-bar";
+import { OptionsLegend, type OptionTally } from "./options-bar";
 import { countryFlag } from "@/lib/flags";
 import {
   CONTINENT_NAMES,
@@ -27,6 +27,7 @@ export type QuestionDetailProps = {
     id: string;
     text: string;
     topic: string | null;
+    options: string[];
     status: string;
     scope?: "worldwide" | "continent" | "country";
     country?: string | null;
@@ -87,42 +88,42 @@ function ScopePill(props: {
  */
 function partition(byPredicate: ByPredicate) {
   const geoContinent: ContinentDatum[] = [];
-  const geoCountry: Array<{ code: string; yes: number; no: number }> = [];
-  const geoRegion: Array<{ code: string; yes: number; no: number }> = [];
-  const age: Array<{ band: string; yes: number; no: number }> = [];
+  const geoCountry: Array<{ code: string; tally: OptionTally }> = [];
+  const geoRegion: Array<{ code: string; tally: OptionTally }> = [];
+  const age: Array<{ band: string; tally: OptionTally }> = [];
   const other: ByPredicate = {};
 
   for (const [k, raw] of Object.entries(byPredicate)) {
     if (!isTally(raw)) continue;
-    const { yes, no } = raw;
+    const tally = raw;
     const idx = k.indexOf(":");
     if (idx === -1) {
-      other[k] = raw;
+      other[k] = tally;
       continue;
     }
     const dim = k.slice(0, idx);
     const value = k.slice(idx + 1);
     if (dim === "age_band" || dim === "age") {
-      age.push({ band: value, yes, no });
+      age.push({ band: value, tally });
     } else if (dim === "country") {
-      geoCountry.push({ code: value, yes, no });
+      geoCountry.push({ code: value, tally });
     } else if (dim === "continent") {
       if (KNOWN_CONTINENTS.includes(value as Continent)) {
-        geoContinent.push({ code: value as Continent, yes, no });
+        geoContinent.push({ code: value as Continent, tally });
       } else {
-        geoRegion.push({ code: value, yes, no });
+        geoRegion.push({ code: value, tally });
       }
     } else if (dim === "region") {
       // `region` is overloaded: at worldwide scope it carries continent codes
       // ("EU", "NA", "AS", ...); at country scope it carries sub-national
       // labels ("northeast", "Berlin", "NSW", ...). Detect by membership.
       if (KNOWN_CONTINENTS.includes(value as Continent)) {
-        geoContinent.push({ code: value as Continent, yes, no });
+        geoContinent.push({ code: value as Continent, tally });
       } else {
-        geoRegion.push({ code: value, yes, no });
+        geoRegion.push({ code: value, tally });
       }
     } else {
-      other[k] = raw;
+      other[k] = tally;
     }
   }
 
@@ -149,7 +150,8 @@ function resolveFocus(
     for (const c of parts.geoCountry) {
       const cont = COUNTRY_TO_CONTINENT[c.code] as Continent | undefined;
       if (!cont) continue;
-      tally.set(cont, (tally.get(cont) ?? 0) + c.yes + c.no);
+      const total = Object.values(c.tally).reduce((s, n) => s + (n ?? 0), 0);
+      tally.set(cont, (tally.get(cont) ?? 0) + total);
     }
     let best: Continent | null = null;
     let bestN = -1;
@@ -214,6 +216,7 @@ function SectionHeader({
 
 export function QuestionDetail(props: QuestionDetailProps) {
   const { question, totalAnswers, byPredicate } = props;
+  const options = question.options;
   const parts = partition(byPredicate);
 
   const hasGeography =
@@ -290,7 +293,7 @@ export function QuestionDetail(props: QuestionDetailProps) {
 
       {hasAnyBreakdown ? (
         <div className="flex items-center justify-end">
-          <YesNoLegend />
+          <OptionsLegend options={options} />
         </div>
       ) : null}
 
@@ -311,6 +314,7 @@ export function QuestionDetail(props: QuestionDetailProps) {
               continentData={parts.geoContinent}
               countryData={parts.geoCountry}
               total={totalAnswers}
+              options={options}
               focusContinent={resolveFocus(question, parts)}
             />
           ) : null}
@@ -318,6 +322,7 @@ export function QuestionDetail(props: QuestionDetailProps) {
             <CountryBreakdown
               data={parts.geoCountry}
               total={totalAnswers}
+              options={options}
               variant="country"
             />
           ) : null}
@@ -325,6 +330,7 @@ export function QuestionDetail(props: QuestionDetailProps) {
             <CountryBreakdown
               data={parts.geoRegion}
               total={totalAnswers}
+              options={options}
               variant="region"
             />
           ) : null}
@@ -335,7 +341,7 @@ export function QuestionDetail(props: QuestionDetailProps) {
         <section className="space-y-4">
           <SectionHeader title="Age" subtitle="by cohort" />
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <AgeChart data={parts.age} total={totalAnswers} />
+            <AgeChart data={parts.age} total={totalAnswers} options={options} />
           </div>
         </section>
       ) : null}
@@ -344,7 +350,11 @@ export function QuestionDetail(props: QuestionDetailProps) {
         <section className="space-y-4">
           <SectionHeader title="Other dimensions" />
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <AggregateChart total={totalAnswers} byPredicate={parts.other} />
+            <AggregateChart
+              total={totalAnswers}
+              byPredicate={parts.other}
+              options={options}
+            />
           </div>
         </section>
       ) : null}

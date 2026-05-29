@@ -38,7 +38,9 @@ _LIST_SCHEMA = {
     "description": (
         "List the open Hearme questions the user's policy permits you to answer "
         "on their behalf. Returns {questions: [{question_id, text, topic, "
-        "closes_at}], skipped_count}. Call this first."
+        "options, closes_at}], skipped_count}. Each question's `options` array "
+        "lists the only allowed answers (e.g. ['yes','no'] or ['pizza','pasta',"
+        "'sushi']). Call this first."
     ),
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
@@ -46,11 +48,12 @@ _LIST_SCHEMA = {
 _SUBMIT_SCHEMA = {
     "name": "hearme_submit_answer",
     "description": (
-        "Submit the user's answer to one Hearme question. Provide a yes/no "
-        "answer that begins with 'Yes' or 'No' followed by one short sentence, "
-        "in the user's voice, based only on what you actually know about them. "
-        "Only call this for questions returned by hearme_list_open_questions. "
-        "Returns {accepted, reason, question_id}."
+        "Submit the user's answer to one Hearme question. The answer must begin "
+        "with one of the question's options EXACTLY (case-insensitive), "
+        "followed by one short sentence of reasoning in the user's voice, "
+        "based only on what you actually know about them. Only call this for "
+        "questions returned by hearme_list_open_questions. Returns {accepted, "
+        "reason, question_id}."
     ),
     "parameters": {
         "type": "object",
@@ -61,7 +64,10 @@ _SUBMIT_SCHEMA = {
             },
             "answer": {
                 "type": "string",
-                "description": "The user's answer: 'Yes' or 'No' + one short sentence.",
+                "description": (
+                    "The user's answer: start with one of the question's "
+                    "options exactly, then one short sentence."
+                ),
             },
         },
         "required": ["question_id", "answer"],

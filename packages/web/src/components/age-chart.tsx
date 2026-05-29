@@ -1,18 +1,18 @@
 // Age-demographics chart. Each cohort gets a bar sized to its share of the
-// largest cohort, split green/rose by how that cohort voted, with the yes and
-// no counts plus the cohort's share of total responses rendered inline.
+// largest cohort, split by the question's option list, with the per-option
+// counts plus the cohort's share of total responses rendered inline.
 
-import { YesNoBar, YesNoCount } from "./yes-no-bar";
+import { OptionsBar, OptionsCount, type OptionTally, tallyTotal } from "./options-bar";
 
 export type AgeDatum = {
   band: string;
-  yes: number;
-  no: number;
+  tally: OptionTally;
 };
 
 export type AgeChartProps = {
   data: AgeDatum[];
   total: number;
+  options: readonly string[];
 };
 
 // Canonical age-band ordering. Anything we don't recognise falls back to
@@ -36,10 +36,10 @@ function sortBands(data: AgeDatum[]): AgeDatum[] {
   return [...data].sort((a, b) => indexOf(a.band) - indexOf(b.band));
 }
 
-export function AgeChart({ data, total }: AgeChartProps) {
+export function AgeChart({ data, total, options }: AgeChartProps) {
   const sorted = sortBands(data);
-  const max = sorted.reduce((m, e) => (e.yes + e.no > m ? e.yes + e.no : m), 0);
-  const cohortSum = sorted.reduce((s, e) => s + e.yes + e.no, 0);
+  const max = sorted.reduce((m, e) => Math.max(m, tallyTotal(e.tally)), 0);
+  const cohortSum = sorted.reduce((s, e) => s + tallyTotal(e.tally), 0);
   const denom = total > 0 ? total : cohortSum;
 
   if (sorted.length === 0) {
@@ -53,7 +53,7 @@ export function AgeChart({ data, total }: AgeChartProps) {
   return (
     <div className="space-y-3">
       {sorted.map((e) => {
-        const count = e.yes + e.no;
+        const count = tallyTotal(e.tally);
         const widthPct = max === 0 ? 0 : (count / max) * 100;
         const sharePct = denom === 0 ? 0 : (count / denom) * 100;
         return (
@@ -61,13 +61,13 @@ export function AgeChart({ data, total }: AgeChartProps) {
             <div className="flex items-baseline justify-between text-sm">
               <span className="font-medium text-slate-700">{e.band}</span>
               <span className="text-xs text-slate-500">
-                <YesNoCount yes={e.yes} no={e.no} />
+                <OptionsCount tally={e.tally} options={options} />
                 <span className="ml-2 text-slate-500 tabular-nums">
                   {sharePct.toFixed(1)}%
                 </span>
               </span>
             </div>
-            <YesNoBar yes={e.yes} no={e.no} widthPct={widthPct} />
+            <OptionsBar tally={e.tally} options={options} widthPct={widthPct} />
           </div>
         );
       })}

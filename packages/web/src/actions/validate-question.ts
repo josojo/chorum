@@ -11,6 +11,7 @@ export type CreateQuestionInput = {
   displayName: string;
   text: string;
   topic?: string | null;
+  options: string[];
   closesAt: Date;
   scope: Scope;
   country: string | null;
@@ -20,6 +21,10 @@ export type CreateQuestionInput = {
 const MAX_TEXT_LEN = 2000;
 const MAX_TOPIC_LEN = 80;
 const MAX_NAME_LEN = 80;
+const MAX_OPTION_LEN = 40;
+const MIN_OPTIONS = 2;
+const MAX_OPTIONS = 8;
+const DEFAULT_OPTIONS = ["Yes", "No"] as const;
 
 const CONTINENTS: ReadonlyArray<Continent> = ["AF","AN","AS","EU","NA","OC","SA"];
 
@@ -48,6 +53,32 @@ export function validateCreateQuestion(
   const topic = topicRaw === "" ? null : topicRaw;
   if (topic && topic.length > MAX_TOPIC_LEN) {
     errors.topic = `Topic must be ≤ ${MAX_TOPIC_LEN} characters.`;
+  }
+
+  // Options: default to Yes/No, normalize whitespace, enforce 2..8 unique
+  // non-empty labels each ≤ 40 chars. Comparison is case-insensitive so
+  // "Yes"/"YES" aren't accepted as two distinct options.
+  const rawOptions: string[] = Array.isArray(input.options)
+    ? (input.options as unknown[]).map((o) => (o == null ? "" : String(o)))
+    : [];
+  const cleaned = rawOptions.map((o) => o.trim()).filter((o) => o.length > 0);
+  const options = cleaned.length === 0 ? [...DEFAULT_OPTIONS] : cleaned;
+  if (options.length < MIN_OPTIONS) {
+    errors.options = `Add at least ${MIN_OPTIONS} options.`;
+  } else if (options.length > MAX_OPTIONS) {
+    errors.options = `At most ${MAX_OPTIONS} options.`;
+  } else if (options.some((o) => o.length > MAX_OPTION_LEN)) {
+    errors.options = `Each option must be ≤ ${MAX_OPTION_LEN} characters.`;
+  } else {
+    const seen = new Set<string>();
+    for (const o of options) {
+      const key = o.toLowerCase();
+      if (seen.has(key)) {
+        errors.options = "Options must be unique.";
+        break;
+      }
+      seen.add(key);
+    }
   }
 
   const closesAt = input.closesAt instanceof Date ? input.closesAt : null;
@@ -99,6 +130,7 @@ export function validateCreateQuestion(
       displayName,
       text,
       topic,
+      options,
       closesAt: closesAt as Date,
       scope,
       country,

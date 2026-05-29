@@ -125,6 +125,7 @@ async def submit_envelope(envelope: Envelope) -> EnvelopeAck:
                 question_id=envelope.question_id,
                 answer=envelope.answer,
                 disclosed_predicates=token.disclosed_predicates,
+                options=question["options"],
             )
 
         # STUB: honeypot signal handling — v0.2 (ARCHITECTURE.md §11).

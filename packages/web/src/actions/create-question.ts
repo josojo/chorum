@@ -48,6 +48,7 @@ export async function createQuestion(
       askerId,
       text: input.text,
       topic: input.topic ?? null,
+      options: input.options,
       closesAt: input.closesAt,
       scope: input.scope,
       country: input.country,
@@ -78,11 +79,17 @@ export async function createQuestionAction(
   const scopeRaw = (formData.get("scope") ?? "worldwide").toString();
   const countryRaw = (formData.get("country") ?? "").toString();
   const continentRaw = (formData.get("continent") ?? "").toString();
+  // The form renders one <input name="options"> per row, so getAll() gives us
+  // the option list in DOM order.
+  const optionsRaw = formData
+    .getAll("options")
+    .map((o) => (o == null ? "" : o.toString()));
 
   const parsed = validateCreateQuestion({
     displayName: (formData.get("displayName") ?? "").toString(),
     text: (formData.get("text") ?? "").toString(),
     topic: (formData.get("topic") ?? "").toString(),
+    options: optionsRaw,
     closesAt: parsedDate ?? undefined,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     scope: scopeRaw as any,

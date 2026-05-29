@@ -361,4 +361,113 @@ INSERT INTO envelopes (question_id, unique_identifier, answer, disclosed_predica
   ('30000000-0000-0000-0000-00000000000c', 'seed-fr1-u1', 'Oui, viable dans certains services; pas partout.', '{"region":"IDF","age_band":"35-44"}', 'sig-fr1-1', 'del-fr1-1')
 ON CONFLICT DO NOTHING;
 
+-- ---------------------------------------------------------------------------
+-- Multi-option polls.
+--
+-- The default schema for a question is yes/no; these explicitly pass `options`
+-- with 3, 4, or 5 labels so the UI exercises the N-option rendering path
+-- (per-option palette, leading-option choropleth tinting, per-option counts).
+-- Aggregate bucket shape is the same {label: count, ...} map — the labels
+-- just match the question's options instead of "yes" / "no".
+-- ---------------------------------------------------------------------------
+
+INSERT INTO questions (id, asker_id, text, topic, scope, country, continent, options, closes_at) VALUES
+  -- Worldwide, 3 options
+  ('40000000-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000003',
+    'Pizza, pasta, or sushi — what are you eating tonight?',
+    'food', 'worldwide', NULL, NULL,
+    '["Pizza","Pasta","Sushi"]'::jsonb,
+    now() + interval '40 days'),
+
+  -- Worldwide, 5 options
+  ('40000000-0000-0000-0000-000000000002',
+    '00000000-0000-0000-0000-000000000007',
+    'Which AI assistant do you use most this month?',
+    'technology', 'worldwide', NULL, NULL,
+    '["ChatGPT","Claude","Gemini","Copilot","None"]'::jsonb,
+    now() + interval '30 days'),
+
+  -- Continent EU, 4 options
+  ('40000000-0000-0000-0000-000000000003',
+    '00000000-0000-0000-0000-000000000004',
+    'How do you mostly get to work?',
+    'transport', 'continent', NULL, 'EU',
+    '["Bike","Public transit","Car","Walk"]'::jsonb,
+    now() + interval '25 days'),
+
+  -- Country US, 4 options
+  ('40000000-0000-0000-0000-000000000004',
+    '00000000-0000-0000-0000-000000000005',
+    'Which coast feels most like home?',
+    'life', 'country', 'US', 'NA',
+    '["East Coast","West Coast","Midwest","South"]'::jsonb,
+    now() + interval '30 days')
+ON CONFLICT (id) DO NOTHING;
+
+-- Q-multi-1: Pizza/Pasta/Sushi (worldwide, 3 options)
+WITH env AS (
+  INSERT INTO envelopes (question_id, unique_identifier, answer, disclosed_predicates, agent_signature, delegation_hash) VALUES
+    ('40000000-0000-0000-0000-000000000001', 'seed-m1-u1', 'Pizza — Friday is non-negotiable.', '{"region":"EU","age_band":"25-34"}', 'sig-m1-1', 'del-m1-1'),
+    ('40000000-0000-0000-0000-000000000001', 'seed-m1-u2', 'Pasta, with anchovies.', '{"region":"EU","age_band":"35-44"}', 'sig-m1-2', 'del-m1-2'),
+    ('40000000-0000-0000-0000-000000000001', 'seed-m1-u3', 'Sushi — sashimi specifically.', '{"region":"AS","age_band":"25-34"}', 'sig-m1-3', 'del-m1-3'),
+    ('40000000-0000-0000-0000-000000000001', 'seed-m1-u4', 'pizza, always.', '{"region":"NA","age_band":"45-54"}', 'sig-m1-4', 'del-m1-4'),
+    ('40000000-0000-0000-0000-000000000001', 'seed-m1-u5', 'Pasta if there''s good wine.', '{"region":"SA","age_band":"35-44"}', 'sig-m1-5', 'del-m1-5'),
+    ('40000000-0000-0000-0000-000000000001', 'seed-m1-u6', 'Sushi — omakase if I can swing it.', '{"region":"NA","age_band":"25-34"}', 'sig-m1-6', 'del-m1-6')
+  ON CONFLICT DO NOTHING RETURNING 1
+)
+INSERT INTO aggregates (question_id, total_answers, by_predicate) VALUES
+  ('40000000-0000-0000-0000-000000000001', 188,
+   '{"region:EU":{"Pizza":34,"Pasta":28,"Sushi":11},"region:NA":{"Pizza":22,"Pasta":12,"Sushi":18},"region:AS":{"Pizza":6,"Pasta":4,"Sushi":24},"region:SA":{"Pizza":8,"Pasta":9,"Sushi":3},"region:OC":{"Pizza":3,"Pasta":2,"Sushi":4},"age_band:18-24":{"Pizza":11,"Pasta":5,"Sushi":7},"age_band:25-34":{"Pizza":28,"Pasta":18,"Sushi":24},"age_band:35-44":{"Pizza":20,"Pasta":17,"Sushi":15},"age_band:45-54":{"Pizza":12,"Pasta":13,"Sushi":11},"age_band:55+":{"Pizza":2,"Pasta":2,"Sushi":3},"country:DE":{"Pizza":7,"Pasta":4,"Sushi":2},"country:FR":{"Pizza":5,"Pasta":5,"Sushi":3},"country:IT":{"Pizza":4,"Pasta":11,"Sushi":1},"country:ES":{"Pizza":4,"Pasta":3,"Sushi":1},"country:GB":{"Pizza":5,"Pasta":2,"Sushi":2},"country:NL":{"Pizza":3,"Pasta":1,"Sushi":1},"country:SE":{"Pizza":2,"Pasta":1,"Sushi":1},"country:US":{"Pizza":15,"Pasta":8,"Sushi":12},"country:CA":{"Pizza":4,"Pasta":2,"Sushi":3},"country:MX":{"Pizza":3,"Pasta":2,"Sushi":3},"country:JP":{"Pizza":1,"Pasta":1,"Sushi":11},"country:CN":{"Pizza":2,"Pasta":1,"Sushi":5},"country:IN":{"Pizza":2,"Pasta":1,"Sushi":3},"country:KR":{"Pizza":1,"Pasta":0,"Sushi":3},"country:ID":{"Pizza":1,"Pasta":1,"Sushi":2},"country:BR":{"Pizza":4,"Pasta":4,"Sushi":2},"country:AR":{"Pizza":2,"Pasta":3,"Sushi":1},"country:AU":{"Pizza":2,"Pasta":1,"Sushi":3},"country:NZ":{"Pizza":1,"Pasta":1,"Sushi":1}}')
+ON CONFLICT (question_id) DO UPDATE SET total_answers = EXCLUDED.total_answers, by_predicate = EXCLUDED.by_predicate;
+
+-- Q-multi-2: AI assistant (worldwide, 5 options)
+WITH env AS (
+  INSERT INTO envelopes (question_id, unique_identifier, answer, disclosed_predicates, agent_signature, delegation_hash) VALUES
+    ('40000000-0000-0000-0000-000000000002', 'seed-m2-u1', 'Claude for code, ChatGPT for chat.', '{"region":"NA","occupation":"engineer"}', 'sig-m2-1', 'del-m2-1'),
+    ('40000000-0000-0000-0000-000000000002', 'seed-m2-u2', 'ChatGPT — voice mode is sticky.', '{"region":"EU","occupation":"designer"}', 'sig-m2-2', 'del-m2-2'),
+    ('40000000-0000-0000-0000-000000000002', 'seed-m2-u3', 'Gemini, because it''s baked into my Google docs.', '{"region":"AS","occupation":"manager"}', 'sig-m2-3', 'del-m2-3'),
+    ('40000000-0000-0000-0000-000000000002', 'seed-m2-u4', 'Copilot inside the IDE; nothing outside it.', '{"region":"EU","occupation":"engineer"}', 'sig-m2-4', 'del-m2-4'),
+    ('40000000-0000-0000-0000-000000000002', 'seed-m2-u5', 'None — I keep meaning to but never start.', '{"region":"SA","occupation":"writer"}', 'sig-m2-5', 'del-m2-5')
+  ON CONFLICT DO NOTHING RETURNING 1
+)
+INSERT INTO aggregates (question_id, total_answers, by_predicate) VALUES
+  ('40000000-0000-0000-0000-000000000002', 247,
+   '{"region:NA":{"ChatGPT":34,"Claude":28,"Gemini":12,"Copilot":18,"None":9},"region:EU":{"ChatGPT":29,"Claude":17,"Gemini":9,"Copilot":11,"None":7},"region:AS":{"ChatGPT":20,"Claude":7,"Gemini":15,"Copilot":4,"None":5},"region:SA":{"ChatGPT":7,"Claude":2,"Gemini":3,"Copilot":1,"None":3},"region:AF":{"ChatGPT":3,"Claude":1,"Gemini":2,"Copilot":0,"None":1},"region:OC":{"ChatGPT":2,"Claude":1,"Gemini":1,"Copilot":1,"None":0},"occupation:engineer":{"ChatGPT":18,"Claude":34,"Gemini":4,"Copilot":22,"None":3},"occupation:designer":{"ChatGPT":16,"Claude":5,"Gemini":3,"Copilot":2,"None":4},"occupation:writer":{"ChatGPT":14,"Claude":7,"Gemini":3,"Copilot":1,"None":3},"occupation:manager":{"ChatGPT":21,"Claude":4,"Gemini":15,"Copilot":4,"None":4},"occupation:other":{"ChatGPT":26,"Claude":6,"Gemini":17,"Copilot":6,"None":11},"country:US":{"ChatGPT":22,"Claude":20,"Gemini":7,"Copilot":12,"None":6},"country:CA":{"ChatGPT":7,"Claude":5,"Gemini":3,"Copilot":4,"None":2},"country:MX":{"ChatGPT":5,"Claude":3,"Gemini":2,"Copilot":2,"None":1},"country:DE":{"ChatGPT":8,"Claude":5,"Gemini":2,"Copilot":4,"None":2},"country:FR":{"ChatGPT":6,"Claude":3,"Gemini":2,"Copilot":2,"None":1},"country:GB":{"ChatGPT":6,"Claude":4,"Gemini":2,"Copilot":2,"None":1},"country:NL":{"ChatGPT":3,"Claude":2,"Gemini":1,"Copilot":1,"None":1},"country:IN":{"ChatGPT":6,"Claude":2,"Gemini":4,"Copilot":1,"None":2},"country:JP":{"ChatGPT":4,"Claude":1,"Gemini":3,"Copilot":1,"None":1},"country:CN":{"ChatGPT":3,"Claude":2,"Gemini":4,"Copilot":0,"None":1},"country:KR":{"ChatGPT":3,"Claude":1,"Gemini":2,"Copilot":1,"None":0},"country:BR":{"ChatGPT":4,"Claude":1,"Gemini":2,"Copilot":1,"None":2},"country:AU":{"ChatGPT":2,"Claude":1,"Gemini":1,"Copilot":1,"None":0}}')
+ON CONFLICT (question_id) DO UPDATE SET total_answers = EXCLUDED.total_answers, by_predicate = EXCLUDED.by_predicate;
+
+-- Q-multi-3: Commute mode (continent EU, 4 options).
+-- The leading word must be a single token so the classifier matches it, so
+-- envelope answers begin with "Bike" / "Car" / "Walk" — for the multi-word
+-- "Public transit" option the seeded aggregate carries the share but no
+-- single envelope demonstrates that lead word.
+WITH env AS (
+  INSERT INTO envelopes (question_id, unique_identifier, answer, disclosed_predicates, agent_signature, delegation_hash) VALUES
+    ('40000000-0000-0000-0000-000000000003', 'seed-m3-u1', 'Bike — 25 minutes door to door.', '{"country":"NL","age_band":"25-34"}', 'sig-m3-1', 'del-m3-1'),
+    ('40000000-0000-0000-0000-000000000003', 'seed-m3-u2', 'Bike year-round, even in February.', '{"country":"DK","age_band":"35-44"}', 'sig-m3-2', 'del-m3-2'),
+    ('40000000-0000-0000-0000-000000000003', 'seed-m3-u3', 'Car, because the public transit here is grim.', '{"country":"DE","age_band":"45-54"}', 'sig-m3-3', 'del-m3-3'),
+    ('40000000-0000-0000-0000-000000000003', 'seed-m3-u4', 'Walk — I picked the apartment for the commute.', '{"country":"FR","age_band":"25-34"}', 'sig-m3-4', 'del-m3-4'),
+    ('40000000-0000-0000-0000-000000000003', 'seed-m3-u5', 'Bike then train; bike still wins for the daily share.', '{"country":"DE","age_band":"35-44"}', 'sig-m3-5', 'del-m3-5')
+  ON CONFLICT DO NOTHING RETURNING 1
+)
+INSERT INTO aggregates (question_id, total_answers, by_predicate) VALUES
+  ('40000000-0000-0000-0000-000000000003', 134,
+   '{"country:DE":{"Bike":13,"Public transit":18,"Car":11,"Walk":6},"country:FR":{"Bike":5,"Public transit":14,"Car":4,"Walk":7},"country:GB":{"Bike":6,"Public transit":12,"Car":5,"Walk":5},"country:NL":{"Bike":21,"Public transit":4,"Car":2,"Walk":3},"country:DK":{"Bike":12,"Public transit":3,"Car":2,"Walk":2},"country:ES":{"Bike":3,"Public transit":7,"Car":4,"Walk":5},"country:IT":{"Bike":3,"Public transit":6,"Car":7,"Walk":3},"country:SE":{"Bike":4,"Public transit":4,"Car":2,"Walk":2}}')
+ON CONFLICT (question_id) DO UPDATE SET total_answers = EXCLUDED.total_answers, by_predicate = EXCLUDED.by_predicate;
+
+-- Q-multi-4: Which coast feels most like home (country US, 4 options).
+-- Same constraint on multi-word "East Coast" / "West Coast" labels — envelopes
+-- here use the sub-national region predicate the existing US seed already uses.
+WITH env AS (
+  INSERT INTO envelopes (question_id, unique_identifier, answer, disclosed_predicates, agent_signature, delegation_hash) VALUES
+    ('40000000-0000-0000-0000-000000000004', 'seed-m4-u1', 'Midwest — quiet wins.', '{"region":"midwest","age_band":"35-44"}', 'sig-m4-1', 'del-m4-1'),
+    ('40000000-0000-0000-0000-000000000004', 'seed-m4-u2', 'South. Pace, food, family.', '{"region":"south","age_band":"45-54"}', 'sig-m4-2', 'del-m4-2'),
+    ('40000000-0000-0000-0000-000000000004', 'seed-m4-u3', 'Midwest, even after a decade away.', '{"region":"midwest","age_band":"25-34"}', 'sig-m4-3', 'del-m4-3')
+  ON CONFLICT DO NOTHING RETURNING 1
+)
+INSERT INTO aggregates (question_id, total_answers, by_predicate) VALUES
+  ('40000000-0000-0000-0000-000000000004', 211,
+   '{"region:northeast":{"East Coast":42,"West Coast":7,"Midwest":4,"South":3},"region:south":{"East Coast":6,"West Coast":4,"Midwest":5,"South":38},"region:midwest":{"East Coast":3,"West Coast":4,"Midwest":29,"South":4},"region:west":{"East Coast":4,"West Coast":48,"Midwest":3,"South":7},"age_band:18-24":{"East Coast":11,"West Coast":13,"Midwest":4,"South":7},"age_band:25-34":{"East Coast":21,"West Coast":24,"Midwest":12,"South":14},"age_band:35-44":{"East Coast":13,"West Coast":15,"Midwest":11,"South":13},"age_band:45-54":{"East Coast":8,"West Coast":8,"Midwest":9,"South":11},"age_band:55+":{"East Coast":2,"West Coast":3,"Midwest":5,"South":7}}')
+ON CONFLICT (question_id) DO UPDATE SET total_answers = EXCLUDED.total_answers, by_predicate = EXCLUDED.by_predicate;
+
 COMMIT;

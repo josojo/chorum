@@ -23,75 +23,139 @@ import {
   MAP_WIDTH,
   type DrillContinent,
 } from "@/lib/geo/atlas";
+import {
+  OPTION_PALETTE,
+  isYesNo,
+  type OptionTally,
+  tallyTotal,
+} from "./options-bar";
 
 export type ContinentDatum = {
   code: Continent;
-  yes: number;
-  no: number;
+  tally: OptionTally;
 };
 
 export type CountryDatum = {
   code: string;
-  yes: number;
-  no: number;
+  tally: OptionTally;
 };
 
 export type WorldMapProps = {
   continentData: ContinentDatum[];
   countryData?: CountryDatum[];
   total: number;
+  options: readonly string[];
   /** When set, the map opens zoomed into this continent (continent-scoped questions). */
   focusContinent?: Continent | null;
 };
 
-type Tally = { yes: number; no: number };
+type Tally = OptionTally;
 
 const NO_DATA = "#e2e8f0"; // slate-200 — in-scope but no votes
 const OUT_OF_FOCUS = "#eef2f7"; // near-white — neighbouring continents while drilled in
 
-// Continuous diverging spectrum on the yes-share: red (all no) → yellow (even)
-// → green (all yes). Interpolated, not bucketed.
-const NO_RGB: [number, number, number] = [220, 38, 38]; // red-600
+// 2-option (yes/no) diverging spectrum: red (all option[1]) → yellow (even)
+// → green (all option[0]). Interpolated, not bucketed.
+const NEG_RGB: [number, number, number] = [220, 38, 38]; // red-600
 const EVEN_RGB: [number, number, number] = [250, 204, 21]; // yellow-400
-const YES_RGB: [number, number, number] = [22, 163, 74]; // green-600
+const POS_RGB: [number, number, number] = [22, 163, 74]; // green-600
 const SPECTRUM_CSS =
   "linear-gradient(to right, rgb(220,38,38), rgb(250,204,21), rgb(22,163,74))";
 
-function yesShare(yes: number, no: number): number {
-  const total = yes + no;
-  return total === 0 ? 0 : yes / total;
+// Lighter palette swatches for the N-option "leading option" mode.
+// Each entry mirrors OPTION_PALETTE by index so legends align across charts.
+const OPTION_FILL_RGB: ReadonlyArray<[number, number, number]> = [
+  [99, 102, 241],  // indigo-500
+  [245, 158, 11],  // amber-500
+  [16, 185, 129],  // emerald-500
+  [236, 72, 153],  // pink-500
+  [6, 182, 212],   // cyan-500
+  [249, 115, 22],  // orange-500
+  [139, 92, 246],  // violet-500
+  [100, 116, 139], // slate-500
+];
+
+function totalOf(t: Tally | null): number {
+  return t ? tallyTotal(t) : 0;
 }
 
-function lerp(a: number, b: number, t: number): number {
-  return Math.round(a + (b - a) * t);
+function shareOf(t: Tally, label: string): number {
+  const tot = tallyTotal(t);
+  return tot === 0 ? 0 : (t[label] ?? 0) / tot;
 }
 
-function rgbForShare(yes: number, no: number): [number, number, number] | null {
+function lerp(a: number, b: number, x: number): number {
+  return Math.round(a + (b - a) * x);
+}
+
+function rgbForYesNo(t: Tally, options: readonly string[]): [number, number, number] | null {
+  const yes = t[options[0]] ?? 0;
+  const no = t[options[1]] ?? 0;
   if (yes + no === 0) return null;
-  const s = yesShare(yes, no);
+  const s = yes / (yes + no);
   if (s <= 0.5) {
-    const t = s / 0.5;
+    const x = s / 0.5;
     return [
-      lerp(NO_RGB[0], EVEN_RGB[0], t),
-      lerp(NO_RGB[1], EVEN_RGB[1], t),
-      lerp(NO_RGB[2], EVEN_RGB[2], t),
+      lerp(NEG_RGB[0], EVEN_RGB[0], x),
+      lerp(NEG_RGB[1], EVEN_RGB[1], x),
+      lerp(NEG_RGB[2], EVEN_RGB[2], x),
     ];
   }
-  const t = (s - 0.5) / 0.5;
+  const x = (s - 0.5) / 0.5;
   return [
-    lerp(EVEN_RGB[0], YES_RGB[0], t),
-    lerp(EVEN_RGB[1], YES_RGB[1], t),
-    lerp(EVEN_RGB[2], YES_RGB[2], t),
+    lerp(EVEN_RGB[0], POS_RGB[0], x),
+    lerp(EVEN_RGB[1], POS_RGB[1], x),
+    lerp(EVEN_RGB[2], POS_RGB[2], x),
   ];
 }
 
-function colorForShare(t: Tally | null): string {
-  const rgb = t ? rgbForShare(t.yes, t.no) : null;
+function leadingIndex(t: Tally, options: readonly string[]): number {
+  let best = -1;
+  let bestN = -1;
+  for (let i = 0; i < options.length; i++) {
+    const n = t[options[i]] ?? 0;
+    if (n > bestN) {
+      bestN = n;
+      best = i;
+    }
+  }
+  return best;
+}
+
+function rgbForLeading(
+  t: Tally,
+  options: readonly string[],
+): [number, number, number] | null {
+  if (tallyTotal(t) === 0) return null;
+  const idx = leadingIndex(t, options);
+  if (idx < 0) return null;
+  const base = OPTION_FILL_RGB[idx % OPTION_FILL_RGB.length];
+  // Tint by how dominant the leader is (50% lead share → 60% saturation).
+  // Map share in [1/n, 1] to alpha in [0.55, 1.0].
+  const share = shareOf(t, options[idx]);
+  const minShare = 1 / Math.max(options.length, 1);
+  const x = Math.min(1, Math.max(0, (share - minShare) / Math.max(1e-6, 1 - minShare)));
+  const alpha = 0.55 + 0.45 * x;
+  return [
+    lerp(255, base[0], alpha),
+    lerp(255, base[1], alpha),
+    lerp(255, base[2], alpha),
+  ];
+}
+
+function colorForTally(t: Tally | null, options: readonly string[]): string {
+  if (!t) return NO_DATA;
+  const rgb = isYesNo(options)
+    ? rgbForYesNo(t, options)
+    : rgbForLeading(t, options);
   return rgb ? `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})` : NO_DATA;
 }
 
-function isDarkFill(t: Tally | null): boolean {
-  const rgb = t ? rgbForShare(t.yes, t.no) : null;
+function isDarkFill(t: Tally | null, options: readonly string[]): boolean {
+  if (!t) return false;
+  const rgb = isYesNo(options)
+    ? rgbForYesNo(t, options)
+    : rgbForLeading(t, options);
   if (!rgb) return false;
   const lum = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
   return lum < 0.55;
@@ -105,6 +169,7 @@ export function WorldMap({
   continentData,
   countryData = [],
   total,
+  options,
   focusContinent = null,
 }: WorldMapProps) {
   // Per-continent shares come from explicit continent tallies, falling back to
@@ -112,18 +177,22 @@ export function WorldMap({
   // a coloured continent at the world level.
   const { continentShare, countryShare, continentsWithCountryData } = useMemo(() => {
     const explicit = new Map<Continent, Tally>();
-    for (const d of continentData) explicit.set(d.code, { yes: d.yes, no: d.no });
+    for (const d of continentData) explicit.set(d.code, { ...d.tally });
 
     const derived = new Map<Continent, Tally>();
     const countryShare = new Map<string, Tally>();
     const continentsWithCountryData = new Set<Continent>();
     for (const d of countryData) {
-      countryShare.set(d.code, { yes: d.yes, no: d.no });
+      countryShare.set(d.code, { ...d.tally });
       const cont = COUNTRY_TO_CONTINENT[d.code] as Continent | undefined;
       if (!cont) continue;
       continentsWithCountryData.add(cont);
-      const cur = derived.get(cont) ?? { yes: 0, no: 0 };
-      derived.set(cont, { yes: cur.yes + d.yes, no: cur.no + d.no });
+      const cur = derived.get(cont) ?? {};
+      const merged: Tally = { ...cur };
+      for (const k of Object.keys(d.tally)) {
+        merged[k] = (merged[k] ?? 0) + (d.tally[k] ?? 0);
+      }
+      derived.set(cont, merged);
     }
 
     const continentShare = (code: Continent): Tally | null =>
@@ -155,14 +224,17 @@ export function WorldMap({
     if (active) {
       if (country.continent !== active) return OUT_OF_FOCUS;
       const cs = country.a2 ? countryShare.get(country.a2) ?? null : null;
-      if (cs) return colorForShare(cs);
+      if (cs) return colorForTally(cs, options);
       // No per-country datum. If the whole continent lacks country-level data
       // (e.g. a worldwide question), keep it coloured by the continent average
       // rather than greying it out; otherwise grey means "in scope, no votes".
-      if (!activeHasCountryData) return colorForShare(continentShare(active));
+      if (!activeHasCountryData) return colorForTally(continentShare(active), options);
       return NO_DATA;
     }
-    return colorForShare(country.continent ? continentShare(country.continent) : null);
+    return colorForTally(
+      country.continent ? continentShare(country.continent) : null,
+      options,
+    );
   }
 
   function isHovered(country: (typeof COUNTRIES)[number]): boolean {
@@ -211,8 +283,8 @@ export function WorldMap({
         return {
           key: c.id,
           name: c.name,
-          count: t.yes + t.no,
-          dark: isDarkFill(t),
+          count: totalOf(t),
+          dark: isDarkFill(t, options),
           x: tx + k * c.centroid[0],
           y: ty + k * c.centroid[1],
         };
@@ -222,8 +294,8 @@ export function WorldMap({
         return {
           key: code,
           name: CONTINENT_NAMES[code],
-          count: t ? t.yes + t.no : 0,
-          dark: isDarkFill(t),
+          count: totalOf(t),
+          dark: isDarkFill(t, options),
           x: CONTINENT_BOX[code].center[0],
           y: CONTINENT_BOX[code].center[1],
         };
@@ -456,26 +528,8 @@ export function WorldMap({
               style={{ left: `${pointer.x}%`, top: `${pointer.y}%` }}
             >
               <div className="font-semibold">{hoverContent.title}</div>
-              {hoverContent.tally && hoverContent.tally.yes + hoverContent.tally.no > 0 ? (
-                <div className="mt-0.5 space-y-0.5 text-slate-200">
-                  <div className="tabular-nums">
-                    <span className="font-semibold text-emerald-300">
-                      {Math.round(
-                        yesShare(hoverContent.tally.yes, hoverContent.tally.no) * 100,
-                      )}
-                      % yes
-                    </span>
-                    <span className="ml-2 text-slate-400">
-                      {hoverContent.tally.yes} yes · {hoverContent.tally.no} no
-                    </span>
-                  </div>
-                  <div className="text-slate-400 tabular-nums">
-                    {hoverContent.tally.yes + hoverContent.tally.no}
-                    {total > 0
-                      ? ` · ${(((hoverContent.tally.yes + hoverContent.tally.no) / total) * 100).toFixed(0)}% of total`
-                      : ""}
-                  </div>
-                </div>
+              {hoverContent.tally && totalOf(hoverContent.tally) > 0 ? (
+                <TallySummary tally={hoverContent.tally} options={options} total={total} />
               ) : (
                 <div className="mt-0.5 text-slate-400">No responses yet</div>
               )}
@@ -487,40 +541,115 @@ export function WorldMap({
         {active && selectedCountry ? (
           <div className="mt-2 rounded-xl bg-white p-3 text-sm shadow-sm ring-1 ring-slate-200">
             <span className="font-semibold text-slate-900">{selectedCountry.name}</span>
-            {selectedTally && selectedTally.yes + selectedTally.no > 0 ? (
-              <span className="ml-2 tabular-nums text-slate-600">
-                <span className="font-semibold text-emerald-700">{selectedTally.yes} yes</span>
-                <span className="mx-1 text-slate-300">·</span>
-                <span className="font-semibold text-rose-700">{selectedTally.no} no</span>
-                <span className="ml-2 text-slate-400">
-                  {Math.round(yesShare(selectedTally.yes, selectedTally.no) * 100)}% yes
-                </span>
-              </span>
+            {selectedTally && totalOf(selectedTally) > 0 ? (
+              <SelectedTally tally={selectedTally} options={options} />
             ) : (
               <span className="ml-2 text-slate-400">No responses yet</span>
             )}
           </div>
         ) : null}
 
-        {/* Legend strip — diverging no → yes scale. */}
+        {/* Legend strip — depends on whether we're in yes/no or N-option mode. */}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xs text-slate-600">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="font-medium uppercase tracking-wider text-rose-600">No</span>
-            <div
-              className="h-3 w-24 rounded-full ring-1 ring-slate-200 sm:w-32"
-              style={{ background: SPECTRUM_CSS }}
-            />
-            <span className="font-medium uppercase tracking-wider text-emerald-600">Yes</span>
-          </div>
+          {isYesNo(options) ? (
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="font-medium uppercase tracking-wider text-rose-600">No</span>
+              <div
+                className="h-3 w-24 rounded-full ring-1 ring-slate-200 sm:w-32"
+                style={{ background: SPECTRUM_CSS }}
+              />
+              <span className="font-medium uppercase tracking-wider text-emerald-600">Yes</span>
+            </div>
+          ) : (
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              {options.map((opt, i) => {
+                const rgb = OPTION_FILL_RGB[i % OPTION_FILL_RGB.length];
+                return (
+                  <span key={opt} className="inline-flex items-center gap-1.5">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ background: `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})` }}
+                    />
+                    {opt}
+                  </span>
+                );
+              })}
+            </div>
+          )}
           <div className="w-full text-slate-500 sm:w-auto">
             {!active
-              ? "Shaded by each continent's yes-share"
+              ? isYesNo(options)
+                ? "Shaded by each continent's yes-share"
+                : "Shaded by each continent's leading option"
               : activeHasCountryData
-              ? "Shaded by each country's yes-share"
+              ? isYesNo(options)
+                ? "Shaded by each country's yes-share"
+                : "Shaded by each country's leading option"
               : `No country-level data — showing the ${activeName} average`}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function TallySummary({
+  tally,
+  options,
+  total,
+}: {
+  tally: Tally;
+  options: readonly string[];
+  total: number;
+}) {
+  const tot = totalOf(tally);
+  const entries = options
+    .map((opt) => ({ opt, n: tally[opt] ?? 0 }))
+    .sort((a, b) => b.n - a.n);
+  return (
+    <div className="mt-0.5 space-y-0.5 text-slate-200">
+      <div className="space-y-0.5 text-slate-200">
+        {entries.map(({ opt, n }) => {
+          const pct = tot === 0 ? 0 : Math.round((n / tot) * 100);
+          return (
+            <div key={opt} className="tabular-nums">
+              <span className="font-semibold">{opt}</span>
+              <span className="ml-2 text-slate-400">{n} · {pct}%</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-slate-400 tabular-nums">
+        {tot}
+        {total > 0 ? ` · ${((tot / total) * 100).toFixed(0)}% of total` : ""}
+      </div>
+    </div>
+  );
+}
+
+function SelectedTally({
+  tally,
+  options,
+}: {
+  tally: Tally;
+  options: readonly string[];
+}) {
+  const tot = totalOf(tally);
+  return (
+    <span className="ml-2 tabular-nums text-slate-600">
+      {options.map((opt, i) => {
+        const n = tally[opt] ?? 0;
+        const pct = tot === 0 ? 0 : Math.round((n / tot) * 100);
+        return (
+          <span key={opt}>
+            <span className="font-semibold text-slate-800">{n} {opt}</span>
+            <span className="ml-1 text-slate-400">({pct}%)</span>
+            {i < options.length - 1 ? (
+              <span className="mx-1 text-slate-300">·</span>
+            ) : null}
+          </span>
+        );
+      })}
+    </span>
   );
 }

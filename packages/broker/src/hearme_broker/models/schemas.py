@@ -94,6 +94,7 @@ class Question(BaseModel):
     question_id: UUID
     text: str
     topic: str | None = None
+    options: list[str] = Field(min_length=2, max_length=8)
     created_at: datetime
     closes_at: datetime
     nonce: str

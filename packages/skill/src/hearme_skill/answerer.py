@@ -36,6 +36,7 @@ def answer(
         question_text=question.text,
         persona_facts=tuple(persona.relevant_facts),
         style_hints=tuple(persona.style_hints),
+        options=tuple(question.options),
         style_guide=style_guide,
     )
     resp = llm.complete(req)

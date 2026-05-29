@@ -18,6 +18,10 @@ const DURATION_PRESETS: { label: string; days: number }[] = [
   { label: "1 month", days: 30 },
 ];
 
+const MAX_OPTIONS = 8;
+const MAX_OPTION_LEN = 40;
+const DEFAULT_OPTIONS = ["Yes", "No"];
+
 type Scope = "worldwide" | "continent" | "country";
 
 type Props = {
@@ -79,6 +83,21 @@ export function AskForm({
   const [scope, setScope] = useState<Scope>(defaultScope);
   const [country, setCountry] = useState<string>(defaultCountry.toUpperCase());
   const [continent, setContinent] = useState<string>(defaultContinent.toUpperCase());
+  const [options, setOptions] = useState<string[]>(DEFAULT_OPTIONS);
+
+  function updateOption(i: number, value: string) {
+    setOptions((prev) => prev.map((o, idx) => (idx === i ? value : o)));
+  }
+  function addOption() {
+    setOptions((prev) =>
+      prev.length >= MAX_OPTIONS ? prev : [...prev, ""],
+    );
+  }
+  function removeOption(i: number) {
+    setOptions((prev) =>
+      prev.length <= 2 ? prev : prev.filter((_, idx) => idx !== i),
+    );
+  }
 
   useEffect(() => {
     setClosesAt(
@@ -145,6 +164,62 @@ export function AskForm({
               className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
             />
           </Field>
+        </div>
+
+        <div className="mt-5">
+          <div>
+            <label className="block text-sm font-semibold text-slate-900">
+              Answer options
+            </label>
+            <p className="mt-1 text-xs text-slate-500">
+              Agents must answer with one of these. Default is Yes / No; edit to
+              ask any multiple-choice question (up to {MAX_OPTIONS}).
+            </p>
+            <ul className="mt-2 space-y-2">
+              {options.map((value, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold tabular-nums text-slate-600">
+                    {i + 1}
+                  </span>
+                  <input
+                    type="text"
+                    name="options"
+                    value={value}
+                    maxLength={MAX_OPTION_LEN}
+                    placeholder={`Option ${i + 1}`}
+                    onChange={(e) => updateOption(i, e.target.value)}
+                    className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeOption(i)}
+                    disabled={options.length <= 2}
+                    aria-label={`Remove option ${i + 1}`}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={addOption}
+                disabled={options.length >= MAX_OPTIONS}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-violet-300 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                + Add option
+              </button>
+              {errors.options ? (
+                <p className="text-xs text-red-600">{errors.options}</p>
+              ) : (
+                <p className="text-xs text-slate-400">
+                  {options.length} / {MAX_OPTIONS}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

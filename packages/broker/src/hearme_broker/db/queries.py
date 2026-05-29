@@ -11,15 +11,26 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Sequence
 from uuid import UUID
 
 import asyncpg
 
-from ..aggregates import classify_vote, compute_by_predicate
+from ..aggregates import classify_answer, compute_by_predicate
 
 
 # ----- questions ---------------------------------------------------------
+
+
+def _normalize_options(raw: Any) -> list[str]:
+    """asyncpg returns jsonb as either a parsed list or a raw JSON string."""
+    if raw is None:
+        return ["yes", "no"]
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    if isinstance(raw, list):
+        return [str(x) for x in raw]
+    return ["yes", "no"]
 
 
 async def list_open_questions(
@@ -31,7 +42,7 @@ async def list_open_questions(
     if since is None:
         rows = await conn.fetch(
             """
-            SELECT id, text, topic, created_at, closes_at, nonce
+            SELECT id, text, topic, options, created_at, closes_at, nonce
             FROM questions
             WHERE status = 'open' AND closes_at > now()
             ORDER BY created_at ASC
@@ -40,14 +51,14 @@ async def list_open_questions(
     else:
         rows = await conn.fetch(
             """
-            SELECT id, text, topic, created_at, closes_at, nonce
+            SELECT id, text, topic, options, created_at, closes_at, nonce
             FROM questions
             WHERE status = 'open' AND closes_at > now() AND created_at >= $1
             ORDER BY created_at ASC
             """,
             since,
         )
-    return [dict(r) for r in rows]
+    return [{**dict(r), "options": _normalize_options(r["options"])} for r in rows]
 
 
 async def get_question_for_verify(
@@ -55,13 +66,17 @@ async def get_question_for_verify(
 ) -> dict[str, Any] | None:
     row = await conn.fetchrow(
         """
-        SELECT id, status, closes_at, nonce, scope, country, continent
+        SELECT id, status, closes_at, nonce, scope, country, continent, options
         FROM questions
         WHERE id = $1
         """,
         question_id,
     )
-    return dict(row) if row else None
+    if row is None:
+        return None
+    out: dict[str, Any] = dict(row)
+    out["options"] = _normalize_options(row["options"])
+    return out
 
 
 # ----- revocations -------------------------------------------------------
@@ -215,7 +230,12 @@ async def invalidate_registration_and_votes(
                     question_id,
                 )
                 continue
-            by_predicate = compute_by_predicate(envelopes)
+            options_row = await conn.fetchval(
+                "SELECT options FROM questions WHERE id = $1",
+                question_id,
+            )
+            options = _normalize_options(options_row)
+            by_predicate = compute_by_predicate(envelopes, options)
             await conn.execute(
                 """
                 INSERT INTO aggregates (question_id, total_answers, by_predicate, updated_at)
@@ -384,17 +404,21 @@ async def increment_aggregate(
     question_id: UUID,
     answer: str,
     disclosed_predicates: dict[str, str],
+    options: Sequence[str] | None = None,
 ) -> None:
     """Increment the aggregate row for one newly accepted envelope.
 
-    Questions are yes/no, so each disclosed (predicate, value) bucket records
-    the classified vote (``{"yes": n, "no": m}``) rather than a bare count.
+    Each disclosed (predicate, value) bucket records the classified option,
+    e.g. ``{"yes": n, "no": m}`` for the default yes/no poll, or
+    ``{"pizza": n, "pasta": m, "sushi": k}`` for an N-option poll.
 
     The advisory transaction lock serializes first-writer creation of the
     aggregate row for a question. After that, ``FOR UPDATE`` locks only the
     single aggregate row, avoiding the previous full-envelope scan on every
     insert.
     """
+    if not options:
+        options = ("yes", "no")
     await conn.execute(
         "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
         str(question_id),
@@ -408,13 +432,14 @@ async def increment_aggregate(
         """,
         question_id,
     )
-    vote = classify_vote(answer)
+    choice = classify_answer(answer, options)
+    empty: dict[str, int] = {opt: 0 for opt in options}
     delta: dict[str, dict[str, int]] = {}
     for key, value in (disclosed_predicates or {}).items():
         predicate_key = f"{key}:{value}"
-        bucket = delta.setdefault(predicate_key, {"yes": 0, "no": 0})
-        if vote in ("yes", "no"):
-            bucket[vote] += 1
+        bucket = delta.setdefault(predicate_key, dict(empty))
+        if choice is not None:
+            bucket[choice] = bucket.get(choice, 0) + 1
 
     if row is None:
         await conn.execute(
@@ -432,11 +457,12 @@ async def increment_aggregate(
         by_predicate = json.loads(by_predicate)
     by_predicate = dict(by_predicate or {})
     for key, bucket in delta.items():
-        current = by_predicate.get(key) or {"yes": 0, "no": 0}
-        by_predicate[key] = {
-            "yes": int(current.get("yes", 0)) + bucket["yes"],
-            "no": int(current.get("no", 0)) + bucket["no"],
-        }
+        current = dict(by_predicate.get(key) or {})
+        merged = dict(empty)
+        merged.update({k: int(v) for k, v in current.items()})
+        for opt, n in bucket.items():
+            merged[opt] = merged.get(opt, 0) + n
+        by_predicate[key] = merged
 
     await conn.execute(
         """

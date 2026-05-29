@@ -47,6 +47,7 @@ async def list_open_questions(since: str | None = Query(default=None)) -> list[Q
             question_id=r["id"],
             text=r["text"],
             topic=r["topic"],
+            options=r["options"],
             created_at=r["created_at"],
             closes_at=r["closes_at"],
             nonce=r["nonce"],

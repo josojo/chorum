@@ -36,7 +36,81 @@ describe("validateCreateQuestion", () => {
       expect(r.value.scope).toBe("worldwide");
       expect(r.value.country).toBeNull();
       expect(r.value.continent).toBeNull();
+      // Default options are Yes / No.
+      expect(r.value.options).toEqual(["Yes", "No"]);
     }
+  });
+
+  it("accepts custom options when supplied", () => {
+    const r = validateCreateQuestion({
+      displayName: "Alice",
+      text: "Pizza, pasta, or sushi?",
+      closesAt: futureDate,
+      scope: "worldwide",
+      options: ["Pizza", "Pasta", "Sushi"],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.options).toEqual(["Pizza", "Pasta", "Sushi"]);
+  });
+
+  it("trims and drops empty option rows", () => {
+    const r = validateCreateQuestion({
+      displayName: "Alice",
+      text: "Q?",
+      closesAt: futureDate,
+      scope: "worldwide",
+      options: ["  Yes  ", "", "No", "   "],
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.options).toEqual(["Yes", "No"]);
+  });
+
+  it("rejects fewer than two options", () => {
+    const r = validateCreateQuestion({
+      displayName: "Alice",
+      text: "Q?",
+      closesAt: futureDate,
+      scope: "worldwide",
+      options: ["only-one"],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.options).toBeTruthy();
+  });
+
+  it("rejects more than eight options", () => {
+    const r = validateCreateQuestion({
+      displayName: "Alice",
+      text: "Q?",
+      closesAt: futureDate,
+      scope: "worldwide",
+      options: ["a", "b", "c", "d", "e", "f", "g", "h", "i"],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.options).toBeTruthy();
+  });
+
+  it("rejects duplicate options (case-insensitive)", () => {
+    const r = validateCreateQuestion({
+      displayName: "Alice",
+      text: "Q?",
+      closesAt: futureDate,
+      scope: "worldwide",
+      options: ["Yes", "yes"],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.options).toBeTruthy();
+  });
+
+  it("rejects too-long option labels", () => {
+    const r = validateCreateQuestion({
+      displayName: "Alice",
+      text: "Q?",
+      closesAt: futureDate,
+      scope: "worldwide",
+      options: ["Yes", "n".repeat(50)],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.options).toBeTruthy();
   });
 
   it("accepts a country-scoped input and derives continent", () => {
@@ -199,6 +273,7 @@ describe("createQuestion", () => {
     displayName: "Alice",
     text: "Should we ship today?",
     topic: "engineering",
+    options: ["Yes", "No"],
     closesAt: new Date(Date.now() + 86_400_000),
     scope: "worldwide",
     country: null,
@@ -221,5 +296,17 @@ describe("createQuestion", () => {
     expect(qInsert.askerId).toBe("asker-1");
     expect(qInsert.text).toBe(input.text);
     expect(qInsert.topic).toBe("engineering");
+    expect(qInsert.options).toEqual(["Yes", "No"]);
+  });
+
+  it("forwards custom options to the insert", async () => {
+    const { fake, calls } = buildFakeDb({});
+    await createQuestion(
+      { ...input, options: ["Pizza", "Pasta", "Sushi"] },
+      fake,
+    );
+    const qInsert = calls.find((c) => c.kind === "insert-question")!
+      .args as Record<string, unknown>;
+    expect(qInsert.options).toEqual(["Pizza", "Pasta", "Sushi"]);
   });
 });

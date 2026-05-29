@@ -85,12 +85,21 @@ export default async function QuestionPage({ params }: PageProps) {
   const byPredicate =
     (aggRows[0]?.byPredicate as ByPredicate | null) ?? ({} as ByPredicate);
 
+  // `options` is jsonb in the DB; the Drizzle type-cast keeps callers honest
+  // but the row may legitimately be missing in old fixtures — fall back to
+  // the legacy yes/no shape.
+  const optionsRaw = (question as { options?: unknown }).options;
+  const options: string[] = Array.isArray(optionsRaw)
+    ? (optionsRaw as unknown[]).map(String).filter((o) => o.length > 0)
+    : ["yes", "no"];
+
   return (
     <QuestionDetail
       question={{
         id: question.id,
         text: question.text,
         topic: question.topic,
+        options: options.length >= 2 ? options : ["yes", "no"],
         status: effectiveStatus,
         scope: question.scope as "worldwide" | "continent" | "country",
         country: question.country,

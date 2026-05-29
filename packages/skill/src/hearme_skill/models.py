@@ -25,6 +25,10 @@ class Question(BaseModel):
     question_id: str
     text: str
     topic: str | None = None
+    # Ordered list of poll options. Default ['yes','no'] for the legacy flow;
+    # the agent must answer with one of these labels (case-insensitive
+    # leading-word match enforced server-side).
+    options: list[str] = Field(default_factory=lambda: ["yes", "no"], min_length=2, max_length=8)
     created_at: datetime
     closes_at: datetime
     nonce: str

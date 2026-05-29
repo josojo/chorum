@@ -6,6 +6,8 @@ import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { WorldMap } from "../src/components/world-map";
 
+const YN: readonly string[] = ["yes", "no"];
+
 function clickContinent(container: HTMLElement, code: string) {
   const path = container.querySelector(`path[data-continent="${code}"]`);
   expect(path, `expected a country path for continent ${code}`).toBeTruthy();
@@ -21,7 +23,11 @@ function clickCountry(container: HTMLElement, a2: string) {
 describe("WorldMap drill-down", () => {
   it("renders real country geometry, not a handful of stylised blobs", () => {
     const { container } = render(
-      <WorldMap continentData={[{ code: "EU", yes: 30, no: 12 }]} total={42} />,
+      <WorldMap
+        continentData={[{ code: "EU", tally: { yes: 30, no: 12 } }]}
+        total={42}
+        options={YN}
+      />,
     );
     // 170+ projected country paths means we're using the atlas, not 6 shapes.
     expect(container.querySelectorAll("path[data-id]").length).toBeGreaterThan(150);
@@ -34,10 +40,11 @@ describe("WorldMap drill-down", () => {
     const { container } = render(
       <WorldMap
         continentData={[
-          { code: "EU", yes: 30, no: 12 },
-          { code: "AS", yes: 10, no: 10 },
+          { code: "EU", tally: { yes: 30, no: 12 } },
+          { code: "AS", tally: { yes: 10, no: 10 } },
         ]}
         total={62}
+        options={YN}
       />,
     );
 
@@ -60,16 +67,17 @@ describe("WorldMap drill-down", () => {
     const { container } = render(
       <WorldMap
         continentData={[
-          { code: "NA", yes: 17, no: 25 },
-          { code: "EU", yes: 30, no: 18 },
+          { code: "NA", tally: { yes: 17, no: 25 } },
+          { code: "EU", tally: { yes: 30, no: 18 } },
         ]}
         countryData={[
-          { code: "US", yes: 10, no: 15 },
-          { code: "CA", yes: 4, no: 6 },
-          { code: "MX", yes: 3, no: 4 },
-          { code: "DE", yes: 7, no: 5 },
+          { code: "US", tally: { yes: 10, no: 15 } },
+          { code: "CA", tally: { yes: 4, no: 6 } },
+          { code: "MX", tally: { yes: 3, no: 4 } },
+          { code: "DE", tally: { yes: 7, no: 5 } },
         ]}
         total={142}
+        options={YN}
       />,
     );
 
@@ -83,6 +91,7 @@ describe("WorldMap drill-down", () => {
     expect(screen.getAllByText(/Canada/).length).toBeGreaterThan(0);
 
     clickCountry(container, "US");
+    // Selected-country caption renders "10 yes" (and "15 no").
     expect(screen.getByText(/10 yes/)).toBeTruthy();
   });
 
@@ -91,10 +100,11 @@ describe("WorldMap drill-down", () => {
       <WorldMap
         continentData={[]}
         countryData={[
-          { code: "DE", yes: 12, no: 6 },
-          { code: "FR", yes: 6, no: 5 },
+          { code: "DE", tally: { yes: 12, no: 6 } },
+          { code: "FR", tally: { yes: 6, no: 5 } },
         ]}
         total={29}
+        options={YN}
         focusContinent="EU"
       />,
     );
@@ -112,5 +122,24 @@ describe("WorldMap drill-down", () => {
     // Tapping a country surfaces its split in the caption (works without hover).
     clickCountry(container, "DE");
     expect(screen.getByText(/12 yes/)).toBeTruthy();
+  });
+
+  it("renders an N-option poll without hardcoded yes/no semantics", () => {
+    const { container } = render(
+      <WorldMap
+        continentData={[
+          { code: "EU", tally: { pizza: 22, pasta: 14, sushi: 9 } },
+          { code: "AS", tally: { pizza: 3, pasta: 5, sushi: 18 } },
+        ]}
+        total={71}
+        options={["pizza", "pasta", "sushi"]}
+      />,
+    );
+    // Per-option legend appears.
+    expect(screen.getAllByText("pizza").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("pasta").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("sushi").length).toBeGreaterThan(0);
+    // Continent paths exist and respond to clicks (drill-down still works).
+    expect(container.querySelectorAll("path[data-continent]").length).toBeGreaterThan(0);
   });
 });

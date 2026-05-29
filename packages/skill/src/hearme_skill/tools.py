@@ -87,6 +87,7 @@ async def _list_impl(settings: Settings, *, transport: httpx.AsyncBaseTransport 
                         "question_id": q.question_id,
                         "text": q.text,
                         "topic": q.topic,
+                        "options": list(q.options),
                         "closes_at": q.closes_at.isoformat(),
                     }
                 )
