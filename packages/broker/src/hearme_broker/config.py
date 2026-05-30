@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     # pipeline end-to-end without a phone. MUST stay False in production.
     dev_insecure_register: bool = False
 
+    # When True, run startup_checks.enforce_production_config() BEFORE the
+    # FastAPI app is built and refuse to boot if any documented dev default is
+    # still set (dev signing key, dev DB password, dev-bypass route, oracle-mode
+    # rejection reasons, etc.). Off by default so a fresh `dev-up.sh` keeps
+    # working; flip in any deployed environment (docs/DEPLOYMENT.md §2).
+    production_mode: bool = False
+
 
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]
