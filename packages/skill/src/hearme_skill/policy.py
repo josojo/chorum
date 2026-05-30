@@ -161,4 +161,4 @@ def decide(
     if _is_light_topic(topic, policy.auto_answer_topics):
         return Decision(action="answer", reason=f"light-topic auto-answer: {topic}")
 
-    return Decision(action="prompt_user", reason="auto-answer disabled (default)")
+    return Decision(action="decline", reason="auto-answer disabled (default)")
