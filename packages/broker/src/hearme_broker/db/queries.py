@@ -477,6 +477,82 @@ async def increment_aggregate(
     )
 
 
+# ----- override (per-envelope revocation, §1.12) -------------------------
+
+
+async def delete_one_envelope_and_recompute(
+    conn: asyncpg.Connection,
+    *,
+    question_id: UUID,
+    unique_identifier: str,
+) -> bool:
+    """Atomically delete one envelope and rebuild its question's aggregate.
+
+    Returns True if an envelope was actually deleted, False if none matched
+    (idempotent: revoking a non-existent answer is a no-op, not an error).
+
+    Aggregate is rebuilt from the remaining envelopes via ``compute_by_predicate``
+    — same path the self-invalidation listener uses (§5 of the broker README) —
+    so the post-delete state is provably consistent with what an `increment`
+    walk would have produced. The advisory lock serializes us against
+    concurrent ``increment_aggregate`` for the same question.
+    """
+    async with conn.transaction():
+        await conn.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+            str(question_id),
+        )
+        deleted = await conn.fetchval(
+            """
+            DELETE FROM envelopes
+            WHERE question_id = $1 AND unique_identifier = $2
+            RETURNING 1
+            """,
+            question_id,
+            unique_identifier,
+        )
+        if deleted is None:
+            return False
+
+        remaining = await conn.fetch(
+            """
+            SELECT answer, disclosed_predicates
+            FROM envelopes
+            WHERE question_id = $1
+            """,
+            question_id,
+        )
+        envelopes = [dict(r) for r in remaining]
+        total = len(envelopes)
+        if total == 0:
+            await conn.execute(
+                "DELETE FROM aggregates WHERE question_id = $1",
+                question_id,
+            )
+            return True
+
+        options_row = await conn.fetchval(
+            "SELECT options FROM questions WHERE id = $1",
+            question_id,
+        )
+        options = _normalize_options(options_row)
+        by_predicate = compute_by_predicate(envelopes, options)
+        await conn.execute(
+            """
+            INSERT INTO aggregates (question_id, total_answers, by_predicate, updated_at)
+            VALUES ($1, $2, $3::jsonb, now())
+            ON CONFLICT (question_id) DO UPDATE
+            SET total_answers = EXCLUDED.total_answers,
+                by_predicate = EXCLUDED.by_predicate,
+                updated_at = now()
+            """,
+            question_id,
+            total,
+            json.dumps(by_predicate),
+        )
+        return True
+
+
 # ----- platform stats ----------------------------------------------------
 
 

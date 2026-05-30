@@ -158,6 +158,9 @@ class RejectionReason(str, Enum):
     SCOPE_INELIGIBLE = "scope_ineligible"
     DUPLICATE = "duplicate"
 
+    # --- per-envelope override (POST /v1/envelopes/revoke; §1.12) ---
+    ENVELOPE_NOT_FOUND = "envelope_not_found"  # nothing to revoke (idempotent ack)
+
 
 class EnvelopeAck(BaseModel):
     """Response to POST /v1/envelopes."""
@@ -165,6 +168,46 @@ class EnvelopeAck(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     accepted: bool
+    reason: RejectionReason | None = None
+
+
+class EnvelopeRevocation(BaseModel):
+    """POST /v1/envelopes/revoke body.
+
+    The user retracts their own previously-submitted answer for one question
+    (§1.12 "override is sacred"). Authenticated by an Ed25519 signature over
+    a domain-separated digest the broker recomputes from the request fields
+    (see ``verify/envelope.py::revocation_signing_input``).
+
+    Exactly 3 fields — boundary-leakage check (no answer content, no rationale,
+    no question text — the broker recovers the unique_identifier from the
+    delegation token, so the wire never carries demographic data either).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    question_id: UUID
+    delegation_token: DelegationToken
+    revocation_signature: str = Field(
+        description="base64 Ed25519 signature (64 bytes) over "
+        "H('REVOKE' | question_id | delegation_hash)."
+    )
+
+
+class RevocationAck(BaseModel):
+    """Response to POST /v1/envelopes/revoke.
+
+    ``accepted`` is True both when an envelope was actually deleted and when
+    none existed (idempotent — a second revoke of the same answer is a no-op,
+    not an error). ``found`` distinguishes the two for the agent's local UI;
+    it is omitted entirely in production when ``expose_rejection_reasons`` is
+    False, so the response carries no signal beyond accepted/rejected.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: bool
+    found: bool | None = None
     reason: RejectionReason | None = None
 
 

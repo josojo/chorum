@@ -7,7 +7,9 @@ from .delegation import VerifyDelegationError, verify_delegation
 from .envelope import (
     VerifyEnvelopeError,
     envelope_signing_input,
+    revocation_signing_input,
     verify_agent_signature,
+    verify_revocation_signature,
 )
 from .predicates import (
     PredicateError,
@@ -33,7 +35,9 @@ __all__ = [
     "verify_delegation",
     "VerifyEnvelopeError",
     "envelope_signing_input",
+    "revocation_signing_input",
     "verify_agent_signature",
+    "verify_revocation_signature",
     "PredicateError",
     "country_to_region",
     "thresholds_to_age_band",

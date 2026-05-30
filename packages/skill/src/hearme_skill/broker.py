@@ -98,3 +98,43 @@ class BrokerClient:
             except ValueError:
                 return False, f"HTTP {resp.status_code}"
         return False, "max retries exhausted"
+
+    async def submit_revocation(self, body: dict) -> tuple[bool, str]:
+        """POST /v1/envelopes/revoke (§1.12). Returns (accepted, reason).
+
+        ``body`` is the three-field dict from ``envelope.build_revocation``.
+        Idempotent at the broker: revoking an answer that was never submitted
+        returns ``accepted=True, reason="envelope_not_found"``, so callers
+        treat ``accepted`` as the authoritative outcome.
+        """
+
+        expected = {"question_id", "delegation_token", "revocation_signature"}
+        if set(body.keys()) != expected:
+            raise RuntimeError(
+                f"refusing to submit revocation with non-canonical fields: {set(body.keys())}"
+            )
+
+        backoff = 1.0
+        for attempt in range(5):
+            try:
+                resp = await self.client.post(
+                    f"{self.base_url}/v1/envelopes/revoke", json=body, timeout=20.0
+                )
+            except httpx.HTTPError as exc:
+                log.warning("revoke attempt %s failed: %s", attempt, exc)
+                await asyncio.sleep(min(backoff, self.max_backoff_seconds))
+                backoff *= 2
+                continue
+            if resp.status_code in (200, 201):
+                payload = resp.json()
+                return bool(payload.get("accepted")), str(payload.get("reason", "") or "")
+            if 500 <= resp.status_code < 600:
+                await asyncio.sleep(min(backoff, self.max_backoff_seconds))
+                backoff *= 2
+                continue
+            try:
+                payload = resp.json()
+                return False, str(payload.get("reason", f"HTTP {resp.status_code}"))
+            except ValueError:
+                return False, f"HTTP {resp.status_code}"
+        return False, "max retries exhausted"

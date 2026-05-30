@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hearme.network/proto/revocation.json",
+  "title": "EnvelopeRevocation",
+  "description": "Body of POST /v1/envelopes/revoke — the per-answer override that retracts ONE of the user's own previously-submitted envelopes (ARCHITECTURE.md §1.12 'override is sacred'). The broker recovers the user's identity from delegation_token (the only thing that identifies them) and the target answer from (question_id, delegation_token.unique_identifier), then deletes that envelope and rebuilds the question's aggregate from the remaining envelopes in the same transaction. Idempotent: revoking an already-revoked or never-submitted answer returns accepted=true. The end-to-end test asserts the body contains exactly these three fields and no others (boundary-leakage check, §12) — there is no answer text, no question text, no rationale, no demographic data on the revocation wire.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "question_id",
+    "delegation_token",
+    "revocation_signature"
+  ],
+  "properties": {
+    "question_id": { "type": "string", "format": "uuid" },
+    "delegation_token": { "$ref": "delegation.json" },
+    "revocation_signature": {
+      "type": "string",
+      "description": "base64 Ed25519 signature (64 bytes) over H('REVOKE' | question_id | delegation_hash), signed by the agent_key bound in delegation_token. The literal 'REVOKE' prefix is the domain separator that prevents a captured envelope signature (which signs H(question_id || answer || nonce || delegation_hash)) from being replayed as a revocation."
+    }
+  }
+}

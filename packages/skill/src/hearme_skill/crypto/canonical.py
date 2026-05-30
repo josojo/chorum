@@ -75,3 +75,23 @@ def sign_payload(question_id: str, answer: str, nonce: str, delegation_hash_hex:
         delegation_hash_hex.encode("utf-8"),
     ]
     return hashlib.sha256(sep.join(parts)).digest()
+
+
+def revocation_payload(question_id: str, delegation_hash_hex: str) -> bytes:
+    """Compute H("REVOKE" || question_id || delegation_hash).
+
+    Byte layout MUST match ``hearme_broker.verify.envelope.revocation_signing_input``:
+    the literal ``REVOKE`` prefix + the two UTF-8 components, joined with a
+    single ASCII ``|`` separator, SHA-256'd to 32 bytes. The ``REVOKE`` prefix
+    is the domain separator that prevents a captured envelope signature from
+    being replayed as a revocation (and vice versa). Any drift here causes
+    ``agent_signature_invalid`` rejections at the broker.
+    """
+
+    sep = b"|"
+    parts = [
+        b"REVOKE",
+        question_id.encode("utf-8"),
+        delegation_hash_hex.encode("utf-8"),
+    ]
+    return hashlib.sha256(sep.join(parts)).digest()

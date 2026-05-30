@@ -16,6 +16,7 @@ from .db import close_pool, init_pool
 from .routes.envelopes import router as envelopes_router
 from .routes.questions import router as questions_router
 from .routes.register import router as register_router
+from .routes.revocations import router as revocations_router
 from .routes.stats import router as stats_router
 from .self_revocations import SelfRevocationListener
 
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(questions_router)
     app.include_router(register_router)
     app.include_router(envelopes_router)
+    app.include_router(revocations_router)
     app.include_router(stats_router)
 
     # DANGER: testing-only synthetic-identity registration. Off unless explicitly

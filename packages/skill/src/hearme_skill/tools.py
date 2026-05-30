@@ -38,7 +38,7 @@ from .broker import BrokerClient
 from .config import Settings, get_settings
 from .crypto.keystore import load_or_create_agent_keypair
 from .delegation import DelegationExpired, DelegationMissing, hash_of, load_usable
-from .envelope import build_envelope
+from .envelope import build_envelope, build_revocation
 from .ledger import Ledger
 from .models import Question
 from .policy import LedgerStats, decide, load_policy
@@ -227,4 +227,129 @@ def submit_answer(
         return asyncio.run(_submit_impl(question_id, answer_text, settings, transport=transport))
     except Exception as exc:  # noqa: BLE001
         log.exception("submit_answer failed")
+        return {"accepted": False, "reason": str(exc), "question_id": question_id}
+
+
+# --- override (§1.12 "override is sacred") -------------------------------
+
+
+async def _review_impl(settings: Settings, *, limit: int) -> dict:
+    """List the user's own submitted answers — local ledger read, no network."""
+    ledger = Ledger(settings.ledger_path)
+    await ledger.open()
+    try:
+        subs = await ledger.list_recent_submissions(limit=limit)
+        # Join in the question text + topic the skill recorded locally.
+        out: list[dict] = []
+        for s in subs:
+            row = await ledger._conn().execute(  # noqa: SLF001 — same package
+                "SELECT text, topic, closes_at FROM questions WHERE question_id = ?",
+                (s.question_id,),
+            )
+            qrow = await row.fetchone()
+            await row.close()
+            answer_row = await ledger._conn().execute(  # noqa: SLF001
+                "SELECT answer_text FROM answers WHERE question_id = ?",
+                (s.question_id,),
+            )
+            arow = await answer_row.fetchone()
+            await answer_row.close()
+            out.append(
+                {
+                    "question_id": s.question_id,
+                    "question_text": qrow[0] if qrow else None,
+                    "topic": qrow[1] if qrow else None,
+                    "closes_at": qrow[2] if qrow else None,
+                    "answer_text": arow[0] if arow else None,
+                    "submitted_at": s.submitted_at,
+                    "accepted": s.accepted,
+                    "reason": s.reason,
+                }
+            )
+        return {"answers": out}
+    finally:
+        await ledger.close()
+
+
+async def _revoke_impl(
+    question_id: str,
+    settings: Settings,
+    *,
+    transport: httpx.AsyncBaseTransport | None,
+) -> dict:
+    ledger = Ledger(settings.ledger_path)
+    await ledger.open()
+    try:
+        # Loadable, unexpired delegation is the precondition for ANY signed
+        # operation — same gate as submit.
+        try:
+            token = load_usable(settings.delegation_path)
+        except DelegationMissing:
+            return {"accepted": False, "reason": "no-delegation", "question_id": question_id}
+        except DelegationExpired:
+            return {"accepted": False, "reason": "delegation-expired", "question_id": question_id}
+
+        agent_kp = load_or_create_agent_keypair(settings.agent_key_path)
+        body = build_revocation(
+            question_id=question_id,
+            delegation_token=token,
+            agent_key=agent_kp,
+        )
+        async with httpx.AsyncClient(transport=transport) as client:
+            broker = BrokerClient(base_url=settings.broker_url, client=client, ledger=ledger)
+            accepted, reason = await broker.submit_revocation(body)
+
+        return {
+            "accepted": accepted,
+            "reason": reason or ("ok" if accepted else "rejected"),
+            "question_id": question_id,
+        }
+    finally:
+        await ledger.close()
+
+
+def review_my_answers(
+    *,
+    limit: int = 20,
+    settings: Settings | None = None,
+) -> dict:
+    """Return the user's own recently submitted answers (local-only read).
+
+    Shape: ``{"answers": [{"question_id", "question_text", "topic",
+    "answer_text", "submitted_at", "accepted", "reason", ...}]}``. Pure
+    local-ledger read — no network call, never raises. Intended to back the
+    "what did my agent say for me?" UI that pairs with :func:`revoke_answer`
+    (§1.12 "override is sacred").
+    """
+
+    settings = settings or get_settings()
+    try:
+        return asyncio.run(_review_impl(settings, limit=limit))
+    except Exception as exc:  # noqa: BLE001
+        log.exception("review_my_answers failed")
+        return {"error": str(exc), "answers": []}
+
+
+def revoke_answer(
+    question_id: str,
+    *,
+    settings: Settings | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict:
+    """Retract one of the user's own previously-submitted answers (§1.12).
+
+    Shape: ``{"accepted": bool, "reason": str, "question_id": str}``. The
+    broker deletes the envelope and rebuilds the question's aggregate; the
+    response is the same shape as :func:`submit_answer`. Idempotent at the
+    broker — revoking the same answer twice or revoking one that never
+    existed both return ``accepted=True`` (with the broker's ``reason``
+    distinguishing the cases when ``HEARME_BROKER_EXPOSE_REJECTION_REASONS``
+    is on). Never raises.
+    """
+
+    settings = settings or get_settings()
+    try:
+        return asyncio.run(_revoke_impl(question_id, settings, transport=transport))
+    except Exception as exc:  # noqa: BLE001
+        log.exception("revoke_answer failed")
         return {"accepted": False, "reason": str(exc), "question_id": question_id}
