@@ -171,23 +171,56 @@ new API key** — inference is whatever model the user already runs.
 #    Find that Python via the cgroup line of `systemctl --user status
 #    hermes-gateway` (typically `/path/to/.venv/bin/python`):
 GATEWAY_PY=/home/youruser/.venv/bin/python   # adjust to your install
+GATEWAY_BIN=$(dirname "$GATEWAY_PY")          # same venv's bin/ dir
 "$GATEWAY_PY" -m pip install \
   'git+https://github.com/josojo/hearme.git#subdirectory=packages/skill'
 #    Developing against a local checkout? Use an editable install instead:
 #    "$GATEWAY_PY" -m pip install -e packages/skill
+#    The venv has no pip? Bootstrap it once:
+#    "$GATEWAY_PY" -m ensurepip --upgrade
 
-# 2. Onboard once (verify-once with Self; needs the broker + self-bridge).
-#    On success, onboard ALSO installs the Hermes plugin drop-in under
-#    ~/.hermes/plugins/hearme/ and restarts hermes-gateway — so this single
-#    command gets the answering cycle running.
-hearme-skill onboard --bridge-url http://localhost:8787 --broker-url http://localhost:8000
+# 2. Write the Hermes plugin drop-in (~/.hermes/plugins/hearme/) and restart
+#    the gateway so it picks up the freshly-installed package.
+#
+#    `hearme-skill` is a console script pip dropped into the venv's bin/ dir;
+#    it is not a python -m module. Call the executable directly with its
+#    absolute path so you pick the gateway venv's copy (not whatever's on
+#    your shell $PATH from pyenv or another venv). The module form
+#    `"$GATEWAY_PY" -m hearme_skill.skill install-plugin` works too — note
+#    the UNDERSCORE in the module name; the dist name uses a hyphen but
+#    Python modules cannot.
+"$GATEWAY_BIN/hearme-skill" install-plugin
 
-# 3. Author your policy (see the sample above). `auto_answer: true` is what
+# 3. Opt the plugin in. Hermes 0.14 doesn't auto-enable user plugins; until
+#    `hearme` is in `plugins.enabled` of ~/.hermes/config.yaml the gateway
+#    discovers it (it shows in `hermes plugins list`) but skips loading it
+#    (no entry in `hermes tools list`). `hermes plugins enable` updates the
+#    config and reloads the gateway.
+hermes plugins enable hearme
+
+# 4. Onboard once (verify-once with Self; needs the broker + self-bridge).
+#    Generates the agent key, walks the Self QR flow, registers with the
+#    broker, persists the DelegationToken, and (if a token exists)
+#    self-registers the answering cron job.
+"$GATEWAY_BIN/hearme-skill" onboard \
+  --bridge-url http://localhost:8787 --broker-url http://localhost:8000
+
+# 5. Author your policy (see the sample above). `auto_answer: true` is what
 #    lets the cron job answer unattended.
 $EDITOR ~/.hermes/hearme/policy.yaml
 ```
 
-That's the whole install. The two manual commands cover, respectively, "make `hearme_skill` importable by the gateway" and "wire it into Hermes + register your identity". Everything else (cron job, plugin manifest, gateway restart) is automated by `onboard`.
+Steps 1–4 are the install proper; step 5 is policy. Conceptually: (1) makes
+`hearme_skill` importable by the gateway, (2) registers it as a Hermes plugin
+on disk, (3) opts in so Hermes actually loads it, (4) wires your identity in
+and schedules the cron.
+
+> **Why the absolute paths?** Putting `/home/youruser/.venv/bin` on `$PATH`
+> turns `hearme-skill install-plugin` into the same command. If you do that,
+> just `hearme-skill install-plugin` works. But on a box where the gateway
+> runs as a systemd unit and you also have pyenv on `$PATH`, the bare name
+> can resolve to a `hearme-skill` from a *different* venv that doesn't have
+> the package — pinning the absolute path is the safe default.
 
 Verify with:
 
@@ -196,12 +229,12 @@ hermes plugins list | grep hearme
 hermes tools list   | grep hearme        # expect hearme_list_open_questions + _submit_answer
 ```
 
-If you skipped step 2 (e.g. already onboarded), run the install bits explicitly:
+Already onboarded and just need to re-register the cron job? It's idempotent
+(`$GATEWAY_BIN` from step 1):
 
 ```bash
-hearme-skill install-plugin              # writes ~/.hermes/plugins/hearme/ + restarts gateway
-hearme-skill schedule                    # (re)register the cron job, default every 15m
-# hearme-skill schedule --schedule "0 * * * *"   # or a cron expression
+"$GATEWAY_BIN/hearme-skill" schedule              # default schedule (see schedule.py:DEFAULT_SCHEDULE)
+# "$GATEWAY_BIN/hearme-skill" schedule --schedule "0 * * * *"   # or a cron expression
 ```
 
 ### Why this install shape (and not `hermes plugins install`)
@@ -215,16 +248,25 @@ So: one pip command (installs code + deps into the gateway venv) followed by `he
 
 ### Install troubleshooting
 
-- **Tools missing from `hermes tools list` after install.** Three usual culprits:
+- **Tools missing from `hermes tools list` after install.** Walk these in order:
   1. The package isn't in the gateway's venv — confirm with
      `"$GATEWAY_PY" -m pip show hearme-skill`. The gateway's Python is whatever
      `systemctl --user status hermes-gateway` shows under cgroup.
   2. The plugin drop-in under `~/.hermes/plugins/hearme/` is missing or stale.
      `hearme-skill install-plugin` rewrites both files.
-  3. The gateway wasn't restarted. `systemctl --user restart hermes-gateway`.
+  3. `hearme` isn't in `plugins.enabled` of `~/.hermes/config.yaml`. Symptom:
+     `hermes plugins list` shows it, `hermes tools list` doesn't, and the
+     gateway log says `Skipping 'hearme' (not in plugins.enabled)`. Fix:
+     `hermes plugins enable hearme`.
+  4. The gateway wasn't restarted. `systemctl --user restart hermes-gateway`.
 - **The venv has no `pip`.** Some venvs ship without it (`python -m venv --without-pip`, `uv venv`, etc.). Bootstrap once: `"$GATEWAY_PY" -m ensurepip --upgrade`.
 - **Half-installed leftover from a failed `hermes plugins install josojo/hearme`.** That command clones the whole monorepo into `~/.hermes/plugins/hearme/` (mostly junk, no manifest at the right level) and then refuses re-installs. Wipe and use the canonical path: `rm -rf ~/.hermes/plugins/hearme && hearme-skill install-plugin`.
-- **`Unknown tool 'hearme_list_open_questions'` in the gateway logs.** Same root cause as the first bullet — the plugin loader never ran. Run `hearme-skill install-plugin` and check the journal: `journalctl --user -u hermes-gateway --since "30 sec ago" -o cat | grep -iE 'plugin|hearme|traceback' -A 3`.
+- **`Plugin 'hearme' has no register() function` in DEBUG logs but our `plugin.py` clearly has one.** This means Hermes loaded us via the pip entry-point path (it dedupes by plugin name and the entry-point wins over the directory drop-in), and the entry-point value resolved to the *function* rather than the *module*. Pre-2026-05 builds shipped `hearme = "hearme_skill.plugin:register"`, which makes `ep.load()` return the function and then `getattr(<func>, "register")` is `None`. Fixed by changing the entry to `hearme = "hearme_skill.plugin"`. If you hit this on an older checkout, upgrade the package: `"$GATEWAY_PY" -m pip install --force-reinstall --no-deps 'git+https://github.com/josojo/hearme.git#subdirectory=packages/skill'`.
+- **`Unknown tool 'hearme_list_open_questions'` in the gateway logs.** Always means the plugin loader never ran or ran but registered zero tools. The four-step walk under the first bullet covers the common cases. Bring the journal up with the relevant detail:
+  ```bash
+  journalctl --user -u hermes-gateway --since "30 sec ago" -o cat \
+    | grep -iE 'plugin|hearme|traceback|skipping' -A 3
+  ```
 
 ### How a cycle runs
 
