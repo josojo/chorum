@@ -4,18 +4,15 @@
 // modeled on the onboarding popover found on prediction-market sites. Renders
 // its own trigger button (drop it anywhere) plus the modal it opens.
 //
-// It auto-opens once per browser on first visit, gated behind a localStorage
-// flag, then stays available behind the header button forever after.
+// It stays available behind the header button.
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   OnboardingDialog,
   StepNav,
   primaryButtonClass,
 } from "./onboarding-dialog";
-
-const SEEN_KEY = "hearme:how-it-works-seen-v1";
 
 type Step = {
   title: string;
@@ -50,27 +47,11 @@ export function HowItWorks() {
 
   const close = useCallback(() => {
     setOpen(false);
-    try {
-      window.localStorage.setItem(SEEN_KEY, "1");
-    } catch {
-      // localStorage can throw in private mode; ignore — worst case it re-opens.
-    }
   }, []);
 
   const start = useCallback(() => {
     setStep(0);
     setOpen(true);
-  }, []);
-
-  // Auto-open once on a visitor's first ever visit.
-  useEffect(() => {
-    let seen = "1";
-    try {
-      seen = window.localStorage.getItem(SEEN_KEY) ?? "";
-    } catch {
-      seen = "1"; // can't read storage → don't nag.
-    }
-    if (!seen) setOpen(true);
   }, []);
 
   const isLast = step === STEPS.length - 1;

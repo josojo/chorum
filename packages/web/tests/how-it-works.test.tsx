@@ -1,8 +1,7 @@
 // Behavior test for the "How it works" onboarding click-through.
 //
-// Covers: the trigger opens the dialog, Next/Back walk the steps, the final
-// step exposes the "Ask a question" CTA, and the first-visit auto-open fires
-// only until the localStorage flag is set.
+// Covers: the trigger opens the dialog, Next/Back walk the steps, and the
+// final step exposes the "Ask a question" CTA.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
@@ -14,33 +13,21 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
 
-const SEEN_KEY = "hearme:how-it-works-seen-v1";
-
 describe("HowItWorks", () => {
   beforeEach(() => {
     cleanup();
     push.mockClear();
-    window.localStorage.clear();
   });
 
-  it("auto-opens on first visit and sets the seen flag when dismissed", () => {
+  it("does not auto-open on first visit", () => {
     render(<HowItWorks />);
-    // Dialog is up without anyone clicking the trigger.
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /how it works/i }));
     expect(screen.getByRole("dialog")).toBeTruthy();
-
-    fireEvent.click(screen.getByLabelText("Close"));
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(window.localStorage.getItem(SEEN_KEY)).toBe("1");
-  });
-
-  it("does not auto-open once the seen flag is present", () => {
-    window.localStorage.setItem(SEEN_KEY, "1");
-    render(<HowItWorks />);
-    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("opens from the trigger and walks all three steps", () => {
-    window.localStorage.setItem(SEEN_KEY, "1");
     render(<HowItWorks />);
 
     fireEvent.click(screen.getByRole("button", { name: /how it works/i }));
@@ -49,7 +36,7 @@ describe("HowItWorks", () => {
     expect(screen.getByText(/Step 1 of 3/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Real humans answer")).toBeTruthy();
+    expect(screen.getByText("Personal agent infer answer")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByText("Watch live, private results")).toBeTruthy();
@@ -63,12 +50,11 @@ describe("HowItWorks", () => {
   });
 
   it("Back returns to the previous step", () => {
-    window.localStorage.setItem(SEEN_KEY, "1");
     render(<HowItWorks />);
 
     fireEvent.click(screen.getByRole("button", { name: /how it works/i }));
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Real humans answer")).toBeTruthy();
+    expect(screen.getByText("Personal agent infer answer")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByText("Ask anyone, anywhere")).toBeTruthy();
