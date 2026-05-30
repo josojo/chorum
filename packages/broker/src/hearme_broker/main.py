@@ -20,12 +20,20 @@ from .routes.register import router as register_router
 from .routes.revocations import router as revocations_router
 from .routes.stats import router as stats_router
 from .self_revocations import SelfRevocationListener
+from .startup_checks import enforce_production_config
 
 log = logging.getLogger("hearme_broker.main")
 
 
 def create_app() -> FastAPI:
     logging.basicConfig(level=logging.INFO)
+
+    # Pre-flight: refuse to start in production mode with documented dev
+    # defaults (dev signing key, dev DB password, dev-bypass route, etc.).
+    # See startup_checks.py and docs/DEPLOYMENT.md §2.
+    settings = get_settings()
+    if settings.production_mode:
+        enforce_production_config(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -66,7 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(stats_router)
 
     # DANGER: testing-only synthetic-identity registration. Off unless explicitly
-    # enabled; never mount in production (see routes/dev.py).
+    # enabled; never mount in production (see routes/dev.py and startup_checks.py).
     if settings.dev_insecure_register:
         from .routes.dev import router as dev_router
 

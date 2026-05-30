@@ -45,12 +45,13 @@ def test_decline_when_daily_cap(question):
     assert d.action == "decline"
 
 
-def test_default_policy_is_prompt_user(question):
-    # § 1.1: defaults to off; opt-in per category. Even a matching policy
-    # must prompt the user unless `auto_answer` is explicitly true.
+def test_default_policy_declines_non_light(question):
+    # § 1.1: defaults to off; opt-in per category. A non-light topic ('coffee')
+    # under the default policy declines unattended rather than nagging the user —
+    # prompts cost the user too much attention to be the default (§1.12).
     p = UserPolicy(topic_allowlist=frozenset({"coffee"}))
     d = decide(question, p, LedgerStats())
-    assert d.action == "prompt_user"
+    assert d.action == "decline"
 
 
 def test_answer_when_policy_matches_and_auto_answer_on(question):
@@ -117,14 +118,15 @@ def test_light_topic_word_token_match(question):
     assert decide(question.model_copy(update={"topic": "ai agents"}),
                   UserPolicy.default(), LedgerStats()).action == "answer"
     assert decide(question.model_copy(update={"topic": "fair"}),
-                  UserPolicy.default(), LedgerStats()).action == "prompt_user"
+                  UserPolicy.default(), LedgerStats()).action == "decline"
 
 
-def test_non_light_topic_still_prompts_by_default(question):
-    # 'coffee' (fixture) and untagged questions are not in the light set.
-    assert decide(question, UserPolicy.default(), LedgerStats()).action == "prompt_user"
+def test_non_light_topic_declines_by_default(question):
+    # 'coffee' (fixture) and untagged questions are not in the light set, so the
+    # default policy declines them unattended instead of prompting the user.
+    assert decide(question, UserPolicy.default(), LedgerStats()).action == "decline"
     assert decide(question.model_copy(update={"topic": None}),
-                  UserPolicy.default(), LedgerStats()).action == "prompt_user"
+                  UserPolicy.default(), LedgerStats()).action == "decline"
 
 
 def test_blocklist_overrides_light_topic(question):
@@ -134,10 +136,11 @@ def test_blocklist_overrides_light_topic(question):
 
 
 def test_light_topics_can_be_disabled(question):
-    # Empty auto_answer_topics + auto_answer off ⇒ back to prompt-everything.
+    # Empty auto_answer_topics + auto_answer off ⇒ back to declining everything
+    # unattended (the user opted out of the light-topic default).
     p = UserPolicy(auto_answer_topics=frozenset())
     d = decide(question.model_copy(update={"topic": "ai"}), p, LedgerStats())
-    assert d.action == "prompt_user"
+    assert d.action == "decline"
 
 
 def test_load_policy_defaults_light_topics(tmp_path: Path):

@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     # pipeline end-to-end without a phone. MUST stay False in production.
     dev_insecure_register: bool = False
 
+    # When True, run startup_checks.enforce_production_config() BEFORE the
+    # FastAPI app is built and refuse to boot if any documented dev default is
+    # still set (dev signing key, dev DB password, dev-bypass route, oracle-mode
+    # rejection reasons, etc.). Off by default so a fresh `dev-up.sh` keeps
+    # working; flip in any deployed environment (docs/DEPLOYMENT.md §2).
+    production_mode: bool = False
+
     # Per-client rate limiting on write endpoints (ratelimit.py). In-memory and
     # per-process — single-instance broker is the v0 deployment shape (§2). Set
     # any limit to 0 to disable that rule. Defaults chosen for "comfortable for

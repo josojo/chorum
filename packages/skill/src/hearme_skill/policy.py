@@ -82,10 +82,10 @@ class UserPolicy:
     # v0: ignored (no payment field on questions). Carried for forward-compat.
     min_payment: float = 0.0
     auto_submit_window_seconds: int = 0
-    # If False, the layer always returns "prompt_user" rather than "answer"
-    # for questions OUTSIDE `auto_answer_topics` — § 1.12 override is sacred.
-    # Setting it True opts every eligible question (tagged or not) into
-    # unattended answering.
+    # If False, questions OUTSIDE `auto_answer_topics` are declined unattended
+    # rather than answered — § 1.12 override is sacred, and a prompt per question
+    # would cost the user too much attention to be the default. Setting it True
+    # opts every eligible question (tagged or not) into unattended answering.
     auto_answer: bool = False
     # Light-topic auto-answer: questions whose topic tag matches one of these
     # word-tokens are answered unattended even when `auto_answer` is False, so
