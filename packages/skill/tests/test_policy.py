@@ -96,3 +96,60 @@ def test_daily_cap_boundary(question, answered, expected):
     p = UserPolicy(topic_allowlist=frozenset({"coffee"}), auto_answer=True, max_answers_per_day=50)
     d = decide(question, p, LedgerStats(answered_today=answered))
     assert d.action == expected
+
+
+# --- light-topic auto-answer (fix "cron answers nothing out of the box") -------
+
+
+@pytest.mark.parametrize("topic", ["ai", "AI", "agents", "it", "hobbies", "gaming"])
+def test_light_topic_answers_by_default(question, topic):
+    # Default policy (auto_answer=False) still answers low-stakes topics so the
+    # cron isn't a no-op. The fixture topic 'coffee' is intentionally NOT light.
+    q = question.model_copy(update={"topic": topic})
+    d = decide(q, UserPolicy.default(), LedgerStats())
+    assert d.action == "answer"
+    assert "light-topic" in d.reason
+
+
+def test_light_topic_word_token_match(question):
+    # Multi-word tag matches on a token; an unrelated word that merely contains
+    # a keyword as a substring ("fair" ⊃ "ai") does NOT match.
+    assert decide(question.model_copy(update={"topic": "ai agents"}),
+                  UserPolicy.default(), LedgerStats()).action == "answer"
+    assert decide(question.model_copy(update={"topic": "fair"}),
+                  UserPolicy.default(), LedgerStats()).action == "prompt_user"
+
+
+def test_non_light_topic_still_prompts_by_default(question):
+    # 'coffee' (fixture) and untagged questions are not in the light set.
+    assert decide(question, UserPolicy.default(), LedgerStats()).action == "prompt_user"
+    assert decide(question.model_copy(update={"topic": None}),
+                  UserPolicy.default(), LedgerStats()).action == "prompt_user"
+
+
+def test_blocklist_overrides_light_topic(question):
+    p = UserPolicy(topic_blocklist=frozenset({"ai"}))
+    d = decide(question.model_copy(update={"topic": "ai"}), p, LedgerStats())
+    assert d.action == "decline"
+
+
+def test_light_topics_can_be_disabled(question):
+    # Empty auto_answer_topics + auto_answer off ⇒ back to prompt-everything.
+    p = UserPolicy(auto_answer_topics=frozenset())
+    d = decide(question.model_copy(update={"topic": "ai"}), p, LedgerStats())
+    assert d.action == "prompt_user"
+
+
+def test_load_policy_defaults_light_topics(tmp_path: Path):
+    # A YAML without the key inherits the curated default set.
+    path = tmp_path / "policy.yaml"
+    path.write_text("max_answers_per_day: 5\n")
+    assert "ai" in load_policy(path).auto_answer_topics
+
+
+def test_load_policy_auto_answer_topics_override(tmp_path: Path):
+    path = tmp_path / "policy.yaml"
+    path.write_text("auto_answer_topics:\n  - knitting\n  - Chess\n")
+    topics = load_policy(path).auto_answer_topics
+    assert topics == frozenset({"knitting", "chess"})  # lowercased, no defaults
+    assert "ai" not in topics

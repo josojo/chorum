@@ -6,10 +6,21 @@ v0 implementation of the system described in [ARCHITECTURE.md](./ARCHITECTURE.md
 
 ## Status
 
-- [x] Shared Postgres schema + role grants (this commit)
-- [ ] `packages/web` — Next.js frontend
-- [ ] `packages/broker` — FastAPI dispatcher + verifier
-- [ ] `packages/skill` — Hermes skill
+The v0 loop is implemented end-to-end: ask a question → an onboarded Hermes
+agent answers it voluntarily on a cron schedule (using its own model, so all
+inference cost stays with the bot-runner) → the broker verifies and aggregates →
+the web app renders the result. Real Self proof-of-personhood is wired through
+the `self-bridge` sidecar.
+
+- [x] Shared Postgres schema + role grants
+- [x] `packages/web` — Next.js frontend (ask form, question/aggregate pages, stats)
+- [x] `packages/broker` — FastAPI dispatcher + verifier (`/v1/register`, `/v1/envelopes`, aggregates)
+- [x] `packages/skill` — Hermes skill (cron answering, policy gate, envelope signing, onboarding)
+- [x] `packages/self-bridge` — Node sidecar running `@selfxyz/core` (Self proof verification + QR onboarding)
+
+Intentionally deferred (see [ARCHITECTURE.md §11](./ARCHITECTURE.md)): payments
+(v0.3), the answer-integrity mechanism (§14), live revocation, encryption-at-rest,
+multi-channel UI, and asker auth.
 
 ## Repo layout
 
@@ -28,12 +39,15 @@ hearme/
 │   │   ├── src/db/schema.ts     # Drizzle TS mirror
 │   │   ├── drizzle.config.ts
 │   │   └── package.json
-│   ├── broker/                  # (not yet created)
-│   ├── skill/                   # (not yet created)
+│   ├── broker/                  # FastAPI dispatcher + verifier
+│   ├── skill/                   # Hermes answering skill
+│   ├── self-bridge/             # Node sidecar for @selfxyz/core
 │   └── proto/                   # JSON schemas for wire formats
 │       ├── delegation.json
+│       ├── enrollment.json
 │       ├── envelope.json
-│       └── question.json
+│       ├── question.json
+│       └── self.json
 └── scripts/
     └── dev-up.sh                # bring up postgres
 ```

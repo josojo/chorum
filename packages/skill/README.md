@@ -299,10 +299,25 @@ lives at `~/.hermes/hearme/chatgpt_memory.sqlite` unless `--db` is supplied.
 
 ## Design choices worth flagging
 
-- **Default `auto_submit_window_seconds = 0`** (prompt-always). §1.12
-  "override is sacred" and §13's open question about the right default —
-  v0 errs maximally on the side of user control. Users can opt into a
-  non-zero veto window per-deployment via `policy.yaml`.
+- **Light-topic auto-answer by default.** So a freshly-onboarded agent
+  actually participates instead of sitting idle on the cron, questions whose
+  `topic` tag matches the curated low-stakes set (`DEFAULT_AUTO_ANSWER_TOPICS`
+  in `policy.py` — AI/agents, IT/software, hobbies, entertainment) are answered
+  unattended. Sensitive topics (politics, health, finance, …) are deliberately
+  absent and still require the global `auto_answer: true` opt-in. The
+  `topic_blocklist` always wins, and matching is by word-token (so the tag
+  `ai agents` matches `ai`, but `fair` does not). Tune or disable it in
+  `policy.yaml`:
+  ```yaml
+  # broaden, narrow, or empty out ([]) the light-topic set
+  auto_answer_topics: [ai, agents, gaming, music, knitting]
+  # or open everything (tagged or not) to unattended answering:
+  auto_answer: true
+  ```
+- **Untagged questions still prompt.** A question with no `topic` can't be
+  classified as light, so it falls back to the user (`prompt_user`) unless
+  `auto_answer: true` — §1.12 "override is sacred" still holds for anything
+  outside the light set.
 - **`Answer.rationale` is captured locally** for the audit ledger, but the
   `build_envelope` API takes `answer_text: str` (not `Answer`) so it's
   structurally impossible for the rationale to slip onto the wire.
