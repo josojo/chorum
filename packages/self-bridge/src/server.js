@@ -110,8 +110,14 @@ function normUserId(h) {
 // Test seam: seed the routing tables the way /requests would (without building a
 // real SelfApp via the SDK) so a /callback test can drive the dispatch path, and
 // clear them between cases. Production never calls these.
-export function __seedPending({ requestId, thresholds, userId, threshold }) {
-  pending.set(requestId, { agentKey: "test-agent-key", thresholds, results: new Map() });
+export function __seedPending({
+  requestId,
+  thresholds,
+  userId,
+  threshold,
+  agentKey = "test-agent-key",
+}) {
+  pending.set(requestId, { agentKey, thresholds, results: new Map() });
   byUser.set(normUserId(userId), { requestId, threshold });
 }
 export function __resetState() {
