@@ -1,6 +1,12 @@
-// Drizzle schema — hand-mirror of packages/web/drizzle/0000_init.sql.
-// Keep in sync with that file (and with the broker's Python models when
-// they land in packages/broker/src/hearme_broker/db/).
+// Drizzle schema — THE single source of truth for the shared Postgres schema.
+//
+// The SQL migrations under drizzle/migrations/ are GENERATED from this file
+// (`npm run db:generate`); never hand-edit them. Extensions (pgcrypto) live in
+// db/init/00-extensions.sql since drizzle-kit doesn't model them.
+//
+// CI (`npm run db:check`, in .github/workflows/ci.yml) fails if this file has
+// changes that haven't been regenerated into a committed migration. Workflow:
+// edit schema.ts → `npm run db:generate` → commit both.
 
 import { sql } from "drizzle-orm";
 import {
@@ -45,8 +51,10 @@ export const questions = pgTable(
       .$type<string[]>()
       .notNull()
       .default(sql`'["yes","no"]'::jsonb`),
+    // ISO 3166-1 alpha-2 (e.g. 'US', 'DE', 'JP'). NULL when scope != 'country'.
     scope: text("scope").notNull().default("worldwide"),
     country: text("country"),
+    // Two-letter continent code: AF, AN, AS, EU, NA, OC, SA.
     continent: text("continent"),
   },
   (t) => ({
@@ -62,6 +70,19 @@ export const questions = pgTable(
       "questions_options_chk",
       sql`jsonb_typeof(${t.options}) = 'array' AND jsonb_array_length(${t.options}) BETWEEN 2 AND 8`,
     ),
+    continentChk: check(
+      "questions_continent_chk",
+      sql`${t.continent} IS NULL OR ${t.continent} IN ('AF','AN','AS','EU','NA','OC','SA')`,
+    ),
+    scopeGeoChk: check(
+      "questions_scope_geo_chk",
+      sql`(${t.scope} = 'worldwide' AND ${t.country} IS NULL AND ${t.continent} IS NULL)
+        OR (${t.scope} = 'continent' AND ${t.country} IS NULL AND ${t.continent} IS NOT NULL)
+        OR (${t.scope} = 'country' AND ${t.country} IS NOT NULL AND ${t.continent} IS NOT NULL)`,
+    ),
+    scopeIdx: index("questions_scope_idx").on(t.scope),
+    countryIdx: index("questions_country_idx").on(t.country),
+    continentIdx: index("questions_continent_idx").on(t.continent),
   }),
 );
 

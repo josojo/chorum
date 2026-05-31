@@ -34,9 +34,9 @@ hearme/
 │       └── 02-roles.sh          # role grants applied after schema
 ├── packages/
 │   ├── web/
-│   │   ├── drizzle/
-│   │   │   └── 0000_init.sql    # canonical schema migration
-│   │   ├── src/db/schema.ts     # Drizzle TS mirror
+│   │   ├── src/db/schema.ts     # SINGLE SOURCE OF TRUTH for the schema
+│   │   ├── drizzle/migrations/  # SQL generated from schema.ts (db:generate)
+│   │   │   └── 0000_init.sql
 │   │   ├── drizzle.config.ts
 │   │   └── package.json
 │   ├── broker/                  # FastAPI dispatcher + verifier
@@ -61,7 +61,7 @@ One Postgres instance, two writer roles (ARCHITECTURE.md §2, §4):
 | `hearme_web`    | `questions`, `askers`                 | all       |
 | `hearme_broker` | `envelopes`, `aggregates`, `revocations` | all       |
 
-The schema is owned by `packages/web/drizzle/0000_init.sql`. The Drizzle TypeScript schema in `packages/web/src/db/schema.ts` is a hand-mirror — keep both in sync until codegen is set up.
+`packages/web/src/db/schema.ts` is the **single source of truth** for the schema. The SQL migrations under `packages/web/drizzle/migrations/` are *generated* from it with `npm run db:generate` — never hand-edited. Extensions (pgcrypto) live in `db/init/00-extensions.sql` (drizzle-kit doesn't model extensions). CI (`npm run db:check`) fails if `schema.ts` has changes that weren't regenerated into a committed migration. To change the schema: edit `schema.ts`, run `npm run db:generate`, commit both.
 
 ### Bring it up
 

@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.mjs",
+    "db:check": "node scripts/check-migrations-current.mjs",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
