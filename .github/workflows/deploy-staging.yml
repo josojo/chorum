@@ -39,8 +39,14 @@ permissions:
   contents: read
 
 jobs:
+  # Gate: run the full CI suite against the exact main SHA before anything
+  # touches staging. A red main no longer deploys — the deploy job `needs` this.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   deploy:
     name: deploy to staging
+    needs: ci
     runs-on: ubuntu-latest
     # The AWS_* and STAGING_SSH_KEY secrets live under this GitHub Environment,
     # not at the repo level, so this job must opt into it to see them.
