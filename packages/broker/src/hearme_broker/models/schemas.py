@@ -46,7 +46,9 @@ class EnrollmentBundle(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     self_proofs: list[SelfProofBundle] = Field(min_length=1)
-    agent_key: str = Field(description="base64 Ed25519 public key, 32 bytes")
+    agent_key: str = Field(
+        max_length=128, description="base64 Ed25519 public key, 32 bytes"
+    )
 
 
 class DelegationToken(BaseModel):
@@ -63,14 +65,18 @@ class DelegationToken(BaseModel):
     version: Literal[2]
     scope: Literal["hearme-v1"]
     unique_identifier: str = Field(
-        description="Self nullifier (scope-bound, unique-per-user-per-scope)."
+        max_length=128,
+        description="Self nullifier (scope-bound, unique-per-user-per-scope).",
     )
     disclosed_predicates: dict[str, str]
-    agent_key: str = Field(description="base64 Ed25519 public key, 32 bytes")
+    agent_key: str = Field(
+        max_length=128, description="base64 Ed25519 public key, 32 bytes"
+    )
     issued_at: datetime
     expires_at: datetime
     broker_signature: str = Field(
-        description="base64 Ed25519 signature by the broker over the token claims."
+        max_length=128,
+        description="base64 Ed25519 signature by the broker over the token claims.",
     )
 
 
@@ -80,10 +86,12 @@ class Envelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question_id: UUID
-    answer: str
-    nonce: str
+    answer: str = Field(max_length=2000)
+    nonce: str = Field(max_length=64)
     delegation_token: DelegationToken
-    agent_signature: str = Field(description="base64 Ed25519 signature, 64 bytes")
+    agent_signature: str = Field(
+        max_length=128, description="base64 Ed25519 signature, 64 bytes"
+    )
 
 
 class Question(BaseModel):
@@ -189,8 +197,9 @@ class EnvelopeRevocation(BaseModel):
     question_id: UUID
     delegation_token: DelegationToken
     revocation_signature: str = Field(
+        max_length=128,
         description="base64 Ed25519 signature (64 bytes) over "
-        "H('REVOKE' | question_id | delegation_hash)."
+        "H('REVOKE' | question_id | delegation_hash).",
     )
 
 
