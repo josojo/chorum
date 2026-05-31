@@ -150,7 +150,7 @@ test("an isValid:false proof acks result:false and is not counted as verified", 
 });
 
 test("an unroutable userIdentifier is discarded, not stored anywhere", async () => {
-  __seedPending({ requestId: "req-x", thresholds: [18], userId: "0x01", threshold: 18 });
+  __seedPending({ requestId: "req-x", thresholds: [18], userId: "0x01", threshold: 18, agentKey: SEED_AGENT_KEY });
   // Proof verifies, but echoes a userId nothing was minted for.
   __setVerifyImpl(async () => sdkResult({ isValid: true, userId: "0xdead" }));
 
