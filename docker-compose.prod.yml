@@ -44,13 +44,12 @@ services:
       # Real identity path: no mock passports, no dev mode.
       SELF_MOCK_PASSPORT: "0"
       SELF_DEV_MODE: "0"
-      # Celo mainnet — pin so the deployed @selfxyz/core does not fall back to
-      # a testnet root.
+      # Celo mainnet — pin so @selfxyz/core targets the mainnet IdentityVerification
+      # Hub V2 (0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF) and not a testnet root.
+      # The SDK does the on-chain registry/root check inside verify() and picks the
+      # RPC + hub from the chain id; the bridge does not need SELF_CELO_RPC_URL or
+      # SELF_REGISTRY_ADDRESS (see packages/self-bridge/src/server.js:148-179).
       SELF_CHAIN_ID: "42220"
-      # Sybil hardening: the bridge must be able to do the one-time on-chain
-      # registry/root check the broker requires above.
-      SELF_CELO_RPC_URL: ${HEARME_PROD_SELF_CELO_RPC_URL:-https://forno.celo.org}
-      SELF_REGISTRY_ADDRESS: ${HEARME_PROD_SELF_REGISTRY_ADDRESS:?set in prod .env}
 
   migrator:
     environment:
