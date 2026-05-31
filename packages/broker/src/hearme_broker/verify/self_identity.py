@@ -103,10 +103,10 @@ async def verify_enrollment(
             )
 
         # Agent-key bind (the proof commits to userDefinedData == agent_key).
-        if (
-            result.bound_agent_key is not None
-            and result.bound_agent_key != bundle.agent_key
-        ):
+        # Fail closed: a missing/unparseable bound key (None) is a FAILURE, not
+        # a pass. Skipping the check on None would let the real nullifier bind to
+        # whatever agent_key was submitted — exactly the binding this enforces.
+        if result.bound_agent_key is None or result.bound_agent_key != bundle.agent_key:
             log.warning(
                 "agent_key mismatch: bound=%r bundle=%r len(bound)=%d len(bundle)=%d",
                 result.bound_agent_key, bundle.agent_key,

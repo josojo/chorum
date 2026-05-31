@@ -110,8 +110,14 @@ function normUserId(h) {
 // Test seam: seed the routing tables the way /requests would (without building a
 // real SelfApp via the SDK) so a /callback test can drive the dispatch path, and
 // clear them between cases. Production never calls these.
-export function __seedPending({ requestId, thresholds, userId, threshold }) {
-  pending.set(requestId, { agentKey: "test-agent-key", thresholds, results: new Map() });
+export function __seedPending({
+  requestId,
+  thresholds,
+  userId,
+  threshold,
+  agentKey = "test-agent-key",
+}) {
+  pending.set(requestId, { agentKey, thresholds, results: new Map() });
   byUser.set(normUserId(userId), { requestId, threshold });
 }
 export function __resetState() {
@@ -317,6 +323,22 @@ app.post("/callback", async (req, res) => {
     const routed = byUser.get(normUid);
     const entry = routed ? pending.get(routed.requestId) : undefined;
     if (entry) {
+      // Mandatory agent-key bind (fail-closed). The proof commits to
+      // userDefinedData == the originating /requests call's agentKey; this is
+      // what stops one human's verified passport from being attached to an
+      // attacker-controlled agent key. A proof whose bound key is absent,
+      // unparseable, or mismatched is DISCARDED (never stored), so it can never
+      // bind the real nullifier to the wrong agent. Both values are base64
+      // (decodeBoundAgentKey returns base64; /requests set userDefinedData =
+      // b64ToHex(agentKey)), so a legitimate proof compares equal.
+      if (!out.boundAgentKey || out.boundAgentKey !== entry.agentKey) {
+        console.warn(
+          `[self-bridge] /callback agent-key bind FAILED for requestId=${routed.requestId} ` +
+            `threshold=${routed.threshold} (bound=${out.boundAgentKey ? "present" : "null"}, ` +
+            `match=${out.boundAgentKey === entry.agentKey}) — proof discarded`,
+        );
+        return res.json({ status: "success", result: out.verified === true });
+      }
       entry.results.set(normUid, {
         bundle: { attestationId, proof, publicSignals, userContextData },
         ...out,

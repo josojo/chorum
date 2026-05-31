@@ -57,6 +57,12 @@ const GOOD_BODY = {
   userContextData: "0xdeadbeef",
 };
 
+// The agent key a default sdkResult() binds to, in the same base64 form the
+// bridge stores in `entry.agentKey` (decodeBoundAgentKey round-trips the proof's
+// userDefinedData back to this). Seed pending requests with this so the
+// mandatory agent-key bind in /callback passes on the happy path.
+const SEED_AGENT_KEY = Buffer.from("ab".repeat(32), "hex").toString("base64");
+
 // Build an SDK-shaped verify() result. `userId` controls routing; the bound
 // agent key round-trips through decodeBoundAgentKey (hex-of-ascii-"0x"+hexkey).
 function sdkResult({ isValid = true, userId = "0x01", agentKeyHex = "ab".repeat(32) }) {
@@ -89,7 +95,7 @@ test("rejects a malformed body with 400 and does not call verify", async () => {
 
 test("a verified proof is routed to its request and stored", async () => {
   const userId = "0x2a"; // 42 — exercises BigInt normalization vs the seed below
-  __seedPending({ requestId: "req-1", thresholds: [35], userId, threshold: 35 });
+  __seedPending({ requestId: "req-1", thresholds: [35], userId, threshold: 35, agentKey: SEED_AGENT_KEY });
   __setVerifyImpl(async () => sdkResult({ isValid: true, userId }));
 
   const res = await post("/callback", GOOD_BODY);
@@ -115,7 +121,7 @@ test("a verified proof is routed to its request and stored", async () => {
 
 test("userId routing tolerates 0x-prefix / zero-padding differences", async () => {
   // Seed under a padded hex; the proof echoes the same number unpadded, no 0x.
-  __seedPending({ requestId: "req-pad", thresholds: [18], userId: "0x0000002a", threshold: 18 });
+  __seedPending({ requestId: "req-pad", thresholds: [18], userId: "0x0000002a", threshold: 18, agentKey: SEED_AGENT_KEY });
   __setVerifyImpl(async () => sdkResult({ isValid: true, userId: "2a" }));
 
   const res = await post("/callback", GOOD_BODY);
@@ -128,7 +134,7 @@ test("userId routing tolerates 0x-prefix / zero-padding differences", async () =
 
 test("an isValid:false proof acks result:false and is not counted as verified", async () => {
   const userId = "0x07";
-  __seedPending({ requestId: "req-bad", thresholds: [18], userId, threshold: 18 });
+  __seedPending({ requestId: "req-bad", thresholds: [18], userId, threshold: 18, agentKey: SEED_AGENT_KEY });
   __setVerifyImpl(async () => sdkResult({ isValid: false, userId }));
 
   const res = await post("/callback", GOOD_BODY);
@@ -144,7 +150,7 @@ test("an isValid:false proof acks result:false and is not counted as verified", 
 });
 
 test("an unroutable userIdentifier is discarded, not stored anywhere", async () => {
-  __seedPending({ requestId: "req-x", thresholds: [18], userId: "0x01", threshold: 18 });
+  __seedPending({ requestId: "req-x", thresholds: [18], userId: "0x01", threshold: 18, agentKey: SEED_AGENT_KEY });
   // Proof verifies, but echoes a userId nothing was minted for.
   __setVerifyImpl(async () => sdkResult({ isValid: true, userId: "0xdead" }));
 
@@ -155,6 +161,45 @@ test("an unroutable userIdentifier is discarded, not stored anywhere", async () 
   // ...but the seeded request never advanced (no proof stored), so it is still
   // pending, not complete.
   const got = await (await fetch(base + "/requests/req-x")).json();
+  assert.equal(got.status, "pending");
+});
+
+test("a proof whose bound agent key mismatches the request is discarded", async () => {
+  const userId = "0x33";
+  // Request was created for SEED_AGENT_KEY, but the proof binds a different key.
+  __seedPending({ requestId: "req-bind", thresholds: [18], userId, threshold: 18, agentKey: SEED_AGENT_KEY });
+  __setVerifyImpl(async () =>
+    sdkResult({ isValid: true, userId, agentKeyHex: "cd".repeat(32) }),
+  );
+
+  const res = await post("/callback", GOOD_BODY);
+  assert.equal(res.status, 200);
+  // Same ack shape as the routed path, but the proof was NOT stored.
+  assert.deepEqual(await res.json(), { status: "success", result: true });
+
+  // The seeded request never advanced — the mismatched proof was discarded.
+  const got = await (await fetch(base + "/requests/req-bind")).json();
+  assert.equal(got.status, "pending");
+});
+
+test("a proof with no decodable bound agent key is discarded", async () => {
+  const userId = "0x44";
+  __seedPending({ requestId: "req-nobind", thresholds: [18], userId, threshold: 18, agentKey: SEED_AGENT_KEY });
+  // userDefinedData that decodes to null (odd-length inner hex after "0x").
+  __setVerifyImpl(async () => {
+    const userDefinedData = Buffer.from("0xabc", "utf8").toString("hex");
+    return {
+      isValidDetails: { isValid: true },
+      userData: { userIdentifier: userId, userDefinedData },
+      discloseOutput: { nullifier: "nullifier-xyz", nationality: "DE", olderThan: "18" },
+    };
+  });
+
+  const res = await post("/callback", GOOD_BODY);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { status: "success", result: true });
+
+  const got = await (await fetch(base + "/requests/req-nobind")).json();
   assert.equal(got.status, "pending");
 });
 
@@ -171,9 +216,9 @@ test("a verify() that throws surfaces as a 500 error ack", async () => {
 });
 
 test("a multi-threshold request stays pending until every proof arrives", async () => {
-  __seedPending({ requestId: "req-multi", thresholds: [18, 25], userId: "0x11", threshold: 18 });
+  __seedPending({ requestId: "req-multi", thresholds: [18, 25], userId: "0x11", threshold: 18, agentKey: SEED_AGENT_KEY });
   // Register the second expected proof under the same request.
-  __seedPending({ requestId: "req-multi", thresholds: [18, 25], userId: "0x12", threshold: 25 });
+  __seedPending({ requestId: "req-multi", thresholds: [18, 25], userId: "0x12", threshold: 25, agentKey: SEED_AGENT_KEY });
 
   __setVerifyImpl(async () => sdkResult({ isValid: true, userId: "0x11" }));
   await post("/callback", GOOD_BODY);
