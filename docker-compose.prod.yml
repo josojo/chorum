@@ -45,6 +45,9 @@ services:
       # Real identity path: no mock passports, no dev mode.
       SELF_MOCK_PASSPORT: "0"
       SELF_DEV_MODE: "0"
+      # Fail closed: refuse to boot if a mock/dev posture survives into prod
+      # (mirrors the broker's startup_checks.py). See packages/self-bridge/src/server.js.
+      SELF_PRODUCTION_MODE: "1"
       # Celo mainnet — pin so @selfxyz/core targets the mainnet IdentityVerification
       # Hub V2 (0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF) and not a testnet root.
       # The SDK does the on-chain registry/root check inside verify() and picks the

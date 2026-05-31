@@ -44,7 +44,7 @@ const SCOPE = process.env.SELF_SCOPE || "hearme-v1";
 // URL in dev). Validated in /requests and at startup via endpointProblem().
 const ENDPOINT = process.env.SELF_ENDPOINT || "";
 const ENDPOINT_TYPE = process.env.SELF_ENDPOINT_TYPE || "staging_https";
-const MOCK_PASSPORT = (process.env.SELF_MOCK_PASSPORT || "1") === "1";
+const MOCK_PASSPORT = (process.env.SELF_MOCK_PASSPORT || "0") === "1";
 // The Self app only offers/accepts a MOCK passport when the request is in dev
 // mode. SelfAppBuilder defaults devMode:false (production), which is why a
 // mock-passport scan against a staging bridge silently fails. Default it to the
@@ -52,6 +52,25 @@ const MOCK_PASSPORT = (process.env.SELF_MOCK_PASSPORT || "1") === "1";
 // SELF_DEV_MODE if needed.
 const DEV_MODE =
   (process.env.SELF_DEV_MODE ?? (MOCK_PASSPORT ? "1" : "0")) === "1";
+// Fail-closed production guard (mirrors the broker's startup_checks.py). The
+// bridge is the ONLY place real Self proofs are verified, so a mock/dev posture
+// in production silently accepts forged passports as real identities (sybil /
+// personhood bypass) — and the misconfig (a dropped/typo'd SELF_MOCK_PASSPORT or
+// SELF_DEV_MODE) would otherwise boot fine. When operators set
+// SELF_PRODUCTION_MODE=1, refuse to start if mock passports or dev mode are on.
+// Tests do NOT set SELF_PRODUCTION_MODE, so this never fires during a normal
+// `import { app }` in CI; it only triggers under the real prod misconfiguration.
+const SELF_PRODUCTION_MODE = (process.env.SELF_PRODUCTION_MODE || "0") === "1";
+if (SELF_PRODUCTION_MODE && (MOCK_PASSPORT || DEV_MODE)) {
+  // eslint-disable-next-line no-console
+  console.error(
+    "[self-bridge] FATAL: SELF_PRODUCTION_MODE=1 but mock/dev posture is on " +
+      `(SELF_MOCK_PASSPORT=${MOCK_PASSPORT ? "1" : "0"}, SELF_DEV_MODE=${DEV_MODE ? "1" : "0"}). ` +
+      "Refusing to start: a mock/dev bridge accepts forged passports as real " +
+      "identities. Set SELF_MOCK_PASSPORT=0 and SELF_DEV_MODE=0 for production.",
+  );
+  process.exit(1);
+}
 // Optional chainID override. SelfAppBuilder otherwise picks 42220 (Celo
 // mainnet) for endpointType=staging_https — wrong for a mock passport, whose
 // commitment lives on Self's staging/testnet registry. If a mock scan fails on
