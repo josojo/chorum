@@ -72,10 +72,12 @@ curl -s http://localhost:8787/healthz                 # devMode:true
 ### Scan + answer
 
 ```sh
-# From the machine running your Hermes agent / skill:
+# From the machine running your Hermes agent / skill. On a public staging/prod
+# box the broker and bridge are not exposed directly — they are reached over TLS
+# through Caddy (broker under /v1/*, bridge under /self/*):
 hearme-skill onboard \
-  --bridge-url http://<test-host>:8787 \
-  --broker-url http://<test-host>:8000
+  --bridge-url https://<test-host>/self \
+  --broker-url https://<test-host>
 # Scan each QR with the Self app (create a mock passport: tap the passport 5×).
 # On success a DelegationToken is stored; the agent can now answer.
 ```

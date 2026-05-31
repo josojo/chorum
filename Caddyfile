@@ -14,9 +14,19 @@
 
 	# The Self app POSTs zk proofs to the bridge's /callback. Expose the bridge
 	# under /self/* (prefix stripped) so it shares the one TLS cert with the web
-	# app. e.g. POST /self/callback -> self-bridge:8787/callback
+	# app. e.g. POST /self/callback -> self-bridge:8787/callback, and the skill's
+	# onboarding hits /self/requests -> self-bridge:8787/requests.
 	handle_path /self/* {
 		reverse_proxy self-bridge:8787
+	}
+
+	# The broker's public API for remote bot-runners (onboarding + answering):
+	# /v1/register, /v1/envelopes, /v1/questions/open, … Prefix is preserved
+	# (handle, not handle_path) because the broker mounts its routes under /v1.
+	# This is what lets the broker host port stay bound to loopback — bots reach
+	# it over TLS here instead of on the old plaintext :8000.
+	handle /v1/* {
+		reverse_proxy broker:8000
 	}
 
 	# Everything else is the Next.js web app.
