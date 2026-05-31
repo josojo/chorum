@@ -69,7 +69,11 @@ class Settings(BaseSettings):
     # Ed25519 signing key (base64 of a 32-byte seed) the broker uses to sign the
     # DelegationToken it issues at registration. The agent treats the token as
     # opaque; only the broker validates it. MUST be overridden in production.
-    broker_signing_key: str = Field(
+    # NOTE: the env var is HEARME_BROKER_SIGNING_KEY (env_prefix + this field
+    # name). The field MUST stay `signing_key`, not `broker_signing_key` — the
+    # latter would make pydantic look for HEARME_BROKER_BROKER_SIGNING_KEY,
+    # which no deployment sets, so the dev default below would silently win.
+    signing_key: str = Field(
         default=_DEV_BROKER_SIGNING_KEY,
         description="base64 of the 32-byte Ed25519 seed for the broker signing key.",
     )

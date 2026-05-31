@@ -29,7 +29,7 @@ SCOPE = "hearme-v1"
 
 def _load_signing_key(settings: Settings) -> SigningKey:
     try:
-        seed = base64.b64decode(settings.broker_signing_key, validate=True)
+        seed = base64.b64decode(settings.signing_key, validate=True)
     except Exception as exc:  # noqa: BLE001
         raise ValueError(f"HEARME_BROKER_SIGNING_KEY is not valid base64: {exc}") from exc
     if len(seed) != 32:
