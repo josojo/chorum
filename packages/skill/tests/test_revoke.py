@@ -16,10 +16,9 @@ Covers:
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import httpx
 

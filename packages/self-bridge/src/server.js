@@ -88,6 +88,19 @@ function normUserId(h) {
   }
 }
 
+// Test seam: seed the routing tables the way /requests would (without building a
+// real SelfApp via the SDK) so a /callback test can drive the dispatch path, and
+// clear them between cases. Production never calls these.
+export function __seedPending({ requestId, thresholds, userId, threshold }) {
+  pending.set(requestId, { agentKey: "test-agent-key", thresholds, results: new Map() });
+  byUser.set(normUserId(userId), { requestId, threshold });
+}
+export function __resetState() {
+  pending.clear();
+  byUser.clear();
+  _verifyImpl = null;
+}
+
 // Verifier config. We deliberately DO NOT set `minimumAge`: @selfxyz/core checks
 // the config's minimumAge for EXACT equality against each proof's disclosed
 // threshold (verify() throws ConfigMismatchError otherwise), so one fixed value
@@ -145,6 +158,15 @@ function endpointProblem(ep) {
   return null;
 }
 
+// Test seam. /callback and /verify run a real ZK verification through
+// @selfxyz/core against the Celo RPC, which cannot run in CI. Tests inject a
+// deterministic stand-in here that returns an SDK-shaped result; production
+// leaves this null and always uses the real verifier(). See test/callback.test.js.
+let _verifyImpl = null;
+export function __setVerifyImpl(fn) {
+  _verifyImpl = fn;
+}
+
 async function verifyOne({ attestationId, proof, publicSignals, userContextData }) {
   // The on-chain registry/root check is done by @selfxyz/core itself: verify()
   // reads the IdentityVerificationHub on Celo (mainnet forno when MOCK_PASSPORT
@@ -155,12 +177,9 @@ async function verifyOne({ attestationId, proof, publicSignals, userContextData 
   // verify() that returns has already confirmed the root against Self's real
   // registry — that IS the Sybil-hardening anchor (ARCHITECTURE.md §5); the
   // bridge needs no extra eth_call. (Requires outbound access to the Celo RPC.)
-  const result = await verifier().verify(
-    attestationId,
-    proof,
-    publicSignals,
-    userContextData,
-  );
+  const result = _verifyImpl
+    ? await _verifyImpl(attestationId, proof, publicSignals, userContextData)
+    : await verifier().verify(attestationId, proof, publicSignals, userContextData);
   const verified = result?.isValidDetails?.isValid === true;
   const boundHex = result?.userData?.userDefinedData;
   return {

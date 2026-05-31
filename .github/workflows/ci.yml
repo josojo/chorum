@@ -1,0 +1,133 @@
+name: ci
+
+# Single source of truth for "is this commit shippable?". Runs on every PR and
+# is also called by deploy-staging.yml (workflow_call) so a deploy to staging
+# can gate on a green run of exactly these checks — see `needs: ci` there.
+#
+# Direct pushes to main do NOT trigger this workflow on their own: deploy-staging
+# runs on push-to-main and invokes this via workflow_call, so main is covered
+# once, not twice.
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  python-test:
+    name: pytest (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - packages/broker
+          - packages/skill
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ${{ matrix.package }}/pyproject.toml
+      - name: Install package
+        working-directory: ${{ matrix.package }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Run pytest
+        working-directory: ${{ matrix.package }}
+        run: pytest
+
+  python-lint:
+    name: ruff (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - packages/broker
+          - packages/skill
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: python -m pip install "ruff>=0.4"
+      - name: Lint
+        working-directory: ${{ matrix.package }}
+        run: ruff check .
+
+  web:
+    name: web (typecheck + vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/web
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: packages/web/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
+      - name: Test (vitest)
+        run: npm run test
+
+  self-bridge:
+    name: self-bridge (node --test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/self-bridge
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # No lockfile here yet, so `npm install`. The /callback test imports
+      # server.js, which pulls in express + the @selfxyz SDK at load time.
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Test (node --test)
+        run: npm test
+
+  db:
+    name: schema applies and boundaries hold
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start postgres
+        run: docker compose up -d postgres
+      - name: Wait for healthy
+        run: |
+          for i in $(seq 1 60); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' hearme-postgres 2>/dev/null || echo starting)
+            if [ "$status" = "healthy" ]; then
+              echo "postgres healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres failed to become healthy:"
+          docker logs hearme-postgres
+          exit 1
+      - name: Verify schema + roles + grant boundaries
+        run: scripts/verify-db.sh
+      - name: Show postgres logs on failure
+        if: failure()
+        run: docker logs hearme-postgres
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

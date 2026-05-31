@@ -24,7 +24,6 @@ import pytest
 
 from hearme_broker.db import queries as q
 from hearme_broker.models.schemas import RejectionReason
-from hearme_broker.verify.canonical import delegation_hash
 from hearme_broker.verify.envelope import (
     VerifyEnvelopeError,
     envelope_signing_input,

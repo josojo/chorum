@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import defaultdict, deque
+from collections import deque
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import Iterable
