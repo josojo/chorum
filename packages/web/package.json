@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:generate": "drizzle-kit generate",
+    "db:codegen": "node scripts/codegen.mjs",
+    "db:check-codegen": "node scripts/codegen.mjs --check",
     "db:migrate": "node scripts/migrate.mjs",
     "db:studio": "drizzle-kit studio"
   },

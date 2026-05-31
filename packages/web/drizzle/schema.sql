@@ -1,9 +1,15 @@
--- Hearme v0 — initial schema.
--- Canonical source of truth for the shared Postgres database used by
--- hearme-web and hearme-broker. hearme-skill keeps its own local SQLite
--- ledger and does not touch this database directly.
+-- Hearme v0 — CANONICAL schema. Single source of truth.
 --
--- Mirrored by packages/web/src/db/schema.ts (Drizzle).
+-- This hand-authored SQL DDL is THE definition of the shared Postgres database
+-- used by hearme-web and hearme-broker. Both the Drizzle TypeScript schema
+-- (packages/web/src/db/schema.ts) and the Python row models
+-- (packages/broker/src/hearme_broker/db/rows_generated.py) are GENERATED from
+-- this file — never hand-edit them. Run `npm run db:codegen` after changing it.
+--
+-- Applied verbatim on a fresh volume by docker-entrypoint-initdb.d. There is no
+-- production data; future schema changes edit this file and regenerate. (A
+-- declarative-diff migration tool such as Atlas would slot in here when deltas
+-- against live volumes become necessary.)
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
@@ -24,18 +30,22 @@ CREATE TABLE questions (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   closes_at   TIMESTAMPTZ NOT NULL,
   status      TEXT NOT NULL DEFAULT 'open',
-  -- Geographic scope of the question. 'worldwide' is the broadest;
-  -- 'continent' restricts to a region (continent column required);
-  -- 'country' restricts to a single country (country column required,
-  -- and continent is auto-set from it).
+  -- Ordered list of poll options. Default ['yes','no'] keeps every legacy
+  -- poll a two-option poll; arbitrary labels are allowed (2..8).
+  options     JSONB NOT NULL DEFAULT '["yes","no"]'::jsonb,
+  -- Geographic scope: 'worldwide' (broadest), 'continent' (continent required),
+  -- 'country' (country required; continent auto-set from it).
   scope       TEXT NOT NULL DEFAULT 'worldwide',
   -- ISO 3166-1 alpha-2 (e.g. 'US', 'DE', 'JP'). NULL when scope != 'country'.
   country     TEXT,
   -- Two-letter continent code: AF, AN, AS, EU, NA, OC, SA.
-  -- Required when scope IN ('continent','country'); NULL for 'worldwide'.
   continent   TEXT,
   CONSTRAINT questions_status_chk CHECK (status IN ('open', 'closed')),
   CONSTRAINT questions_scope_chk  CHECK (scope IN ('worldwide','continent','country')),
+  CONSTRAINT questions_options_chk CHECK (
+    jsonb_typeof(options) = 'array'
+    AND jsonb_array_length(options) BETWEEN 2 AND 8
+  ),
   CONSTRAINT questions_continent_chk CHECK (
     continent IS NULL OR continent IN ('AF','AN','AS','EU','NA','OC','SA')
   ),
@@ -64,7 +74,7 @@ CREATE TABLE envelopes (
 CREATE TABLE aggregates (
   question_id    UUID PRIMARY KEY REFERENCES questions(id),
   total_answers  INTEGER NOT NULL DEFAULT 0,
-  -- yes/no tally per bucket: {"region:EU": {"yes": 30, "no": 12}, ...}
+  -- label tally per bucket: {"region:EU": {"yes": 30, "no": 12}, ...}
   by_predicate   JSONB NOT NULL DEFAULT '{}',
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -74,15 +84,8 @@ CREATE TABLE revocations (
   revoked_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Self nullifier registry. Written ONCE per verified human at POST /v1/register
--- (verify-once-at-registration). Keyed by the scope-bound Self nullifier
--- (== DelegationToken.unique_identifier). ``agent_key`` is the base64 Ed25519
--- public key bound to this nullifier; re-registration is accepted if the
--- agent_key matches (refresh), and an attempt to bind a *different* agent_key
--- to a known, non-revoked nullifier is rejected as ``identity_already_bound``
--- (the atomic Sybil bind). This table also backs the broker-issued
--- DelegationToken: the per-envelope path checks agent_key matches and
--- revoked_at IS NULL here. See ARCHITECTURE.md §3, §5, §8 + verify/self_identity.py.
+-- Self nullifier registry. Written ONCE per verified human at POST /v1/register.
+-- See ARCHITECTURE.md §3, §5, §8 + verify/self_identity.py.
 CREATE TABLE registrations (
   unique_identifier    TEXT PRIMARY KEY,
   agent_key            TEXT NOT NULL,
@@ -92,10 +95,7 @@ CREATE TABLE registrations (
   revoked_at           TIMESTAMPTZ
 );
 
--- Broker-side record of Self on-chain invalidation events that revoked a
--- previously accepted nullifier. The broker treats these as authoritative:
--- future envelopes from that nullifier reject, and already accepted envelopes
--- are removed from aggregates when the invalidation is applied.
+-- Broker-side record of Self on-chain invalidation events.
 CREATE TABLE self_nullifier_invalidations (
   unique_identifier TEXT PRIMARY KEY,
   source            TEXT NOT NULL,

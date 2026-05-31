@@ -31,10 +31,10 @@ services:
     volumes:
       - hearme-pgdata:/var/lib/postgresql/data
       # Schema + roles + seed are applied on first container start, in alpha order.
-      # 01: tables (canonical migration owned by hearme-web)
+      # 01: the canonical schema (extension + tables) — the single source of truth
       # 02: roles + grants
       # 03: demo seed data (questions/envelopes/aggregates across scopes)
-      - ./packages/web/drizzle/0000_init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./packages/web/drizzle/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./db/init/02-roles.sh:/docker-entrypoint-initdb.d/02-roles.sh:ro
       - ./db/init/03-seed.sql:/docker-entrypoint-initdb.d/03-seed.sql:ro
     healthcheck:
@@ -110,12 +110,13 @@ services:
     ports:
       - "8787:8787"
 
-  # One-shot SQL migrator. Runs every `docker compose up` (re-runs are no-ops
-  # — applied versions are tracked in `_schema_migrations`). On a fresh volume,
-  # postgres's docker-entrypoint-initdb.d bootstraps `0000_init.sql` first, then
-  # this migrator baselines `0000_init` and applies any later deltas. On an
-  # existing volume (e.g. staging across schema changes), it just applies the
-  # new files. See packages/web/scripts/migrate.mjs.
+  # One-shot SQL migrator for future hand-written deltas. Runs every
+  # `docker compose up` (re-runs are no-ops — applied versions are tracked in
+  # `_schema_migrations`). On a fresh volume, postgres's
+  # docker-entrypoint-initdb.d applies the canonical schema.sql first, then this
+  # migrator baselines it and applies any *.sql deltas under drizzle/migrations/.
+  # (With SQL-as-source, deltas against live volumes are hand-written here, or a
+  # declarative-diff tool like Atlas would generate them.) See scripts/migrate.mjs.
   migrator:
     build:
       context: .

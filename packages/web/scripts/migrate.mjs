@@ -7,7 +7,7 @@
 //      if missing.
 //   3. Baseline guard: if the table is empty AND `questions` already exists
 //      (i.e. the volume was bootstrapped by docker-entrypoint-initdb's
-//      0000_init.sql before this migrator ever ran), record `0000_init`
+//      canonical schema.sql before this migrator ever ran), record `0000_init`
 //      as already-applied — otherwise the migrator would try to re-run the
 //      baseline and explode on duplicate tables.
 //   4. Reads every *.sql file under drizzle/migrations/ in lex order; for
@@ -23,7 +23,11 @@ import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = join(__dirname, "..", "drizzle", "migrations");
+// Hand-written *.sql deltas applied on top of the canonical schema.sql baseline,
+// in lex order. Overridable so tests can point the migrator at a fixture set.
+const MIGRATIONS_DIR =
+  process.env.HEARME_MIGRATIONS_DIR ??
+  join(__dirname, "..", "drizzle", "migrations");
 const BASELINE_VERSION = "0000_init";
 // Sentinel: every DB schema we'd want to baseline has this table.
 const BASELINE_TABLE = "questions";
@@ -72,7 +76,7 @@ async function baselineIfNeeded() {
   if (!exists) {
     // Fresh volume on a host that ISN'T using docker-entrypoint-initdb to
     // bootstrap the schema. Today that's only the test harness, which
-    // applies 0000_init.sql itself before invoking us — so this branch
+    // applies its baseline itself before invoking us — so this branch
     // exists for future flexibility, not as a supported prod path.
     return;
   }

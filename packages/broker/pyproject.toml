@@ -43,3 +43,5 @@ filterwarnings = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Generated from packages/web/drizzle/schema.sql by `npm run db:codegen`.
+extend-exclude = ["src/hearme_broker/db/rows_generated.py"]

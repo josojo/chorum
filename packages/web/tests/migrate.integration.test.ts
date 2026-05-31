@@ -1,28 +1,55 @@
 // End-to-end check that scripts/migrate.mjs upgrades a "staging-shaped" DB
-// (volume that already has 0000_init.sql applied) without losing data and is
+// (volume that already has the baseline applied) without losing data and is
 // idempotent on re-run.
 //
-// Strategy: spin up postgres:16 via `docker run`, apply the BASELINE
-// 0000_init.sql by hand (simulating what initdb did when the staging volume
-// was first created), insert one yes/no question, then invoke the migrator
-// twice and assert the new column / CHECK constraint / preserved row /
-// `_schema_migrations` ledger.
+// We exercise the migrator MECHANISM with a self-contained fixture migration
+// set (pointed at via HEARME_MIGRATIONS_DIR) rather than the real schema, so
+// the test stays meaningful regardless of how many real deltas exist (with
+// SQL-as-source the canonical schema.sql is applied at initdb and there may be
+// zero deltas). The fixture baseline creates a `questions` table (the sentinel
+// migrate.mjs uses to detect an already-bootstrapped volume) plus a delta that
+// adds a column + CHECK.
+//
+// Strategy: spin up postgres:16 via `docker run`, apply the fixture baseline by
+// hand (simulating what initdb did when the staging volume was first created),
+// insert one row, then invoke the migrator twice and assert the new column /
+// CHECK constraint / preserved row / `_schema_migrations` ledger.
 //
 // Skipped if `docker` is not available (e.g. CI without Docker-in-Docker).
 // Single test, ~60s budget.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execSync, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:net";
 import postgres from "postgres";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..", "..", "..");
-const BASELINE_SQL = join(REPO_ROOT, "packages/web/drizzle/0000_init.sql");
 const MIGRATE_SCRIPT = join(REPO_ROOT, "packages/web/scripts/migrate.mjs");
+
+// Self-contained fixture migrations. 0000_init creates the `questions` sentinel
+// table; 0001 is the delta the migrator should apply on top.
+const FIXTURE_BASELINE = `CREATE TABLE questions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  text text NOT NULL,
+  closes_at timestamptz NOT NULL
+);`;
+const FIXTURE_DELTA = `ALTER TABLE questions ADD COLUMN IF NOT EXISTS color text NOT NULL DEFAULT 'blue';
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'questions_color_chk' AND conrelid = 'questions'::regclass
+  ) THEN
+    ALTER TABLE questions
+      ADD CONSTRAINT questions_color_chk CHECK (color IN ('blue','red','green'));
+  END IF;
+END $$;`;
+let migrationsDir = "";
 
 function dockerAvailable(): boolean {
   const r = spawnSync("docker", ["info"], { stdio: "ignore" });
@@ -68,6 +95,11 @@ const skipSuite = !dockerAvailable();
     let dsn = "";
 
     beforeAll(async () => {
+      // Write the fixture migration set to a temp dir.
+      migrationsDir = mkdtempSync(join(tmpdir(), "hearme-migtest-"));
+      writeFileSync(join(migrationsDir, "0000_init.sql"), FIXTURE_BASELINE);
+      writeFileSync(join(migrationsDir, "0001_add_color.sql"), FIXTURE_DELTA);
+
       const port = await pickFreePort();
       containerName = `hearme-migtest-${process.pid}-${Date.now()}`;
       execSync(
@@ -93,17 +125,15 @@ const skipSuite = !dockerAvailable();
         await probe.end({ timeout: 5 });
       }
 
-      // Bootstrap the BASELINE schema (what initdb would have applied on
-      // the first boot of an existing staging volume).
-      const baseline = readFileSync(BASELINE_SQL, "utf8");
+      // Bootstrap the fixture BASELINE (what initdb would have applied on the
+      // first boot of an existing staging volume).
       const sql = postgres(dsn, { max: 1, onnotice: () => {} });
       try {
-        await sql.unsafe(baseline);
-        // One pre-existing yes/no question — proves the ALTER preserves rows.
-        await sql`INSERT INTO askers(id, display_name) VALUES (gen_random_uuid(), 'baseline')`;
+        await sql.unsafe(FIXTURE_BASELINE);
+        // One pre-existing row — proves the ALTER preserves data.
         await sql`
           INSERT INTO questions(text, closes_at)
-          VALUES ('Pre-existing yes/no question?', now() + interval '1 day')
+          VALUES ('Pre-existing question?', now() + interval '1 day')
         `;
       } finally {
         await sql.end({ timeout: 5 });
@@ -114,11 +144,16 @@ const skipSuite = !dockerAvailable();
       if (containerName) {
         spawnSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
       }
+      if (migrationsDir) rmSync(migrationsDir, { recursive: true, force: true });
     });
 
     function runMigrator(): { status: number; stdout: string; stderr: string } {
       const r = spawnSync("node", [MIGRATE_SCRIPT], {
-        env: { ...process.env, MIGRATOR_DATABASE_URL: dsn },
+        env: {
+          ...process.env,
+          MIGRATOR_DATABASE_URL: dsn,
+          HEARME_MIGRATIONS_DIR: migrationsDir,
+        },
         encoding: "utf8",
       });
       return {
@@ -128,72 +163,59 @@ const skipSuite = !dockerAvailable();
       };
     }
 
-    it("applies 0001 to a staging-shaped DB, preserves data, is idempotent", async () => {
+    it("applies the delta to a staging-shaped DB, preserves data, is idempotent", async () => {
       // Pre-migration: confirm the baseline really lacks the new column,
       // so the test would actually fail if the migrator didn't do its job.
       const probe = postgres(dsn, { max: 1, onnotice: () => {} });
       try {
         const cols0 = await probe`
           SELECT column_name FROM information_schema.columns
-          WHERE table_name = 'questions' AND column_name = 'options'
+          WHERE table_name = 'questions' AND column_name = 'color'
         `;
         expect(cols0).toHaveLength(0);
       } finally {
         await probe.end({ timeout: 5 });
       }
 
-      // First migrator run: applies 0001.
+      // First migrator run: baselines 0000_init, applies the delta.
       const first = runMigrator();
       expect(
         first.status,
         `first run failed:\n${first.stdout}\n${first.stderr}`,
       ).toBe(0);
       expect(first.stdout).toMatch(/baselining 0000_init/);
-      expect(first.stdout).toMatch(/applying 0001_add_options/);
+      expect(first.stdout).toMatch(/applying 0001_add_color/);
 
       // Verify the column, default, CHECK, and preserved row.
       const sql = postgres(dsn, { max: 1, onnotice: () => {} });
       try {
         const cols = await sql`
-          SELECT column_name, data_type, column_default, is_nullable
+          SELECT column_name, data_type, is_nullable
           FROM information_schema.columns
-          WHERE table_name = 'questions' AND column_name = 'options'
+          WHERE table_name = 'questions' AND column_name = 'color'
         `;
         expect(cols).toHaveLength(1);
-        expect(cols[0].data_type).toBe("jsonb");
+        expect(cols[0].data_type).toBe("text");
         expect(cols[0].is_nullable).toBe("NO");
 
+        // Pre-existing row picked up the column default.
         const [row] = await sql`
-          SELECT options FROM questions WHERE text = 'Pre-existing yes/no question?'
+          SELECT color FROM questions WHERE text = 'Pre-existing question?'
         `;
-        expect(row.options).toEqual(["yes", "no"]);
+        expect(row.color).toBe("blue");
 
-        // CHECK constraint: < 2 options rejected.
+        // CHECK constraint: an out-of-range value is rejected.
         await expect(
           sql`
-            INSERT INTO questions(text, closes_at, options)
-            VALUES ('bad', now() + interval '1 day', '["only"]'::jsonb)
+            INSERT INTO questions(text, closes_at, color)
+            VALUES ('bad', now() + interval '1 day', 'purple')
           `,
-        ).rejects.toThrow(/questions_options_chk/);
+        ).rejects.toThrow(/questions_color_chk/);
 
-        // CHECK constraint: > 8 options rejected.
-        await expect(
-          sql`
-            INSERT INTO questions(text, closes_at, options)
-            VALUES (
-              'bad', now() + interval '1 day',
-              '["a","b","c","d","e","f","g","h","i"]'::jsonb
-            )
-          `,
-        ).rejects.toThrow(/questions_options_chk/);
-
-        // 3-option insert succeeds.
+        // An allowed value succeeds.
         await sql`
-          INSERT INTO questions(text, closes_at, options)
-          VALUES (
-            'three-option', now() + interval '1 day',
-            '["red","blue","green"]'::jsonb
-          )
+          INSERT INTO questions(text, closes_at, color)
+          VALUES ('ok', now() + interval '1 day', 'green')
         `;
 
         // Ledger: both versions recorded.
@@ -202,7 +224,7 @@ const skipSuite = !dockerAvailable();
         `;
         expect(versions.map((r) => r.version)).toEqual([
           "0000_init",
-          "0001_add_options",
+          "0001_add_color",
         ]);
       } finally {
         await sql.end({ timeout: 5 });

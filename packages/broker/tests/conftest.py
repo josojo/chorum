@@ -193,18 +193,19 @@ def make_envelope(agent_signing_key: SigningKey):
 
 
 def _read_schema() -> str:
-    """Baseline schema + every drizzle/migrations/*.sql in lex order.
+    """The canonical schema.sql + any hand-written drizzle/migrations/*.sql deltas.
 
-    Mirrors what production does: docker-entrypoint-initdb.d applies
-    0000_init.sql on the first boot of a fresh volume, then scripts/migrate.mjs
-    applies the numbered deltas. The test fixture runs both in the same
-    asyncpg ``execute`` block so the schema the broker sees matches prod.
+    Mirrors what production does: docker-entrypoint-initdb.d applies the
+    canonical schema.sql (which includes the pgcrypto extension) on the first
+    boot of a fresh volume, then scripts/migrate.mjs applies any deltas. The
+    fixture runs it all in one asyncpg ``execute`` block so the schema the
+    broker sees matches prod. schema.sql is the single source of truth.
     """
 
     repo_root = Path(__file__).resolve().parents[3]
-    base_sql = (repo_root / "packages" / "web" / "drizzle" / "0000_init.sql").read_text()
+    schema_sql = (repo_root / "packages" / "web" / "drizzle" / "schema.sql").read_text()
     migrations_dir = repo_root / "packages" / "web" / "drizzle" / "migrations"
-    parts = [base_sql]
+    parts = [schema_sql]
     if migrations_dir.is_dir():
         for path in sorted(migrations_dir.glob("*.sql")):
             parts.append(path.read_text())

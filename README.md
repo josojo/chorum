@@ -35,8 +35,8 @@ hearme/
 ├── packages/
 │   ├── web/
 │   │   ├── drizzle/
-│   │   │   └── 0000_init.sql    # canonical schema migration
-│   │   ├── src/db/schema.ts     # Drizzle TS mirror
+│   │   │   └── schema.sql       # SINGLE SOURCE OF TRUTH (hand-authored SQL)
+│   │   ├── src/db/schema.ts     # GENERATED from schema.sql (db:codegen)
 │   │   ├── drizzle.config.ts
 │   │   └── package.json
 │   ├── broker/                  # FastAPI dispatcher + verifier
@@ -61,7 +61,12 @@ One Postgres instance, two writer roles (ARCHITECTURE.md §2, §4):
 | `hearme_web`    | `questions`, `askers`                 | all       |
 | `hearme_broker` | `envelopes`, `aggregates`, `revocations` | all       |
 
-The schema is owned by `packages/web/drizzle/0000_init.sql`. The Drizzle TypeScript schema in `packages/web/src/db/schema.ts` is a hand-mirror — keep both in sync until codegen is set up.
+`packages/web/drizzle/schema.sql` is the **single source of truth** for the schema (hand-authored SQL DDL, incl. the `pgcrypto` extension). Two consumers are *generated* from it by `npm run db:codegen` — never hand-edited:
+
+- `packages/web/src/db/schema.ts` — the Drizzle TS schema for the web app (via `drizzle-kit pull` + a small post-process step).
+- `packages/broker/src/hearme_broker/db/rows_generated.py` — Pydantic row models.
+
+CI (`npm run db:check-codegen`) applies `schema.sql` to a throwaway DB, regenerates both, and fails if either is stale. To change the schema: edit `schema.sql`, run `npm run db:codegen`, commit all three.
 
 ### Bring it up
 

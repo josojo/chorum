@@ -143,7 +143,7 @@ need to seed test data, do so as `hearme_admin`.
 
 Required by `GET /v1/questions/open` — the per-question random value the
 agent binds into `agent_signature`. **Already present** in the canonical
-schema at `packages/web/drizzle/0000_init.sql`:
+schema at `packages/web/drizzle/schema.sql`:
 
 ```sql
 nonce TEXT NOT NULL DEFAULT encode(gen_random_bytes(16), 'base64'),
@@ -170,7 +170,7 @@ pytest
 The Postgres-dependent tests (`test_uniqueness.py`,
 `test_aggregate_recompute.py::test_increment_aggregate_against_real_pg`) spin up an
 ephemeral Postgres 16 via [`testcontainers`](https://testcontainers-python.readthedocs.io/)
-and apply the canonical schema from `packages/web/drizzle/0000_init.sql`.
+and apply the canonical schema from `packages/web/drizzle/schema.sql`.
 If Docker isn't available they skip cleanly.
 
 ## Not yet real (v0 stubs)

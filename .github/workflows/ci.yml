@@ -125,6 +125,18 @@ jobs:
           exit 1
       - name: Verify schema + roles + grant boundaries
         run: scripts/verify-db.sh
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: packages/web/package-lock.json
+      - name: Install web deps
+        working-directory: packages/web
+        run: npm ci
+      - name: Generated schema.ts + Python models in sync with schema.sql
+        working-directory: packages/web
+        run: npm run db:check-codegen
       - name: Show postgres logs on failure
         if: failure()
         run: docker logs hearme-postgres
