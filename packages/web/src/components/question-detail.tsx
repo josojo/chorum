@@ -241,11 +241,21 @@ export function QuestionDetail(props: QuestionDetailProps) {
               country={question.country}
               continent={question.continent}
             />
-            {question.topic ? (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
-                #{question.topic}
-              </span>
-            ) : null}
+            {/* Multiple tokens (space-joined by the classifier) render as
+                separate pills — see question-card.tsx for the matching layout. */}
+            {question.topic
+              ? question.topic
+                  .split(/\s+/)
+                  .filter((t) => t.length > 0)
+                  .map((t) => (
+                    <span
+                      key={t}
+                      className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700"
+                    >
+                      #{t}
+                    </span>
+                  ))
+              : null}
             <span
               className={
                 "rounded-full px-2 py-0.5 font-medium " +

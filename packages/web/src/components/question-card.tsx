@@ -71,11 +71,21 @@ export function QuestionCard(props: QuestionCardProps) {
           country={props.country}
           continent={props.continent}
         />
-        {props.topic ? (
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
-            #{props.topic}
-          </span>
-        ) : null}
+        {/* The classifier may assign multiple tokens (space-joined); render
+            one pill per token so the asker / reader sees the full label set. */}
+        {props.topic
+          ? props.topic
+              .split(/\s+/)
+              .filter((t) => t.length > 0)
+              .map((t) => (
+                <span
+                  key={t}
+                  className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700"
+                >
+                  #{t}
+                </span>
+              ))
+          : null}
         <span className="text-slate-300" aria-hidden>
           ·
         </span>

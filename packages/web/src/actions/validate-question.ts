@@ -10,7 +10,6 @@ export type Scope = "worldwide" | "continent" | "country";
 export type CreateQuestionInput = {
   displayName: string;
   text: string;
-  topic?: string | null;
   options: string[];
   closesAt: Date;
   scope: Scope;
@@ -18,8 +17,13 @@ export type CreateQuestionInput = {
   continent: Continent | null;
 };
 
+// The asker no longer picks the topic — the classifier service
+// (packages/classifier) assigns it from the question text after insert. Any
+// asker-supplied "topic" field on the wire is deliberately ignored here; an
+// asker labelling a health question 'ai' would defeat the skill's
+// sensitive-topic gate, so the field doesn't exist in the form anymore.
+
 const MAX_TEXT_LEN = 2000;
-const MAX_TOPIC_LEN = 80;
 const MAX_NAME_LEN = 80;
 const MAX_OPTION_LEN = 40;
 const MIN_OPTIONS = 2;
@@ -47,12 +51,6 @@ export function validateCreateQuestion(
     errors.text = "Question text is required.";
   } else if (text.length > MAX_TEXT_LEN) {
     errors.text = `Question must be ≤ ${MAX_TEXT_LEN} characters.`;
-  }
-
-  const topicRaw = (input.topic ?? "").toString().trim();
-  const topic = topicRaw === "" ? null : topicRaw;
-  if (topic && topic.length > MAX_TOPIC_LEN) {
-    errors.topic = `Topic must be ≤ ${MAX_TOPIC_LEN} characters.`;
   }
 
   // Options: default to Yes/No, normalize whitespace, enforce 2..8 unique
@@ -129,7 +127,6 @@ export function validateCreateQuestion(
     value: {
       displayName,
       text,
-      topic,
       options,
       closesAt: closesAt as Date,
       scope,

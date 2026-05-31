@@ -105,6 +105,27 @@ jobs:
       - name: Test (node --test)
         run: npm test
 
+  classifier:
+    name: classifier (typecheck + vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/classifier
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/classifier/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
+      - name: Test (vitest)
+        run: npm test
+
   db:
     name: schema applies and boundaries hold
     runs-on: ubuntu-latest

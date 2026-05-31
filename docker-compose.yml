@@ -176,6 +176,40 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
 
+  # The classifier is a small background TS worker. It polls Postgres for
+  # questions whose `topic` is still NULL and asks a cheap OpenRouter model
+  # (default google/gemini-2.5-flash-lite) to assign 1–3 tokens from the
+  # taxonomy in packages/proto/topics.json. The broker hides NULL-topic
+  # questions from /v1/questions/open, so this service is the gate between
+  # "asker just posted" and "agent is allowed to see it".
+  #
+  # If HEARME_CLASSIFIER_OPENROUTER_API_KEY is not set, the service crashes on
+  # boot with a clear error — deliberately fail-closed. New questions just
+  # accumulate as NULL and stay invisible to agents until the key is provided.
+  classifier:
+    build:
+      context: .
+      dockerfile: packages/classifier/Dockerfile
+    container_name: hearme-classifier
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      HEARME_CLASSIFIER_DATABASE_URL: postgres://hearme_classifier:hearme_classifier_dev@postgres:5432/hearme
+      # Provide via your shell (`.env` next to docker-compose.yml) — never
+      # commit a key here. Docker Compose auto-loads `.env` for variable
+      # substitution in this file. The variable is REQUIRED; the service will
+      # fail to boot if it is missing.
+      HEARME_CLASSIFIER_OPENROUTER_API_KEY: ${HEARME_CLASSIFIER_OPENROUTER_API_KEY:-}
+      HEARME_CLASSIFIER_MODEL: ${HEARME_CLASSIFIER_MODEL:-google/gemini-2.5-flash-lite}
+      HEARME_CLASSIFIER_POLL_INTERVAL_MS: "10000"
+      HEARME_CLASSIFIER_BATCH_SIZE: "20"
+      HEARME_CLASSIFIER_REFERER: https://hearme.network
+      HEARME_CLASSIFIER_TITLE: hearme-classifier
+
   # NOTE: the answering agent is intentionally not a service here. It is the
   # `hearme` Hermes plugin and runs inside the user's Hermes agent (which holds
   # the model config + API key). See the header of this file to install it.
