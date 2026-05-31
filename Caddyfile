@@ -1,8 +1,11 @@
-# hearme staging — TLS termination + routing.
-# Caddy auto-provisions a Let's Encrypt cert for this sslip.io hostname (which
-# resolves to the box's public IP), so the site is reachable over HTTPS and the
-# Self app has a public HTTPS callback for onboarding.
-3-121-186-133.sslip.io {
+# hearme — TLS termination + routing.
+#
+# The site hostname is supplied per-environment via the `CADDY_SITE_HOST`
+# environment variable on the caddy container (set in docker-compose.staging.yml
+# and docker-compose.prod.yml). Caddy auto-provisions a Let's Encrypt cert for
+# whatever hostname resolves to the box, so the Self app gets a public HTTPS
+# callback under one shared cert.
+{$CADDY_SITE_HOST} {
 	log {
 		output stdout
 		format console

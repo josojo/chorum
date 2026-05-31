@@ -47,6 +47,11 @@ services:
     depends_on:
       - web
       - self-bridge
+    environment:
+      # The Caddyfile uses {$CADDY_SITE_HOST}; Caddy expands it at config-load
+      # time. The fail-fast ":?" form makes compose error out instead of caddy
+      # silently serving a config with an empty site block.
+      CADDY_SITE_HOST: ${HEARME_STAGING_CADDY_SITE_HOST:?set in staging .env}
     ports:
       - "80:80"
       - "443:443"
