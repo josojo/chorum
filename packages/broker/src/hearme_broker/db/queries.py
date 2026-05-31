@@ -38,13 +38,25 @@ async def list_open_questions(
     *,
     since: datetime | None,
 ) -> list[dict[str, Any]]:
-    """Open + not-yet-closed questions, optionally filtered by created_at >= since."""
+    """Open + not-yet-closed + topic-classified questions.
+
+    The ``topic IS NOT NULL`` guard is the fail-closed gate against
+    asker-controlled tagging: questions are inserted with NULL topic and then
+    classified by ``packages/classifier`` from the question text. Until the
+    classifier has assigned a token from the canonical taxonomy, the question
+    is invisible to agents — so an asker can't sneak a health question past
+    the skill's privacy gate by mislabelling it ``ai``. If the classifier
+    service is down, new questions accumulate as NULL and are simply not
+    served; existing classified rows continue to be served.
+
+    ``since`` filters by ``created_at >= since`` so polling agents can cursor.
+    """
     if since is None:
         rows = await conn.fetch(
             """
             SELECT id, text, topic, options, created_at, closes_at, nonce
             FROM questions
-            WHERE status = 'open' AND closes_at > now()
+            WHERE status = 'open' AND closes_at > now() AND topic IS NOT NULL
             ORDER BY created_at ASC
             """
         )
@@ -53,7 +65,8 @@ async def list_open_questions(
             """
             SELECT id, text, topic, options, created_at, closes_at, nonce
             FROM questions
-            WHERE status = 'open' AND closes_at > now() AND created_at >= $1
+            WHERE status = 'open' AND closes_at > now() AND topic IS NOT NULL
+              AND created_at >= $1
             ORDER BY created_at ASC
             """,
             since,

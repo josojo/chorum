@@ -95,13 +95,20 @@ class Envelope(BaseModel):
 
 
 class Question(BaseModel):
-    """GET /v1/questions/open row."""
+    """GET /v1/questions/open row.
+
+    ``topic`` is a space-joined list of canonical tokens from
+    ``packages/proto/topics.json`` — assigned by the classifier service, NOT
+    by the asker. The broker filters out NULL-topic questions before serving
+    (see ``list_open_questions``), so this field is guaranteed non-empty on
+    the wire.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     question_id: UUID
     text: str
-    topic: str | None = None
+    topic: str = Field(min_length=1)
     options: list[str] = Field(min_length=2, max_length=8)
     created_at: datetime
     closes_at: datetime

@@ -16,6 +16,7 @@ services:
       HEARME_DB_ADMIN_PASSWORD: ${HEARME_PROD_POSTGRES_ADMIN_PASSWORD:?set in prod .env}
       HEARME_DB_WEB_PASSWORD: ${HEARME_PROD_POSTGRES_WEB_PASSWORD:?set in prod .env}
       HEARME_DB_BROKER_PASSWORD: ${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}
+      HEARME_DB_CLASSIFIER_PASSWORD: ${HEARME_PROD_POSTGRES_CLASSIFIER_PASSWORD:?set in prod .env}
     volumes:
       # Shadow the demo seed so prod comes up with zero rows in
       # askers/questions/envelopes/aggregates/registrations. Compose merges
@@ -62,6 +63,11 @@ services:
   web:
     environment:
       DATABASE_URL: postgres://hearme_web:${HEARME_PROD_POSTGRES_WEB_PASSWORD:?set in prod .env}@postgres:5432/hearme
+
+  classifier:
+    environment:
+      HEARME_CLASSIFIER_DATABASE_URL: postgres://hearme_classifier:${HEARME_PROD_POSTGRES_CLASSIFIER_PASSWORD:?set in prod .env}@postgres:5432/hearme
+      HEARME_CLASSIFIER_OPENROUTER_API_KEY: ${HEARME_PROD_OPENROUTER_API_KEY:?set in prod .env}
 
   caddy:
     image: caddy:2

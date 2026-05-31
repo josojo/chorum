@@ -1,0 +1,28 @@
+{
+  "name": "hearme-classifier",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Background worker that assigns a topic to each new question in the hearme broker DB via a cheap OpenRouter LLM call. Lets the skill's privacy gate (DEFAULT_AUTO_ANSWER_TOPICS in packages/skill/src/hearme_skill/policy.py) work against trustworthy, asker-INDEPENDENT topic tokens.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "postgres": "^3.4.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.2"
+  }
+}

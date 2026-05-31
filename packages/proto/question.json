@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hearme.network/proto/question.json",
   "title": "Question",
-  "description": "Shape returned by GET /v1/questions/open. See ARCHITECTURE.md §5.",
+  "description": "Shape returned by GET /v1/questions/open. See ARCHITECTURE.md §5. The `topic` field is a space-joined list of canonical tokens from topics.json, assigned by the classifier service (packages/classifier) — NEVER by the asker. The broker filters out unclassified rows before serving, so this field is guaranteed non-empty on the wire.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["question_id", "text", "options", "created_at", "closes_at", "nonce"],
+  "required": ["question_id", "text", "topic", "options", "created_at", "closes_at", "nonce"],
   "properties": {
     "question_id": { "type": "string", "format": "uuid" },
     "text": { "type": "string" },
-    "topic": { "type": ["string", "null"] },
+    "topic": { "type": "string", "minLength": 1 },
     "options": {
       "type": "array",
       "minItems": 2,

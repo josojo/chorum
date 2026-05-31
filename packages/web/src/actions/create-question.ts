@@ -54,7 +54,11 @@ export async function createQuestion(
     .values({
       askerId,
       text: input.text,
-      topic: input.topic ?? null,
+      // topic is deliberately NOT set here. The classifier service
+      // (packages/classifier) assigns it from the question text after insert.
+      // Until it has, list_open_questions on the broker filters this row out,
+      // so the asker can't bypass the skill's sensitive-topic gate. See
+      // ARCHITECTURE.md and packages/proto/topics.json for the taxonomy.
       options: input.options,
       closesAt: input.closesAt,
       scope: input.scope,
@@ -109,7 +113,7 @@ export async function createQuestionAction(
   const parsed = validateCreateQuestion({
     displayName: (formData.get("displayName") ?? "").toString(),
     text: (formData.get("text") ?? "").toString(),
-    topic: (formData.get("topic") ?? "").toString(),
+    // No `topic` field: the asker no longer chooses it; the classifier does.
     options: optionsRaw,
     closesAt: parsedDate ?? undefined,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

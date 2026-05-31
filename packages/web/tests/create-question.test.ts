@@ -25,19 +25,40 @@ describe("validateCreateQuestion", () => {
     const r = validateCreateQuestion({
       displayName: "Alice",
       text: "Should we ship?",
-      topic: "engineering",
       closesAt: futureDate,
       scope: "worldwide",
     });
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.displayName).toBe("Alice");
-      expect(r.value.topic).toBe("engineering");
       expect(r.value.scope).toBe("worldwide");
       expect(r.value.country).toBeNull();
       expect(r.value.continent).toBeNull();
+      // The asker no longer chooses the topic — that's the classifier's job.
+      expect(r.value).not.toHaveProperty("topic");
       // Default options are Yes / No.
-      expect(r.value.options).toEqual(["Yes", "No"]);
+      expect(r.value).toEqual(
+        expect.objectContaining({ options: ["Yes", "No"] }),
+      );
+    }
+  });
+
+  it("silently drops any asker-supplied topic (anti-bypass)", () => {
+    // Asker control over topic would let "Is metformin worth the side effects?"
+    // be labelled `ai` and slip past the skill's sensitive-topic gate. The
+    // classifier service is the only authority; the validator must therefore
+    // not propagate any topic the form happens to send.
+    const r = validateCreateQuestion({
+      displayName: "Alice",
+      text: "Should we ship?",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ...({ topic: "ai" } as any),
+      closesAt: futureDate,
+      scope: "worldwide",
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value).not.toHaveProperty("topic");
     }
   });
 
@@ -171,7 +192,6 @@ describe("validateCreateQuestion", () => {
     const r = validateCreateQuestion({
       displayName: "  Alice  ",
       text: "  hello?  ",
-      topic: "   ",
       closesAt: futureDate,
       scope: "worldwide",
     });
@@ -179,7 +199,6 @@ describe("validateCreateQuestion", () => {
     if (r.ok) {
       expect(r.value.displayName).toBe("Alice");
       expect(r.value.text).toBe("hello?");
-      expect(r.value.topic).toBeNull();
     }
   });
 
@@ -272,7 +291,6 @@ describe("createQuestion", () => {
   const input: CreateQuestionInput = {
     displayName: "Alice",
     text: "Should we ship today?",
-    topic: "engineering",
     options: ["Yes", "No"],
     closesAt: new Date(Date.now() + 86_400_000),
     scope: "worldwide",
@@ -295,8 +313,10 @@ describe("createQuestion", () => {
       .args as Record<string, unknown>;
     expect(qInsert.askerId).toBe("asker-1");
     expect(qInsert.text).toBe(input.text);
-    expect(qInsert.topic).toBe("engineering");
     expect(qInsert.options).toEqual(["Yes", "No"]);
+    // The insert must NOT set `topic` — the classifier service will fill it
+    // later. Setting it here from asker input would re-open the bypass.
+    expect(qInsert).not.toHaveProperty("topic");
   });
 
   it("forwards custom options to the insert", async () => {

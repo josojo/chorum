@@ -14,6 +14,7 @@ services:
       HEARME_DB_ADMIN_PASSWORD: ${HEARME_STAGING_POSTGRES_ADMIN_PASSWORD:?set in staging .env}
       HEARME_DB_WEB_PASSWORD: ${HEARME_STAGING_POSTGRES_WEB_PASSWORD:?set in staging .env}
       HEARME_DB_BROKER_PASSWORD: ${HEARME_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}
+      HEARME_DB_CLASSIFIER_PASSWORD: ${HEARME_STAGING_POSTGRES_CLASSIFIER_PASSWORD:?set in staging .env}
 
   broker:
     environment:
@@ -42,6 +43,11 @@ services:
   web:
     environment:
       DATABASE_URL: postgres://hearme_web:${HEARME_STAGING_POSTGRES_WEB_PASSWORD:?set in staging .env}@postgres:5432/hearme
+
+  classifier:
+    environment:
+      HEARME_CLASSIFIER_DATABASE_URL: postgres://hearme_classifier:${HEARME_STAGING_POSTGRES_CLASSIFIER_PASSWORD:?set in staging .env}@postgres:5432/hearme
+      HEARME_CLASSIFIER_OPENROUTER_API_KEY: ${HEARME_STAGING_OPENROUTER_API_KEY:?set in staging .env}
 
   caddy:
     image: caddy:2

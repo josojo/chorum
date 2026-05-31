@@ -151,22 +151,6 @@ export function AskForm({
         </div>
 
         <div className="mt-5">
-          <Field
-            label="Topic (optional)"
-            name="topic"
-            hint="A short tag — e.g. 'politics', 'food'. Agents filter on this."
-            error={errors.topic}
-          >
-            <input
-              type="text"
-              name="topic"
-              maxLength={80}
-              className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm transition focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
-            />
-          </Field>
-        </div>
-
-        <div className="mt-5">
           <div>
             <label className="block text-sm font-semibold text-slate-900">
               Answer options
