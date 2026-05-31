@@ -85,8 +85,9 @@ def begin_onboarding(
 def render_qr_ascii(payload: str) -> str:
     """Render a payload (a Self request `url`) as an ASCII QR.
 
-    Uses the optional `qrcode` extra when present; otherwise prints the raw
-    payload so the flow still works headless.
+    `qrcode` is a hard dependency, but if it ever fails to import (broken
+    install, vendored copy stripped, etc.) we still print the raw URL so the
+    flow degrades to "open this link" instead of crashing.
     """
     try:
         import io
@@ -100,7 +101,7 @@ def render_qr_ascii(payload: str) -> str:
         qr.print_ascii(out=buf)
         return buf.getvalue()
     except ModuleNotFoundError:
-        return f"[install `qrcode` for real QR rendering; open this link instead]\n{payload}\n"
+        return f"[qrcode import failed; open this link instead]\n{payload}\n"
 
 
 def _register_with_broker(
