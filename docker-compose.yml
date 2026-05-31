@@ -60,6 +60,12 @@ services:
       self-bridge:
         condition: service_started
     environment:
+      # Local dev opts OUT of the fail-closed production startup checks so the
+      # broker can boot with the dev signing key / dev DB password below. The
+      # checks run BY DEFAULT (see startup_checks.py); the prod/staging overlays
+      # do NOT set this, so they fail closed if a dev default leaks through.
+      # This must NEVER be set in a deployed environment.
+      HEARME_BROKER_DEV_MODE: "1"
       # asyncpg DSN. scheme must be `postgres://` (asyncpg-style).
       HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:hearme_broker_dev@postgres:5432/hearme
       # Self proofs are verified once (at /v1/register) via the bridge the broker controls.

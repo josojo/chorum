@@ -18,6 +18,9 @@ services:
   broker:
     environment:
       HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:${HEARME_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}@postgres:5432/hearme
+      # Staging deliberately does NOT set HEARME_BROKER_DEV_MODE, so the broker's
+      # fail-closed startup checks run (startup_checks.py). The overrides below
+      # are what make them pass — drop one and the broker refuses to boot.
       HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "1"
       HEARME_BROKER_EXPOSE_REJECTION_REASONS: "0"
       HEARME_BROKER_SIGNING_KEY: ${HEARME_STAGING_BROKER_SIGNING_KEY:?set in staging .env}

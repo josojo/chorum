@@ -17,8 +17,15 @@ a real Postgres via ``testcontainers``; skipped if Docker is absent.
 from __future__ import annotations
 
 import base64
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
+
+# The broker fails closed by default: create_app() refuses to boot with the dev
+# signing key / dev DB password unless HEARME_BROKER_DEV_MODE=1 is set. The test
+# suite runs against those dev defaults, so opt into dev mode for the session.
+# Tests that exercise the startup checks themselves override/delete this var.
+os.environ.setdefault("HEARME_BROKER_DEV_MODE", "1")
 from pathlib import Path
 from typing import Any, Callable
 

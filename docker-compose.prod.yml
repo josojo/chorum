@@ -25,11 +25,12 @@ services:
   broker:
     environment:
       HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@postgres:5432/hearme
-      # Fail closed at startup if any documented dev default is still set
-      # (dev signing key, dev DB password, dev-bypass route, oracle-mode
-      # rejection reasons, registry-confirmation disabled). See
-      # packages/broker/src/hearme_broker/startup_checks.py.
-      HEARME_BROKER_PRODUCTION_MODE: "1"
+      # The broker fails closed at startup BY DEFAULT if any documented dev
+      # default is still set (dev signing key, dev DB password, dev-bypass route,
+      # oracle-mode rejection reasons, registry-confirmation disabled) — see
+      # packages/broker/src/hearme_broker/startup_checks.py. Prod deliberately
+      # does NOT set HEARME_BROKER_DEV_MODE, so those checks run; the overrides
+      # below are what make them pass.
       HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "1"
       HEARME_BROKER_EXPOSE_REJECTION_REASONS: "0"
       HEARME_BROKER_DEV_INSECURE_REGISTER: "0"

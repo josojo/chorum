@@ -28,11 +28,21 @@ log = logging.getLogger("hearme_broker.main")
 def create_app() -> FastAPI:
     logging.basicConfig(level=logging.INFO)
 
-    # Pre-flight: refuse to start in production mode with documented dev
-    # defaults (dev signing key, dev DB password, dev-bypass route, etc.).
-    # See startup_checks.py and docs/DEPLOYMENT.md §2.
+    # Pre-flight: refuse to start with documented dev defaults (dev signing key,
+    # dev DB password, dev-bypass route, oracle-mode rejection reasons, registry
+    # confirmation off). This runs BY DEFAULT and fails closed — the only way to
+    # boot with dev defaults is to explicitly opt out via HEARME_BROKER_DEV_MODE=1,
+    # which no deployed environment should ever set. See startup_checks.py and
+    # docs/DEPLOYMENT.md §2.
     settings = get_settings()
-    if settings.production_mode:
+    if settings.dev_mode:
+        log.warning(
+            "HEARME_BROKER_DEV_MODE=1 — skipping production startup checks. "
+            "The broker may be running with dev defaults (dev signing key, dev "
+            "DB password, oracle-mode rejection reasons). This must NEVER be set "
+            "in a deployed environment."
+        )
+    else:
         enforce_production_config(settings)
 
     @asynccontextmanager
