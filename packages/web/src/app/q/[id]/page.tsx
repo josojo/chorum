@@ -25,9 +25,20 @@ type PageProps = {
 const SHARE_DESCRIPTION =
   "Live, verified answers broken down by geography and age — only the aggregate, never individual responses.";
 
+// `questions.id` is a uuid column; binding a non-uuid path (e.g. /q/anything)
+// straight into the query makes Postgres raise "invalid input syntax for type
+// uuid", which would surface as a raw 500. Validate the shape first and treat a
+// non-uuid id as not-found instead of letting the DB throw.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
+  // Never query with a non-uuid id (it would throw); fall back to the default
+  // title and let the page component issue notFound().
+  if (!UUID_RE.test(params.id)) return { title: "Question not found" };
+
   let text: string | null = null;
   try {
     const rows = await db
@@ -60,6 +71,12 @@ export async function generateMetadata({
 }
 
 export default async function QuestionPage({ params }: PageProps) {
+  // A non-uuid id can never match the uuid PK; render 404 before touching the DB
+  // so a garbage path is a clean not-found instead of a uuid-cast 500.
+  if (!UUID_RE.test(params.id)) {
+    notFound();
+  }
+
   const questionRows = await db
     .select()
     .from(questions)
