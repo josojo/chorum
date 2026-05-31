@@ -26,8 +26,15 @@ services:
       POSTGRES_DB: hearme
       POSTGRES_USER: hearme_admin
       POSTGRES_PASSWORD: hearme_admin_dev
+    # Bind published ports to loopback only. In prod/staging the overlays add
+    # Caddy (the sole 0.0.0.0:80/443 listener) and reach every service over the
+    # internal compose network (e.g. `postgres:5432`, `broker:8000`); the host
+    # ports below exist purely for local-dev / on-box debugging and must never
+    # be internet-reachable. (Compose merges `ports` by append, so the only
+    # reliable way to keep these off the public interface in every environment
+    # is to bind loopback here in the base file.)
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - hearme-pgdata:/var/lib/postgresql/data
       # Extensions + schema + roles + seed are applied on first container start,
@@ -76,8 +83,10 @@ services:
       # HEARME_BROKER_SELF_REVOCATION_RPC_URL: https://forno.celo.org
       # HEARME_BROKER_SELF_REVOCATION_CONTRACT_ADDRESS: "0x..."
       # HEARME_BROKER_SELF_REVOCATION_EVENT_TOPIC: "0x..."
+    # Loopback only — see the note on the postgres service. Remote bot-runners
+    # reach the broker over TLS via Caddy's `/v1/*` route, not this host port.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=2).read()"]
       interval: 3s
@@ -110,8 +119,11 @@ services:
       # set the Celo RPC URL + registry address to enable. See SELF_MIGRATION.md.
       # SELF_CELO_RPC_URL: https://forno.celo-sepolia.celo-testnet.org
       # SELF_REGISTRY_ADDRESS: "0x..."
+    # Loopback only — see the note on the postgres service. The Self app and
+    # remote bot-runners reach the bridge over TLS via Caddy's `/self/*` route;
+    # the broker reaches it internally as `http://self-bridge:8787`.
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787"
 
   # One-shot SQL migrator. Runs every `docker compose up` (re-runs are no-ops
   # — applied versions are tracked in `_schema_migrations`). On a fresh volume,
@@ -153,8 +165,10 @@ services:
       # web role can't query directly from the broker.
       BROKER_URL: http://broker:8000
       NODE_ENV: production
+    # Loopback only — see the note on the postgres service. In prod/staging
+    # Caddy serves the web app to the internet via `reverse_proxy web:3000`.
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
   # NOTE: the answering agent is intentionally not a service here. It is the
   # `hearme` Hermes plugin and runs inside the user's Hermes agent (which holds
