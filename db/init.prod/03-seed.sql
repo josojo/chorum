@@ -1,0 +1,16 @@
+-- Prod seed shadow: intentionally a no-op.
+--
+-- The base docker-compose.yml mounts db/init/03-seed.sql into
+-- /docker-entrypoint-initdb.d/03-seed.sql to populate the dev/demo data
+-- (askers, questions, envelopes, aggregates) on first boot. In production we
+-- want the system to come up empty so real data is never co-mingled with the
+-- demo rows and a curious operator cannot mistake seeded counts for real
+-- traction.
+--
+-- docker-compose.prod.yml remounts THIS file at the same container path; the
+-- prod override wins on volume-merge (same target), so postgres's
+-- docker-entrypoint-initdb.d runs this file instead of the demo seed.
+--
+-- Keep this file empty (modulo this comment). If you ever need a prod-only
+-- bootstrap row, add it here — but think hard about whether you want it
+-- versioned, idempotent, and reproducible across rebuilds first.
