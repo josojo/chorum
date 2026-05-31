@@ -79,6 +79,8 @@ jobs:
           cache-dependency-path: packages/web/package-lock.json
       - name: Install
         run: npm ci
+      - name: Migrations in sync with schema.ts
+        run: npm run db:check
       - name: Typecheck (tsc --noEmit)
         run: npm run typecheck
       - name: Test (vitest)

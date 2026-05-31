@@ -11,8 +11,9 @@ broker-private.
 
 ```
 packages/web/
-├── drizzle/                    # SQL migrations (canonical source of schema)
-│   └── 0000_init.sql
+├── drizzle/migrations/         # SQL generated from src/db/schema.ts
+│   ├── 0000_init.sql           #   (`npm run db:generate`; don't hand-edit)
+│   └── meta/                   #   drizzle-kit journal + snapshots
 ├── drizzle.config.ts
 ├── next.config.mjs
 ├── package.json
@@ -37,7 +38,7 @@ packages/web/
     │   └── question-detail.tsx
     └── db/
         ├── client.ts           # Drizzle client (reads DATABASE_URL)
-        └── schema.ts           # hand-mirror of drizzle/0000_init.sql
+        └── schema.ts           # SINGLE SOURCE OF TRUTH (drizzle/ generated from it)
 ```
 
 ## Run locally
@@ -58,7 +59,8 @@ cp .env.example .env.local           # DATABASE_URL points at the local DB
 
 # 3. (Re-)apply migrations against your DATABASE_URL.
 #    For a fresh docker-compose volume this is a no-op — the SQL was already
-#    applied at container init. Re-run after edits to drizzle/.
+#    applied at container init. After a schema change (edit src/db/schema.ts →
+#    `npm run db:generate`), re-run this to apply the new migration.
 npm run db:migrate
 
 # 4. Run the dev server.

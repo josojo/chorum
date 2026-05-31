@@ -23,7 +23,12 @@ import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = join(__dirname, "..", "drizzle", "migrations");
+// Directory of *.sql migrations to apply, in lex order. The baseline
+// (0000_init.sql, generated from schema.ts) lives here alongside any deltas.
+// Overridable so tests can point the migrator at a fixture set.
+const MIGRATIONS_DIR =
+  process.env.HEARME_MIGRATIONS_DIR ??
+  join(__dirname, "..", "drizzle", "migrations");
 const BASELINE_VERSION = "0000_init";
 // Sentinel: every DB schema we'd want to baseline has this table.
 const BASELINE_TABLE = "questions";

@@ -30,11 +30,14 @@ services:
       - "5432:5432"
     volumes:
       - hearme-pgdata:/var/lib/postgresql/data
-      # Schema + roles + seed are applied on first container start, in alpha order.
-      # 01: tables (canonical migration owned by hearme-web)
+      # Extensions + schema + roles + seed are applied on first container start,
+      # in alpha order.
+      # 00: extensions (pgcrypto — see db/init/00-extensions.sql)
+      # 01: tables (the generated baseline migration; schema.ts is the source)
       # 02: roles + grants
       # 03: demo seed data (questions/envelopes/aggregates across scopes)
-      - ./packages/web/drizzle/0000_init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/init/00-extensions.sql:/docker-entrypoint-initdb.d/00-extensions.sql:ro
+      - ./packages/web/drizzle/migrations/0000_init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./db/init/02-roles.sh:/docker-entrypoint-initdb.d/02-roles.sh:ro
       - ./db/init/03-seed.sql:/docker-entrypoint-initdb.d/03-seed.sql:ro
     healthcheck:
@@ -112,10 +115,11 @@ services:
 
   # One-shot SQL migrator. Runs every `docker compose up` (re-runs are no-ops
   # — applied versions are tracked in `_schema_migrations`). On a fresh volume,
-  # postgres's docker-entrypoint-initdb.d bootstraps `0000_init.sql` first, then
-  # this migrator baselines `0000_init` and applies any later deltas. On an
-  # existing volume (e.g. staging across schema changes), it just applies the
-  # new files. See packages/web/scripts/migrate.mjs.
+  # postgres's docker-entrypoint-initdb.d bootstraps the baseline migration
+  # (drizzle/migrations/0000_init.sql) first, then this migrator baselines
+  # `0000_init` and applies any later deltas. On an existing volume (e.g.
+  # staging across schema changes), it just applies the new files. See
+  # packages/web/scripts/migrate.mjs.
   migrator:
     build:
       context: .

@@ -1,0 +1,13 @@
+-- Postgres extensions the schema depends on.
+--
+-- Kept here, OUTSIDE the Drizzle-generated migrations, on purpose: drizzle-kit
+-- does not model extensions, and schema.ts is the single source of truth for
+-- tables/columns/constraints — not for server-level objects like extensions.
+--
+-- pgcrypto provides gen_random_bytes(), used by the questions.nonce default
+-- (encode(gen_random_bytes(16), 'base64')). gen_random_uuid() is core in PG13+.
+--
+-- Applied first by docker-entrypoint-initdb.d (00-, before 01-schema). The test
+-- harnesses (packages/broker/tests/conftest.py and the web migrate integration
+-- test) create it the same way before applying the generated migrations.
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
