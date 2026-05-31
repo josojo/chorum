@@ -53,7 +53,7 @@ def validate_production_config(settings: Settings) -> ValidationReport:
     """Apply every production-mode rule. Pure; safe to call from tests."""
     report = ValidationReport()
 
-    if settings.broker_signing_key == _DEV_BROKER_SIGNING_KEY:
+    if settings.signing_key == _DEV_BROKER_SIGNING_KEY:
         report.errors.append(
             "HEARME_BROKER_SIGNING_KEY is the documented dev default. Anyone "
             "with the source can forge a DelegationToken — generate a fresh "

@@ -57,6 +57,6 @@ def test_signature_from_a_different_broker_key_rejected():
     )
     # A token signed under one broker key must not verify under another.
     other = Settings(
-        broker_signing_key=base64.b64encode(b"\x09" * 32).decode("ascii")
+        signing_key=base64.b64encode(b"\x09" * 32).decode("ascii")
     )
     assert verify_broker_signature(tok, settings=other) is False

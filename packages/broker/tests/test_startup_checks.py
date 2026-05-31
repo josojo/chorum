@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from hearme_broker.config import _DEV_BROKER_SIGNING_KEY, Settings
+from hearme_broker.config import _DEV_BROKER_SIGNING_KEY, Settings, get_settings
 from hearme_broker.startup_checks import (
     ProductionConfigError,
     enforce_production_config,
@@ -32,7 +32,7 @@ def _prod_clean() -> Settings:
     assert the validator catches it.
     """
     return Settings(  # type: ignore[call-arg]
-        broker_signing_key="aGVhcm1lLXByb2QtdGVzdC1zaWduaW5nLWtleS0zMmJ5dGVz",
+        signing_key="aGVhcm1lLXByb2QtdGVzdC1zaWduaW5nLWtleS0zMmJ5dGVz",
         database_url="postgres://hearme_broker:STRONG-rotated-pw@db:5432/hearme",
         dev_insecure_register=False,
         require_registry_confirmation=True,
@@ -52,7 +52,7 @@ def test_clean_prod_config_passes_and_does_not_raise():
 
 def test_dev_signing_key_blocks_startup():
     settings = _prod_clean().model_copy(
-        update={"broker_signing_key": _DEV_BROKER_SIGNING_KEY}
+        update={"signing_key": _DEV_BROKER_SIGNING_KEY}
     )
     with pytest.raises(ProductionConfigError, match="SIGNING_KEY"):
         enforce_production_config(settings)
@@ -97,6 +97,29 @@ def test_localhost_bridge_is_warning_not_error():
     report = validate_production_config(settings)
     assert report.ok()
     assert any("localhost" in w.lower() for w in report.warnings)
+
+
+def test_signing_key_is_read_from_HEARME_BROKER_SIGNING_KEY_env(monkeypatch):
+    """Regression: the signing key MUST load from the env var the deployment
+    actually sets — ``HEARME_BROKER_SIGNING_KEY``.
+
+    The original bug named the field ``broker_signing_key``; combined with
+    ``env_prefix="HEARME_BROKER_"`` pydantic looked for
+    ``HEARME_BROKER_BROKER_SIGNING_KEY`` (double "BROKER"), which no compose
+    file sets — so the dev default silently won and prod refused to boot even
+    with a real key configured. Every other test sets the field via a
+    constructor kwarg, which bypasses env resolution and hid this. This test
+    pins the wire name.
+    """
+    real_key = "aGVhcm1lLXByb2QtdGVzdC1zaWduaW5nLWtleS0zMmJ5dGVz"
+    assert real_key != _DEV_BROKER_SIGNING_KEY
+    # The double-BROKER name (the buggy one) must be ignored.
+    monkeypatch.setenv("HEARME_BROKER_BROKER_SIGNING_KEY", _DEV_BROKER_SIGNING_KEY)
+    monkeypatch.setenv("HEARME_BROKER_SIGNING_KEY", real_key)
+
+    settings = get_settings()
+
+    assert settings.signing_key == real_key
 
 
 def test_all_dev_defaults_collapse_into_one_combined_error():
