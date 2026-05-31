@@ -18,21 +18,25 @@ assumptions called out below (the in-memory rate limiters in particular).
 The repo ships dev defaults so a fresh `scripts/dev-up.sh` works out of the
 box. Those defaults are catastrophic in production: a dev signing key lets
 anyone forge a `DelegationToken`; the dev-bypass route mints identities with no
-Self proof at all. The broker **refuses to start BY DEFAULT** when any
-documented dev default is still present (see
-`packages/broker/src/hearme_broker/startup_checks.py`). The check is skipped
-only when an operator explicitly opts out with `HEARME_BROKER_DEV_MODE=1` —
-which the dev compose and the test suite set, and which **no deployed
-environment should ever set**. Forgetting a flag therefore fails closed (the
-broker won't boot) instead of silently coming up with the forgeable dev signing
-key. Failing closed is the only safe default; do not paper over this with a flag.
+Self proof at all. The broker **refuses to start** when
+`HEARME_BROKER_PRODUCTION_MODE=1` is set and any documented dev default is
+still present (see `packages/broker/src/startupChecks.ts`).
+Failing closed is the only safe default; do not paper over this with a flag.
 
-The full pre-flight list (the broker checks each on startup unless
-`HEARME_BROKER_DEV_MODE=1`):
+> **Behaviour gap, follow-up.** This TS port uses the **opt-in
+> `HEARME_BROKER_PRODUCTION_MODE`** toggle. The
+> *fail-closed-by-default + opt-in `HEARME_BROKER_DEV_MODE`* inversion that
+> landed on `main` in #62 has **not** been ported here, so forgetting the env
+> var in production does **not** fail closed — the checks simply don't run.
+> Until #62 is ported to TS, prod compose **must** set
+> `HEARME_BROKER_PRODUCTION_MODE: "1"` (already done in `docker-compose.prod.yml`).
+
+The full pre-flight list (the broker checks each on startup when
+`HEARME_BROKER_PRODUCTION_MODE=1`):
 
 | Env var | Dev default | Production value |
 |---|---|---|
-| `HEARME_BROKER_DEV_MODE` | `1` (dev compose / tests only) | **unset** (leave it off so the checks run) |
+| `HEARME_BROKER_PRODUCTION_MODE` | unset | **`1`** (without this, checks below do not run) |
 | `HEARME_BROKER_SIGNING_KEY` | published dev seed | a fresh 32-byte Ed25519 seed (base64), in your secret manager |
 | `HEARME_BROKER_DATABASE_URL` | `…hearme_broker_dev@localhost…` | rotated password, internal DSN |
 | `HEARME_BROKER_DEV_INSECURE_REGISTER` | `false` | **stays `false`** (mounts `/v1/dev/register` if `true`) |
@@ -63,7 +67,7 @@ delegations on key change.
 
 The broker and the web app each ship with **in-memory, per-process sliding-
 window rate limits** on the write endpoints (PR introduced
-`packages/broker/src/hearme_broker/ratelimit.py` and
+`packages/broker/src/ratelimit.ts` and
 `packages/web/src/lib/rate-limit.ts`). The defaults:
 
 | What | Default | Override |
@@ -169,9 +173,10 @@ wrong"). Log the reason internally; emit a generic ack externally.
 
 Run through this before flipping the public DNS:
 
-- [ ] `HEARME_BROKER_DEV_MODE` is **unset** (not `1`); broker boots without
-      raising `ProductionConfigError` (it fails closed by default if any dev
-      default leaked through).
+- [ ] `HEARME_BROKER_PRODUCTION_MODE=1` is set; broker boots without raising
+      `ProductionConfigError`. *(Note: in this TS port the checks are opt-in,
+      not fail-closed-by-default — see the gap note in §1. Forgetting the env
+      var silently skips them.)*
 - [ ] `HEARME_BROKER_SIGNING_KEY` is a freshly generated 32-byte seed, stored
       only in the secret manager and the broker process env.
 - [ ] `HEARME_BROKER_DATABASE_URL` uses a non-dev password.

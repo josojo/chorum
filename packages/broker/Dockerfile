@@ -1,35 +1,33 @@
-# hearme-broker — Python 3.11 + FastAPI + asyncpg + pynacl.
+# hearme-broker — Node 20 + Fastify + Drizzle (postgres-js) + tweetnacl.
 # Build context: repo root (docker-compose sets `context: .`).
-FROM python:3.11-slim
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+#
+# The broker reuses the Drizzle schema from packages/web/src/db/schema.ts (the
+# single source of truth). To make that relative import resolve — and to give it
+# and the broker source ONE shared drizzle-orm — we install dependencies at /app
+# (a common ancestor) and lay the sources out mirroring the monorepo. tsup then
+# bundles src + the reused schema into a self-contained dist/.
+FROM node:20-slim
 
 WORKDIR /app
 
-# libsodium is needed by pynacl's bundled bindings on some platforms; the
-# `slim` image lacks it. Installing it explicitly keeps wheel install fast.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends libsodium23 \
-    && rm -rf /var/lib/apt/lists/*
+# Hoisted install at /app so node_modules is an ancestor of BOTH the broker
+# source and packages/web/src/db/schema.ts (whose drizzle-orm import must
+# resolve during the tsup bundle).
+COPY packages/broker/package.json packages/broker/package-lock.json packages/broker/.npmrc ./
+RUN npm ci
 
-COPY packages/broker/pyproject.toml ./pyproject.toml
-COPY packages/broker/src ./src
-# README is referenced by pyproject.toml; supply a minimal placeholder so
-# the build doesn't fail if the file is excluded by .dockerignore.
-COPY packages/broker/README.md ./README.md
+# Lay out sources to mirror the monorepo (../../web/src/db/schema resolves).
+COPY packages/broker ./packages/broker
+COPY packages/web/src/db/schema.ts ./packages/web/src/db/schema.ts
 
-RUN pip install --upgrade pip && pip install .
+WORKDIR /app/packages/broker
+RUN npm run build
+
+ENV NODE_ENV=production
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=10 \
-    CMD python -c "import urllib.request,sys; \
-import urllib.error; \
-req=urllib.request.Request('http://localhost:8000/healthz'); \
-sys.exit(0 if urllib.request.urlopen(req, timeout=2).status==200 else 1)" \
-    || exit 1
+    CMD node -e "fetch('http://localhost:8000/healthz').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
 
-CMD ["uvicorn", "hearme_broker.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["node", "dist/server.js"]
