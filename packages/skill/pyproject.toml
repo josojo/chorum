@@ -18,6 +18,11 @@ dependencies = [
     "aiosqlite>=0.20",
     "PyYAML>=6.0",
     "python-dateutil>=2.9",
+    # Real QR rendering for the onboarding flow. Pure-Python, tiny dep —
+    # included by default so `hearme-skill onboard` prints a scannable QR
+    # without the user having to remember a `[qr]` extra. The renderer in
+    # onboarding.py still falls back to the raw URL if the import ever fails.
+    "qrcode>=7.4",
 ]
 
 [project.optional-dependencies]
@@ -31,8 +36,6 @@ dev = [
     "testcontainers[postgres]>=4.0",
     "asyncpg>=0.29",
 ]
-# Real QR rendering is optional; the v0 onboarding flow falls back to ASCII.
-qr = ["qrcode>=7.4"]
 # Optional: the Hermes Agent runtime (Nous Research, MIT) that HOSTS this
 # plugin. Normally Hermes is already installed in the user's environment; this
 # extra pins it so `pip install 'hearme-skill[hermes]'` gives a self-contained
