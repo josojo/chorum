@@ -23,13 +23,13 @@
 // Trust note: the broker MUST point /verify at a bridge instance it controls.
 
 import express from "express";
-// CONFIRM DURING IMPL (SELF_MIGRATION.md): exact @selfxyz export names/shapes.
-import {
-  SelfBackendVerifier,
-  DefaultConfigStore,
-  AllIds,
-} from "@selfxyz/core";
-import { SelfAppBuilder, getUniversalLink } from "@selfxyz/qrcode";
+// The @selfxyz SDK is imported lazily inside the handlers that use it (see
+// verifier() and POST /requests), NOT at module load. Two reasons: it pulls a
+// large transitive tree (qrcode -> react-spinners) whose ESM/CJS interop is
+// fragile across installs, and keeping it out of the import graph lets tests
+// import this module (and the test seams below) to exercise /callback's
+// dispatch without the SDK or a real passport. CONFIRM DURING IMPL
+// (SELF_MIGRATION.md): exact @selfxyz export names/shapes.
 
 import {
   DEFAULT_PROFILE,
@@ -109,7 +109,10 @@ export function __resetState() {
 // frontend requested the threshold); the bridge reads the satisfied threshold
 // back from discloseOutput.minimumAge. `excludedCountries: []` is required shape
 // (the SDK calls excludedCountries.every(...)); ofac is off in v0.
-function makeVerifier() {
+async function makeVerifier() {
+  const { SelfBackendVerifier, DefaultConfigStore, AllIds } = await import(
+    "@selfxyz/core"
+  );
   const configStore = new DefaultConfigStore({
     excludedCountries: [],
     ofac: false,
@@ -125,8 +128,8 @@ function makeVerifier() {
 }
 
 let _verifier = null;
-function verifier() {
-  if (!_verifier) _verifier = makeVerifier();
+async function verifier() {
+  if (!_verifier) _verifier = await makeVerifier();
   return _verifier;
 }
 
@@ -179,7 +182,7 @@ async function verifyOne({ attestationId, proof, publicSignals, userContextData 
   // bridge needs no extra eth_call. (Requires outbound access to the Celo RPC.)
   const result = _verifyImpl
     ? await _verifyImpl(attestationId, proof, publicSignals, userContextData)
-    : await verifier().verify(attestationId, proof, publicSignals, userContextData);
+    : await (await verifier()).verify(attestationId, proof, publicSignals, userContextData);
   const verified = result?.isValidDetails?.isValid === true;
   const boundHex = result?.userData?.userDefinedData;
   return {
@@ -222,6 +225,7 @@ app.post("/requests", async (req, res) => {
     }
     const epErr = endpointProblem(ENDPOINT);
     if (epErr) return res.status(500).json({ error: epErr });
+    const { SelfAppBuilder, getUniversalLink } = await import("@selfxyz/qrcode");
     const profile = req.body?.profile || DEFAULT_PROFILE;
     const thresholds = profileThresholds(profile);
     const requestId = cryptoRandomId();
