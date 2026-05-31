@@ -7,11 +7,13 @@ they reach production: a forged DelegationToken signed by the dev key is
 indistinguishable from a real one, and ``/v1/dev/register`` mints synthetic
 identities with NO Self proof at all (ARCHITECTURE.md §5).
 
-When ``HEARME_BROKER_PRODUCTION_MODE=1`` is set the app factory calls
-``validate_production_config`` (this module) BEFORE the FastAPI app is built.
-A misconfiguration raises ``ProductionConfigError`` and the process exits non-
-zero — failing closed is the only safe default, "log a warning and continue"
-would let an operator paper over an audit-relevant problem with a flag.
+By default the app factory calls ``validate_production_config`` (this module)
+BEFORE the FastAPI app is built. A misconfiguration raises
+``ProductionConfigError`` and the process exits non-zero — failing closed is the
+only safe default, "log a warning and continue" would let an operator paper over
+an audit-relevant problem with a flag. The check is skipped ONLY when an operator
+explicitly opts out with ``HEARME_BROKER_DEV_MODE=1`` (dev/test environments);
+forgetting that flag therefore fails closed rather than booting with the dev key.
 
 The check is **structural only**: it does not contact the DB, the bridge, or
 the chain. Connectivity belongs in ``/healthz`` (which the orchestrator polls
@@ -30,7 +32,7 @@ log = logging.getLogger("hearme_broker.startup_checks")
 
 
 class ProductionConfigError(RuntimeError):
-    """Raised when production_mode is on AND a dev default is detected."""
+    """Raised when a dev default is detected and dev_mode was not opted into."""
 
 
 @dataclass
@@ -103,7 +105,7 @@ def validate_production_config(settings: Settings) -> ValidationReport:
 def enforce_production_config(settings: Settings) -> None:
     """Run the validator and raise ``ProductionConfigError`` on any error.
 
-    Called from ``main.create_app`` when ``settings.production_mode`` is True.
+    Called from ``main.create_app`` unless ``settings.dev_mode`` is True.
     Warnings are logged either way; errors abort the process via exception.
     """
     report = validate_production_config(settings)
@@ -112,6 +114,7 @@ def enforce_production_config(settings: Settings) -> None:
     if not report.ok():
         joined = "\n  - " + "\n  - ".join(report.errors)
         raise ProductionConfigError(
-            "Refusing to start in production mode with dev defaults:" + joined
+            "Refusing to start with dev defaults (set HEARME_BROKER_DEV_MODE=1 "
+            "only in dev/test):" + joined
         )
-    log.info("startup-check: production_mode config OK")
+    log.info("startup-check: production config OK")

@@ -122,6 +122,45 @@ def test_signing_key_is_read_from_HEARME_BROKER_SIGNING_KEY_env(monkeypatch):
     assert settings.signing_key == real_key
 
 
+def test_dev_mode_defaults_to_false(monkeypatch):
+    """The safe direction is the default: dev_mode is False unless explicitly
+    opted into, so a deployed broker that forgets every flag fails closed."""
+    monkeypatch.delenv("HEARME_BROKER_DEV_MODE", raising=False)
+    assert Settings().dev_mode is False  # type: ignore[call-arg]
+
+
+def test_create_app_fails_closed_by_default(monkeypatch):
+    """Regression: a deployed broker that forgot HEARME_BROKER_DEV_MODE *and*
+    left the dev signing key in place must REFUSE to boot, not silently come up
+    with a forgeable signing key. This is the whole point of the inversion."""
+    # Clear DEV_MODE (conftest sets it for the rest of the suite) and any
+    # overrides so the dangerous dev defaults are in effect.
+    for var in (
+        "HEARME_BROKER_DEV_MODE",
+        "HEARME_BROKER_SIGNING_KEY",
+        "HEARME_BROKER_DATABASE_URL",
+        "HEARME_BROKER_EXPOSE_REJECTION_REASONS",
+        "HEARME_BROKER_DEV_INSECURE_REGISTER",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    from hearme_broker.main import create_app
+
+    with pytest.raises(ProductionConfigError, match="SIGNING_KEY"):
+        create_app()
+
+
+def test_create_app_boots_when_dev_mode_opted_in(monkeypatch):
+    """With the explicit dev opt-out, the broker boots on dev defaults so a
+    fresh `dev-up.sh` / test run still works."""
+    monkeypatch.setenv("HEARME_BROKER_DEV_MODE", "1")
+
+    from hearme_broker.main import create_app
+
+    app = create_app()  # must not raise despite dev defaults
+    assert app is not None
+
+
 def test_all_dev_defaults_collapse_into_one_combined_error():
     """When several rules trip at once, the error message lists them all —
     so a fresh operator sees the entire missing-config list in one boot

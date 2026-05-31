@@ -85,12 +85,17 @@ class Settings(BaseSettings):
     # pipeline end-to-end without a phone. MUST stay False in production.
     dev_insecure_register: bool = False
 
-    # When True, run startup_checks.enforce_production_config() BEFORE the
-    # FastAPI app is built and refuse to boot if any documented dev default is
-    # still set (dev signing key, dev DB password, dev-bypass route, oracle-mode
-    # rejection reasons, etc.). Off by default so a fresh `dev-up.sh` keeps
-    # working; flip in any deployed environment (docs/DEPLOYMENT.md §2).
-    production_mode: bool = False
+    # Fail-closed by default. create_app() runs
+    # startup_checks.enforce_production_config() BEFORE the FastAPI app is built
+    # and refuses to boot if any documented dev default is still set (dev signing
+    # key, dev DB password, dev-bypass route, oracle-mode rejection reasons,
+    # registry confirmation off). The ONLY way to relax that is to explicitly opt
+    # out with HEARME_BROKER_DEV_MODE=1 — so forgetting a flag fails *closed*
+    # (the broker refuses to start) instead of silently booting with the dev
+    # signing key, which anyone with the source could use to forge a
+    # DelegationToken. Dev environments (docker-compose.yml, the test suite) set
+    # this; no deployed environment ever should. See docs/DEPLOYMENT.md §2.
+    dev_mode: bool = False
 
     # Per-client rate limiting on write endpoints (ratelimit.py). In-memory and
     # per-process — single-instance broker is the v0 deployment shape (§2). Set
