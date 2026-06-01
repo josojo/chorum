@@ -1,13 +1,9 @@
 # hearme-self-bridge
 
-> **Migration note.** This directory will be renamed `packages/self-bridge` when the
-> code lands (see `SELF_MIGRATION.md`). It currently still reads `zkpassport-bridge`
-> on disk; this README describes the **target** Self design that replaces it.
-
 A small Node sidecar that wraps [`@selfxyz/core`](https://www.npmjs.com/package/@selfxyz/core)
 (verification) and `@selfxyz/qrcode` / `SelfAppBuilder` (request creation).
 It is the **only** component that creates and verifies real Self
-zk-SNARK proofs. The Python broker and skill call it over HTTP because the
+zk-SNARK proofs. The broker and skill call it over HTTP because the
 Self SDK is Node-only.
 
 ## Why it exists
@@ -16,7 +12,7 @@ Self proofs are verified with `@selfxyz/core`'s `SelfBackendVerifier`, which is
 Node-only — there is no pure-Python verifier. So the broker delegates the
 cryptographic check to this service while keeping all the structural/binding
 checks (agent-key bind, scope, nullifier↔unique_identifier, predicate
-re-derivation) in Python.
+re-derivation) in the broker.
 
 The SNARK check is **off-chain**, but `SelfBackendVerifier.verify()` **also does a
 one-time on-chain read itself**: it queries Self's `IdentityVerificationHub` on

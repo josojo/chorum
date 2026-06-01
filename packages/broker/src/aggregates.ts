@@ -49,11 +49,6 @@ export function classifyAnswer(answer: unknown, options: readonly string[]): str
   return null;
 }
 
-// Back-compat alias: older call sites assume yes/no semantics.
-export function classifyVote(answer: unknown): string | null {
-  return classifyAnswer(answer, ["yes", "no"]);
-}
-
 function emptyTally(options: readonly string[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const opt of options) out[opt] = 0;
