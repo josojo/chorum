@@ -7,7 +7,7 @@
 //     unreachable broker each yield a distinct ok:false code + a friendly message
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { checkAskerEligibility } from "../src/lib/asker-auth";
+import { checkAskerEligibility, checkAskerSession } from "../src/lib/asker-auth";
 
 const VALID_TOKEN = JSON.stringify({ version: 2, scope: "hearme-v1" });
 
@@ -136,5 +136,61 @@ describe("checkAskerEligibility", () => {
     const r = await checkAskerEligibility(VALID_TOKEN);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe("parse");
+  });
+});
+
+describe("checkAskerSession", () => {
+  const VALID_SESSION = JSON.stringify({ version: 1, kind: "asker_session" });
+
+  it("rejects malformed JSON without touching the network", async () => {
+    const fn = mockFetch(200, {});
+    const r = await checkAskerSession("not json{");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("parse");
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("returns the verified identity for an authorized, cleared session", async () => {
+    const fn = mockFetch(200, {
+      authorized: true,
+      auth_reason: null,
+      unique_identifier: "self:login-1",
+      can_ask: true,
+      is_admin: false,
+      total_answers: 60,
+      signal_answers: 12,
+      required_total: 50,
+      required_signal: 10,
+      remaining_total: 0,
+      remaining_signal: 0,
+      reason: null,
+    });
+    const r = await checkAskerSession(VALID_SESSION);
+    expect(r).toEqual({ ok: true, uniqueIdentifier: "self:login-1" });
+    // It hits the session endpoint, not the token one.
+    expect(fn).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/askers/session/verify"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("maps an expired session to an unauthorized result", async () => {
+    mockFetch(200, {
+      authorized: false,
+      auth_reason: "token_expired",
+      unique_identifier: null,
+      can_ask: false,
+      is_admin: false,
+      total_answers: 0,
+      signal_answers: 0,
+      required_total: 50,
+      required_signal: 10,
+      remaining_total: 50,
+      remaining_signal: 10,
+      reason: null,
+    });
+    const r = await checkAskerSession(VALID_SESSION);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("unauthorized");
   });
 });

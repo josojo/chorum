@@ -20,7 +20,7 @@ import { canonicalJson } from "./canonical";
 
 export const SCOPE = "hearme-v1";
 
-function loadSigningSeed(settings: Settings): Uint8Array {
+export function loadSigningSeed(settings: Settings): Uint8Array {
   const seed = Buffer.from(settings.brokerSigningKey, "base64");
   if (seed.length !== 32) {
     throw new Error(

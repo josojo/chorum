@@ -3,9 +3,15 @@
 // Renders a client form (ask-form.tsx) that invokes the createQuestionAction
 // server action. The action inserts and redirects to /q/[id].
 
-import { AskForm } from "@/components/ask-form";
+import { AskGate } from "@/components/ask-gate";
 
 export const dynamic = "force-dynamic";
+
+// Mirror of the server action's asker-auth gate (actions/create-question.ts):
+// on by default; ASKER_AUTH_REQUIRED=false drops the gate for local/demo runs.
+function askerAuthRequired(): boolean {
+  return (process.env.ASKER_AUTH_REQUIRED ?? "true") !== "false";
+}
 
 type Scope = "worldwide" | "continent" | "country";
 
@@ -42,7 +48,8 @@ export default function AskPage({
           </p>
         </div>
       </div>
-      <AskForm
+      <AskGate
+        authRequired={askerAuthRequired()}
         defaultScope={scope}
         defaultCountry={country}
         defaultContinent={continent}

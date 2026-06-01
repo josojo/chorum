@@ -12,7 +12,11 @@ import { closeDb, initDb, getDb } from "./db";
 import { buildDefaultLimiter, registerRateLimit } from "./ratelimit";
 import { enforceProductionConfig } from "./startupChecks";
 import { SelfRevocationListener } from "./selfRevocations";
-import type { VerifySelfProof } from "./verify/bridgeClient";
+import type {
+  CreateSelfRequest,
+  GetSelfRequest,
+  VerifySelfProof,
+} from "./verify/bridgeClient";
 import { registerQuestionsRoutes } from "./routes/questions";
 import { registerRegisterRoutes } from "./routes/register";
 import { registerEnvelopesRoutes } from "./routes/envelopes";
@@ -25,6 +29,10 @@ export interface BuildAppOptions {
   settings?: Settings;
   // Injectable bridge verifier (tests run /v1/register without a real bridge).
   verifyProof?: VerifySelfProof;
+  // Injectable bridge clients for the asker "Sign in with Self" login (tests
+  // drive login/status without a real bridge or Self app).
+  createSelfRequest?: CreateSelfRequest;
+  getSelfRequest?: GetSelfRequest;
   logger?: boolean;
 }
 
@@ -51,7 +59,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   registerEnvelopesRoutes(app);
   registerRevocationsRoutes(app);
   registerStatsRoutes(app);
-  registerAskersRoutes(app, { settings });
+  registerAskersRoutes(app, {
+    settings,
+    createSelfRequest: opts.createSelfRequest,
+    getSelfRequest: opts.getSelfRequest,
+  });
 
   // DANGER: testing-only synthetic-identity registration. Off unless explicitly
   // enabled; never mount in production (see routes/dev.ts and startupChecks.ts).

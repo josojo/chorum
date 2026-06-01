@@ -9,12 +9,29 @@ import type { FastifyInstance } from "fastify";
 
 import { type Db } from "../src/db";
 import type { DelegationToken } from "../src/models";
+import type {
+  CreateSelfRequest,
+  GetSelfRequest,
+} from "../src/verify/bridgeClient";
+import {
+  ASKER_SESSION_TTL_MS,
+  issueAskerSession,
+} from "../src/verify/askerSession";
 import { startPg, truncateAll, type PgHandle } from "./pg";
 import { agentKeyB64, makeEnvelope, makeRevocation, makeEnrollment, makeToken, mockVerifyProof } from "./helpers";
 
 let pg: PgHandle | null = null;
 let db: Db;
 let app: FastifyInstance;
+
+// Swappable self-bridge mocks for the "Sign in with Self" login routes. Tests
+// set these per-case; default to throwing so an unconfigured call is loud.
+let selfRequestImpl: CreateSelfRequest = async () => {
+  throw new Error("createSelfRequest not configured for this test");
+};
+let selfStatusImpl: GetSelfRequest = async () => {
+  throw new Error("getSelfRequest not configured for this test");
+};
 
 beforeAll(async () => {
   process.env.HEARME_BROKER_RATELIMIT_ENABLED = "0";
@@ -28,7 +45,12 @@ beforeAll(async () => {
   }
   db = pg.db;
   const { buildApp } = await import("../src/server");
-  app = buildApp({ verifyProof: mockVerifyProof, logger: false });
+  app = buildApp({
+    verifyProof: mockVerifyProof,
+    createSelfRequest: (a) => selfRequestImpl(a),
+    getSelfRequest: (a) => selfStatusImpl(a),
+    logger: false,
+  });
   await app.ready();
 }, 180_000);
 
@@ -452,6 +474,176 @@ describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §15.3)", 
     await seedAnswer("self:a", "yes");
     await seedAnswer("self:b", "yes");
     expect((await eligibilityFor("self:a")).total_answers).toBe(1);
+  });
+});
+
+describe("asker Sign in with Self (login + session, §15.3)", () => {
+  // Seed one (signal-bearing) answer for `uid` against a fresh question.
+  async function seedAnswer(uid: string, answer: string): Promise<void> {
+    const q = await insertQuestion({});
+    const noSignal = answer.trim() === "";
+    await db.execute(sql`
+      INSERT INTO envelopes (
+        question_id, unique_identifier, answer, no_signal,
+        disclosed_predicates, agent_signature, delegation_hash
+      ) VALUES (
+        ${q.id}, ${uid}, ${answer}, ${noSignal},
+        '{}'::jsonb, 'sig', 'hash'
+      )
+    `);
+  }
+
+  it("login/start returns the bridge's requestId + qr urls", async (ctx) => {
+    if (!pg) return ctx.skip();
+    selfRequestImpl = async ({ agentKey, profile }) => {
+      // Asker login uses a throwaway agent key and the minimal profile.
+      expect(typeof agentKey).toBe("string");
+      expect(profile).toBe("minimal");
+      return { requestId: "req-1", urls: ["https://self.app/x"] };
+    };
+    const res = await app.inject({ method: "POST", url: "/v1/askers/login/start", payload: {} });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ request_id: "req-1", qr_urls: ["https://self.app/x"] });
+  });
+
+  it("login/start surfaces a bridge outage as 502", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const { BridgeError } = await import("../src/verify/bridgeClient");
+    selfRequestImpl = async () => {
+      throw new BridgeError("bridge down");
+    };
+    const res = await app.inject({ method: "POST", url: "/v1/askers/login/start", payload: {} });
+    expect(res.statusCode).toBe(502);
+  });
+
+  it("login/status is pending until a proof lands", async (ctx) => {
+    if (!pg) return ctx.skip();
+    selfStatusImpl = async () => ({
+      found: true,
+      status: "pending",
+      verified: false,
+      uniqueIdentifier: null,
+      registryConfirmed: false,
+    });
+    const res = await app.inject({ method: "GET", url: "/v1/askers/login/req-1/status" });
+    expect(res.json()).toMatchObject({ status: "pending", asker_session: null });
+  });
+
+  it("login/status 404s an unknown requestId", async (ctx) => {
+    if (!pg) return ctx.skip();
+    selfStatusImpl = async () => ({
+      found: false,
+      status: "pending",
+      verified: false,
+      uniqueIdentifier: null,
+      registryConfirmed: false,
+    });
+    const res = await app.inject({ method: "GET", url: "/v1/askers/login/nope/status" });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("login/status fails a proof that did not verify", async (ctx) => {
+    if (!pg) return ctx.skip();
+    selfStatusImpl = async () => ({
+      found: true,
+      status: "complete",
+      verified: false,
+      uniqueIdentifier: null,
+      registryConfirmed: false,
+    });
+    const res = await app.inject({ method: "GET", url: "/v1/askers/login/req-1/status" });
+    expect(res.json()).toMatchObject({ status: "failed", asker_session: null });
+  });
+
+  it("login/status on a verified scan returns the gate + a session", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:login-ok";
+    // 50 answers, 10 signal-bearing — clears the unlock threshold.
+    for (let i = 0; i < 10; i++) await seedAnswer(uid, "yes");
+    for (let i = 0; i < 40; i++) await seedAnswer(uid, "");
+    selfStatusImpl = async () => ({
+      found: true,
+      status: "complete",
+      verified: true,
+      uniqueIdentifier: uid,
+      registryConfirmed: true,
+    });
+    const body = (await app.inject({ method: "GET", url: "/v1/askers/login/req-1/status" })).json();
+    expect(body).toMatchObject({
+      status: "complete",
+      eligibility: { authorized: true, unique_identifier: uid, can_ask: true, total_answers: 50 },
+    });
+    expect(body.asker_session).toMatchObject({ kind: "asker_session", unique_identifier: uid });
+
+    // The session re-verifies and reports the same gate at submit time.
+    const verify = await app.inject({
+      method: "POST",
+      url: "/v1/askers/session/verify",
+      payload: { asker_session: body.asker_session },
+    });
+    expect(verify.json()).toMatchObject({ authorized: true, can_ask: true, unique_identifier: uid });
+  });
+
+  it("login/status rejects a verified scan whose root is unconfirmed", async (ctx) => {
+    if (!pg) return ctx.skip();
+    selfStatusImpl = async () => ({
+      found: true,
+      status: "complete",
+      verified: true,
+      uniqueIdentifier: "self:unconfirmed",
+      registryConfirmed: false, // requireRegistryConfirmation defaults true
+    });
+    const res = await app.inject({ method: "GET", url: "/v1/askers/login/req-1/status" });
+    expect(res.json()).toMatchObject({ status: "failed" });
+  });
+
+  it("session/verify gates an identity below threshold (can_ask false)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:login-fresh";
+    const session = issueAskerSession({
+      unique_identifier: uid,
+      issued_at: new Date(),
+      expires_at: new Date(Date.now() + ASKER_SESSION_TTL_MS),
+    });
+    expect(
+      (await app.inject({
+        method: "POST",
+        url: "/v1/askers/session/verify",
+        payload: { asker_session: session },
+      })).json(),
+    ).toMatchObject({ authorized: true, can_ask: false, total_answers: 0, reason: "not_enough_answers" });
+  });
+
+  it("session/verify rejects an expired session", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const session = issueAskerSession({
+      unique_identifier: "self:whoever",
+      issued_at: new Date(Date.now() - 2 * ASKER_SESSION_TTL_MS),
+      expires_at: new Date(Date.now() - ASKER_SESSION_TTL_MS),
+    });
+    expect(
+      (await app.inject({
+        method: "POST",
+        url: "/v1/askers/session/verify",
+        payload: { asker_session: session },
+      })).json(),
+    ).toMatchObject({ authorized: false, auth_reason: "token_expired", unique_identifier: null });
+  });
+
+  it("session/verify rejects a forged/tampered session", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const session = issueAskerSession({
+      unique_identifier: "self:real",
+      issued_at: new Date(),
+      expires_at: new Date(Date.now() + ASKER_SESSION_TTL_MS),
+    });
+    expect(
+      (await app.inject({
+        method: "POST",
+        url: "/v1/askers/session/verify",
+        payload: { asker_session: { ...session, unique_identifier: "self:evil" } },
+      })).json(),
+    ).toMatchObject({ authorized: false, auth_reason: "broker_signature_invalid" });
   });
 });
 

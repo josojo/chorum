@@ -111,6 +111,62 @@ export const askerEligibilityRequestSchema = z
   .strict();
 export type AskerEligibilityRequest = z.infer<typeof askerEligibilityRequestSchema>;
 
+// Broker-issued, broker-signed asker login session (verify/askerSession.ts).
+// Identity-only (no agent_key, unlike the DelegationToken): minted after a
+// browser "Sign in with Self" scan proves the nullifier, replayed by the /ask
+// form on submit. version 1 + kind discriminator so it can never be confused
+// with a DelegationToken on the wire.
+export const askerSessionSchema = z
+  .object({
+    version: z.literal(1),
+    kind: z.literal("asker_session"),
+    scope: z.literal("hearme-v1"),
+    unique_identifier: z.string(),
+    issued_at: z.string(),
+    expires_at: z.string(),
+    broker_signature: z.string(),
+  })
+  .strict();
+export type AskerSession = z.infer<typeof askerSessionSchema>;
+
+// POST /v1/askers/login/start body. Optionally pick the disclosure profile;
+// "minimal" (the default for a login) requests a single 18+ proof.
+export const askerLoginStartRequestSchema = z
+  .object({
+    profile: z.enum(["minimal", "standard"]).optional(),
+  })
+  .strict();
+export type AskerLoginStartRequest = z.infer<typeof askerLoginStartRequestSchema>;
+
+// POST /v1/askers/login/start response — a Self request the browser renders as a
+// QR. The phone scans it, the Self app posts the proof to the bridge, and the
+// browser polls GET /v1/askers/login/:id/status.
+export interface AskerLoginStartResponse {
+  request_id: string;
+  qr_urls: string[];
+}
+
+// GET /v1/askers/login/:id/status response. `status` is the scan lifecycle:
+//   pending  — no verified proof yet; keep polling.
+//   failed   — a proof landed but did not verify (or the identity is revoked).
+//   complete — verified; `eligibility` carries the gate decision and, when the
+//              identity verified, `asker_session` is the credential to replay.
+export interface AskerLoginStatusResponse {
+  status: "pending" | "failed" | "complete";
+  reason: string | null;
+  eligibility: AskerEligibilityResponse | null;
+  asker_session: AskerSession | null;
+}
+
+// POST /v1/askers/session/verify body — the /ask form proves a logged-in asker
+// by replaying the session minted at login. Exactly one field (boundary §12).
+export const askerSessionVerifyRequestSchema = z
+  .object({
+    asker_session: askerSessionSchema,
+  })
+  .strict();
+export type AskerSessionVerifyRequest = z.infer<typeof askerSessionVerifyRequestSchema>;
+
 // POST /v1/askers/eligibility response — authenticated asker gating decision
 // (ARCHITECTURE.md §15.3). snake_case to match the other broker wire shapes.
 //

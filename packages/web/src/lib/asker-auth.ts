@@ -9,7 +9,7 @@
 // proof-of-private-key (see the broker route + §15.3). The token is not a secret
 // the way a password is; it is a signed, expiring, revocable capability.
 
-const BROKER_URL = process.env.BROKER_URL ?? "http://localhost:8000";
+export const BROKER_URL = process.env.BROKER_URL ?? "http://localhost:8000";
 
 // Mirror of the broker's AskerEligibilityResponse (packages/broker/src/models.ts).
 // Kept as a local type because web does not import broker code.
@@ -71,8 +71,57 @@ function gateMessage(j: BrokerEligibility): string {
   } to unlock asking. (You've supplied ${j.total_answers} of ${j.required_total}.)`;
 }
 
-// Authenticate the asker's credential and check the gate. Fail-closed: any error
-// (malformed JSON, broker unreachable, non-2xx) returns ok:false.
+// Turn a broker eligibility verdict into the asker-facing result. Shared by
+// every credential type (DelegationToken, asker session) — they authenticate
+// differently but the gate decision is identical.
+function interpret(j: BrokerEligibility): AskerAuthResult {
+  if (!j.authorized) {
+    return { ok: false, code: "unauthorized", message: authMessage(j.auth_reason) };
+  }
+  if (!j.can_ask || !j.unique_identifier) {
+    return { ok: false, code: "blocked", message: gateMessage(j) };
+  }
+  return { ok: true, uniqueIdentifier: j.unique_identifier };
+}
+
+// POST one credential to a broker eligibility endpoint and interpret it.
+// Fail-closed: any error (broker unreachable, non-2xx) returns ok:false.
+async function postEligibility(
+  path: string,
+  body: unknown,
+  missingFieldsMessage: string,
+): Promise<AskerAuthResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${BROKER_URL}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      ok: false,
+      code: "broker_unreachable",
+      message: "Couldn't reach the gate to verify your credential. Try again in a moment.",
+    };
+  }
+
+  if (res.status === 422) {
+    return { ok: false, code: "parse", message: missingFieldsMessage };
+  }
+  if (!res.ok) {
+    return {
+      ok: false,
+      code: "broker_unreachable",
+      message: "The gate is unavailable right now. Try again shortly.",
+    };
+  }
+
+  return interpret((await res.json()) as BrokerEligibility);
+}
+
+// Authenticate the asker's DelegationToken and check the gate (the agent path).
 export async function checkAskerEligibility(
   tokenRaw: string,
 ): Promise<AskerAuthResult> {
@@ -87,44 +136,32 @@ export async function checkAskerEligibility(
         "That credential isn't valid JSON. Paste the whole DelegationToken your agent received at onboarding.",
     };
   }
+  return postEligibility(
+    "/v1/askers/eligibility",
+    { delegation_token: token },
+    "That credential is missing required fields. Paste the full DelegationToken.",
+  );
+}
 
-  let res: Response;
+// Authenticate an asker session minted by a "Sign in with Self" login and check
+// the gate (the browser path). The session is opaque to the web tier — we only
+// relay it to the broker, which verifies its own signature.
+export async function checkAskerSession(
+  sessionRaw: string,
+): Promise<AskerAuthResult> {
+  let session: unknown;
   try {
-    res = await fetch(`${BROKER_URL}/v1/askers/eligibility`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ delegation_token: token }),
-      cache: "no-store",
-    });
+    session = JSON.parse(sessionRaw);
   } catch {
     return {
       ok: false,
-      code: "broker_unreachable",
-      message: "Couldn't reach the gate to verify your credential. Try again in a moment.",
-    };
-  }
-
-  if (res.status === 422) {
-    return {
-      ok: false,
       code: "parse",
-      message: "That credential is missing required fields. Paste the full DelegationToken.",
+      message: "Your verification session is malformed. Verify with Self again.",
     };
   }
-  if (!res.ok) {
-    return {
-      ok: false,
-      code: "broker_unreachable",
-      message: "The gate is unavailable right now. Try again shortly.",
-    };
-  }
-
-  const j = (await res.json()) as BrokerEligibility;
-  if (!j.authorized) {
-    return { ok: false, code: "unauthorized", message: authMessage(j.auth_reason) };
-  }
-  if (!j.can_ask || !j.unique_identifier) {
-    return { ok: false, code: "blocked", message: gateMessage(j) };
-  }
-  return { ok: true, uniqueIdentifier: j.unique_identifier };
+  return postEligibility(
+    "/v1/askers/session/verify",
+    { asker_session: session },
+    "Your verification session has expired. Verify with Self again.",
+  );
 }

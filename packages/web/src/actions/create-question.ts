@@ -24,7 +24,7 @@ import { headers } from "next/headers";
 import { db } from "@/db/client";
 import { askers, questions } from "@/db/schema";
 import { checkRateLimit, clientIdFromHeaders } from "@/lib/rate-limit";
-import { checkAskerEligibility } from "@/lib/asker-auth";
+import { checkAskerEligibility, checkAskerSession } from "@/lib/asker-auth";
 import {
   validateCreateQuestion,
   type CreateQuestionInput,
@@ -140,12 +140,23 @@ export async function createQuestionAction(
   }
 
   // Asker gate (§15.3). Runs AFTER form validation (cheap, local) so a malformed
-  // form never burns a broker round-trip. A pasted credential is verified by the
-  // broker, which returns the asker's verified identity and whether they've
-  // earned the right to ask. No credential + auth required ⇒ blocked.
+  // form never burns a broker round-trip. The broker re-verifies the credential
+  // and reports the asker's identity + whether they've earned the right to ask.
+  // Two credential types, both re-checked server-side here (the browser cannot
+  // forge either): an asker session from a "Sign in with Self" login (the
+  // default web path) or a pasted DelegationToken (the agent path). No
+  // credential + auth required ⇒ blocked. The session field carries the gate
+  // error since that's what the form posts.
   let uniqueIdentifier: string | null = null;
+  const sessionRaw = (formData.get("askerSession") ?? "").toString().trim();
   const tokenRaw = (formData.get("delegationToken") ?? "").toString().trim();
-  if (tokenRaw) {
+  if (sessionRaw) {
+    const auth = await checkAskerSession(sessionRaw);
+    if (!auth.ok) {
+      return { ok: false, errors: { askerSession: auth.message } };
+    }
+    uniqueIdentifier = auth.uniqueIdentifier;
+  } else if (tokenRaw) {
     const auth = await checkAskerEligibility(tokenRaw);
     if (!auth.ok) {
       return { ok: false, errors: { delegationToken: auth.message } };
@@ -155,8 +166,8 @@ export async function createQuestionAction(
     return {
       ok: false,
       errors: {
-        delegationToken:
-          "Asking requires a participant credential. Paste the DelegationToken your agent received when it onboarded, or answer some questions first to earn the right to ask.",
+        askerSession:
+          "Asking requires verification. Verify you're a unique human with Self, or paste the DelegationToken your agent received when it onboarded.",
       },
     };
   }

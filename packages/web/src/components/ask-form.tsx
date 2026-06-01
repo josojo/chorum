@@ -28,6 +28,9 @@ type Props = {
   defaultScope?: Scope;
   defaultCountry?: string;
   defaultContinent?: string;
+  // Present when the asker verified through the "Sign in with Self" gate
+  // (AskGate). Replayed on submit instead of a pasted DelegationToken.
+  askerSession?: string;
 };
 
 function toLocalDatetimeValue(d: Date): string {
@@ -60,6 +63,7 @@ export function AskForm({
   defaultScope = "worldwide",
   defaultCountry = "",
   defaultContinent = "",
+  askerSession,
 }: Props) {
   const [state, formAction] = useFormState(
     createQuestionAction as unknown as (
@@ -335,25 +339,51 @@ export function AskForm({
         </Field>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-        <Field
-          label="Participant credential"
-          name="delegationToken"
-          hint="Paste the DelegationToken your agent received when it onboarded. Asking is earned: your agent must have answered enough questions first. (v0)"
-          error={errors.delegationToken}
-        >
-          <textarea
+      {askerSession ? (
+        <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-sm">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-600">
+            <svg viewBox="0 0 20 20" className="h-5 w-5" aria-hidden>
+              <path
+                d="M5 10.5l3 3 7-7.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-emerald-900">
+              Verified with Self
+            </p>
+            <p className="text-xs text-emerald-700">
+              You&apos;re cleared to ask. Post your question below.
+            </p>
+          </div>
+          <input type="hidden" name="askerSession" value={askerSession} />
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <Field
+            label="Participant credential"
             name="delegationToken"
-            rows={3}
-            placeholder='{"version":2,"scope":"hearme-v1", … }'
-            className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs shadow-sm transition focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
-          />
-        </Field>
-      </div>
+            hint="Paste the DelegationToken your agent received when it onboarded. Asking is earned: your agent must have answered enough questions first. (v0)"
+            error={errors.delegationToken}
+          >
+            <textarea
+              name="delegationToken"
+              rows={3}
+              placeholder='{"version":2,"scope":"hearme-v1", … }'
+              className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs shadow-sm transition focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
+            />
+          </Field>
+        </div>
+      )}
 
-      {errors._form ? (
+      {errors._form || errors.askerSession ? (
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {errors._form}
+          {errors._form || errors.askerSession}
         </p>
       ) : null}
 
