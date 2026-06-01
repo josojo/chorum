@@ -1,0 +1,74 @@
+name: build-binaries
+
+# Build the standalone `hearme-skill` binary for Linux x86_64 and aarch64 with
+# PyInstaller, smoke-test it, upload it as a CI artifact, and — on a version tag
+# — attach both binaries plus install.sh to the GitHub Release. PyInstaller does
+# not cross-compile, so each arch is built on a runner of that arch.
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - "packages/skill/**"
+      - ".github/workflows/build-binaries.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to attach assets to the Release on tag builds
+
+jobs:
+  build:
+    name: build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    defaults:
+      run:
+        working-directory: packages/skill
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package + PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pyinstaller
+
+      - name: Build binary
+        run: pyinstaller pyinstaller/hearme-skill.spec
+
+      - name: Smoke-test the binary
+        run: |
+          ./dist/hearme-skill --help
+          # list-questions never raises: with no broker reachable it prints a
+          # JSON {"error": ...} and exits 0. Confirms the frozen runtime works.
+          ./dist/hearme-skill list-questions
+
+      - name: Rename for release
+        run: mv dist/hearme-skill "dist/hearme-skill-linux-${{ matrix.arch }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hearme-skill-linux-${{ matrix.arch }}
+          path: packages/skill/dist/hearme-skill-linux-${{ matrix.arch }}
+          if-no-files-found: error
+
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            packages/skill/dist/hearme-skill-linux-${{ matrix.arch }}
+            packages/skill/scripts/install.sh

@@ -159,6 +159,53 @@ Mandatory tests (per ARCHITECTURE.md §12, all in `tests/`):
 Per §12, **no live LLM calls in CI**. All Answerer tests use the
 deterministic `FakeLLMClient` in `llm/client.py`.
 
+## Install from a prebuilt binary (no Python or Node)
+
+The skill is also published as a single self-contained Linux binary, so users
+don't need a Python or Node toolchain — just download it and add the skill. The
+same binary backs **both** hosts (it's the frozen `hearme-skill` CLI), so the
+flow is identical whether you run Hermes or OpenClaw:
+
+```bash
+# 1. Download the binary for this machine (Linux x86_64 / aarch64) and make it
+#    runnable. Installs to ~/.local/bin/hearme-skill.
+curl -fsSL https://github.com/josojo/hearme/releases/latest/download/install.sh | sh
+
+# 2. Add the skill/plugin to whatever agent is installed (auto-detects Hermes
+#    and/or OpenClaw; use --host to force one).
+hearme-skill install
+
+# 3. One-time identity setup (Self verify-once; needs the broker + self-bridge).
+hearme-skill onboard --broker-url <url> --bridge-url <url>
+```
+
+How the binary wires into each host:
+
+- **OpenClaw** reads the `SKILL.md` (dropped at `~/.openclaw/skills/hearme/`) and
+  the agent runs the binary via its `exec` tool — exactly the
+  [Running inside OpenClaw](#running-inside-openclaw) path, no `pip`/`npx`.
+- **Hermes** gets a generated **subprocess shim** plugin at
+  `~/.hermes/plugins/hearme/` whose two tool handlers shell out to the binary.
+  Because the logic lives in the binary, the gateway needs **no** pip-installed
+  `hearme_skill` package — the shim is stdlib-only and registers the same
+  `hearme_list_open_questions` / `hearme_submit_answer` tools (and self-schedules
+  the cron job using the gateway's `cron` package).
+
+So there is one implementation (this Python codebase, frozen into a binary) and a
+thin per-host adapter — no second codebase to keep in sync.
+
+The binaries are built and published by `.github/workflows/build-binaries.yml`
+(PyInstaller on `ubuntu-latest` + `ubuntu-24.04-arm`) and attached to each `v*`
+GitHub Release. Build locally with `pip install '.[build]' && pyinstaller
+pyinstaller/hearme-skill.spec` (→ `dist/hearme-skill`).
+
+> **Caveats (Linux-first, flagged).** Only Linux x86_64/aarch64 binaries are
+> published today — macOS/Windows still use the `pip install` path (the matrix
+> in the workflow is easy to extend). `install.sh` drops the binary in
+> `~/.local/bin`; if that's not on the gateway's `PATH`, either add it or point
+> the OpenClaw `SKILL.md` / Hermes shim at the absolute path. Unsigned binaries
+> on macOS would need notarization (n/a for the Linux builds here).
+
 ## Running inside Hermes
 
 Production answering runs inside the user's existing [Hermes
@@ -303,6 +350,73 @@ nonce — those live only inside the tools. Unattended auto-submit is gated by
 the broker with `FakeLLMClient` + `Mem0StubProvider` — no network LLM, no API
 key. This exercises Persona → Answerer → Envelope locally and is what CI uses
 (ARCHITECTURE.md §12, "never live LLM in CI"). It is **not** the production path.
+
+## Running inside OpenClaw
+
+[OpenClaw](https://openclaw.ai) is a second supported host for the *same*
+answering core. Where Hermes loads a Python plugin, OpenClaw reads a `SKILL.md`
+and the agent runs the `hearme-skill` CLI through its built-in `exec` tool.
+Identity, the policy gate, envelope signing, the ledger, and fetching open
+questions are all shared with Hermes — only the adapter differs (`openclaw.py`
+vs `plugin.py`).
+
+```bash
+# 1. Install the CLI somewhere OpenClaw can reach on PATH (Python >= 3.11).
+pipx install 'git+https://github.com/josojo/hearme.git#subdirectory=packages/skill'
+#    (or pip install ... into an env whose bin/ is on the gateway's PATH)
+
+# 2. Drop the skill under ~/.openclaw/skills/hearme/ and register the answering
+#    cron job. Re-runnable; --no-cron writes the skill only.
+hearme-skill install-openclaw
+
+# 3. Onboard once (verify-once with Self; needs the broker + self-bridge). This
+#    is host-agnostic and also wires up whatever host it detects.
+hearme-skill onboard \
+  --bridge-url http://localhost:8787 --broker-url http://localhost:8000
+
+# 4. Author your policy (same file + format as the Hermes flow). State still
+#    lives under ~/.hermes/hearme/ by default — a historical path shared by both
+#    hosts; move it with HEARME_SKILL_ROOT_DIR if you set it for onboard AND the
+#    cron run.
+$EDITOR ~/.hermes/hearme/policy.yaml
+```
+
+`hearme-skill onboard` is host-aware: `--host auto` (the default) detects
+OpenClaw (`openclaw` on PATH or `~/.openclaw/`) and/or Hermes (`~/.hermes/`) and
+wires up each — so on an OpenClaw box `onboard` alone installs the skill and the
+cron. Force it with `--host openclaw` / `--host hermes` / `--host both`.
+
+The CLI the skill drives (thin wrappers over the framework-agnostic functions in
+`tools.py` — the exact functions the Hermes plugin tools call):
+
+| command | what it does |
+|---------|--------------|
+| `hearme-skill list-questions` | JSON list of open questions the policy permits |
+| `hearme-skill submit-answer --question-id ID --answer "Yes — ..."` | sign + submit one answer |
+| `hearme-skill review-answers` | JSON of the user's own submitted answers (local) |
+| `hearme-skill revoke-answer --question-id ID` | retract one answer (§1.12) |
+
+### Install shape (and the git-root caveat)
+
+`hearme-skill install-openclaw` writes `~/.openclaw/skills/hearme/SKILL.md`
+(global, all agents) and runs `openclaw cron add` for the daily answering cycle.
+A committed copy of the skill lives at `packages/skill/openclaw/hearme/`, so from
+a checkout you can also `openclaw skills install ./packages/skill/openclaw/hearme
+--as hearme`. Note `openclaw skills install git:owner/repo` expects `SKILL.md` at
+the repo *root*, which ours isn't (it's in this subdirectory) — the same reason
+the Hermes side ships its own `install-plugin`. The CLI + `install-openclaw` is
+the deterministic path.
+
+OpenClaw needs the broker URL in the scheduled run's environment. `onboard` /
+`install-openclaw` persist a non-default `--broker-url` / `--bridge-url` to
+`~/.openclaw/.env` (OpenClaw's global env file) so the cron run reaches the same
+broker; otherwise it falls back to `http://localhost:8000`.
+
+> **Assumptions flagged.** The cron registration shells out to `openclaw cron
+> add --name … --cron … --session isolated --message …` and de-dupes via
+> `openclaw cron list`. If your OpenClaw build's cron CLI differs, the step
+> fails closed and prints the exact command to run by hand. The `SKILL.md`
+> `metadata` gating block is kept to a single JSON line per OpenClaw's parser.
 
 ## ChatGPT export memory sidewheel
 

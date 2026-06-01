@@ -15,7 +15,7 @@ the `self-bridge` sidecar.
 - [x] Shared Postgres schema + role grants
 - [x] `packages/web` — Next.js frontend (ask form, question/aggregate pages, stats)
 - [x] `packages/broker` — FastAPI dispatcher + verifier (`/v1/register`, `/v1/envelopes`, aggregates)
-- [x] `packages/skill` — Hermes skill (cron answering, policy gate, envelope signing, onboarding)
+- [x] `packages/skill` — answering skill for Hermes **and** OpenClaw (shared core: cron answering, policy gate, envelope signing, onboarding)
 - [x] `packages/self-bridge` — Node sidecar running `@selfxyz/core` (Self proof verification + QR onboarding)
 
 Intentionally deferred (see [ARCHITECTURE.md §11](./ARCHITECTURE.md)): payments
@@ -40,7 +40,7 @@ hearme/
 │   │   ├── drizzle.config.ts
 │   │   └── package.json
 │   ├── broker/                  # FastAPI dispatcher + verifier
-│   ├── skill/                   # Hermes answering skill
+│   ├── skill/                   # answering skill (Hermes plugin + OpenClaw skill)
 │   ├── self-bridge/             # Node sidecar for @selfxyz/core
 │   └── proto/                   # JSON schemas for wire formats
 │       ├── delegation.json
