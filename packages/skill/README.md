@@ -41,10 +41,12 @@ hearme-skill onboard --broker-url <url> --bridge-url <url>
 ```
 
 > **Linux-first.** Only Linux x86_64/aarch64 binaries are published (the matrix
-> in `.github/workflows/build-binaries.yml` is easy to extend). On other
-> platforms, build from source (below). `install.sh` drops the binary in
-> `~/.local/bin`; if that's not on the host's `PATH`, add it or point the
-> generated Hermes shim / OpenClaw `SKILL.md` at the absolute path.
+> in `.github/workflows/build-binaries.yml` is easy to extend). The release
+> binaries target musl so they do not require the installing machine to have the
+> same glibc version as GitHub's build runners. On other platforms, build from
+> source (below). `install.sh` drops the binary in `~/.local/bin`; if that's not
+> on the host's `PATH`, add it or point the generated Hermes shim / OpenClaw
+> `SKILL.md` at the absolute path.
 
 ## CLI
 
@@ -168,10 +170,9 @@ cargo fmt --check
 ```
 
 CI: [`build-binaries.yml`](../../.github/workflows/build-binaries.yml) builds and
-publishes the Linux x86_64/aarch64 release assets natively on matching runners
-(no cross-compile; rusqlite's bundled SQLite needs a C compiler, which the
-runners provide). [`ci.yml`](../../.github/workflows/ci.yml) runs fmt + clippy +
-test on every PR.
+publishes musl-targeted Linux x86_64/aarch64 release assets natively on matching
+runners, so the downloaded binaries are not tied to the runner's glibc version.
+[`ci.yml`](../../.github/workflows/ci.yml) runs fmt + clippy + test on every PR.
 
 ## Module map
 
