@@ -81,7 +81,7 @@ services:
       HEARME_BROKER_SELF_BRIDGE_URL: http://self-bridge:8787
       # Dev: no Celo RPC wired into the bridge, so skip the on-chain registry
       # gate. Set to "1" (and wire SELF_CELO_RPC_URL on the bridge) for the
-      # Sybil-hardening check. See ARCHITECTURE.md §5 / SELF_MIGRATION.md.
+      # Sybil-hardening check. See ARCHITECTURE.md §5.
       HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "0"
       # Dev signing key for the broker-issued DelegationToken. OVERRIDE in prod.
       HEARME_BROKER_SIGNING_KEY: QlJPS0VSLVNJR05JTkctS0VZLUhFQVJNRS1ERVYzMkI=
@@ -124,7 +124,7 @@ services:
       # SELF_CHAIN_ID: "44787"
       SELF_AGE_THRESHOLDS: "18,25,35,50,65"
       # Sybil hardening (registration-only on-chain check). Leave empty in dev;
-      # set the Celo RPC URL + registry address to enable. See SELF_MIGRATION.md.
+      # set the Celo RPC URL + registry address to enable. See ARCHITECTURE.md §5.
       # SELF_CELO_RPC_URL: https://forno.celo-sepolia.celo-testnet.org
       # SELF_REGISTRY_ADDRESS: "0x..."
     # Loopback only — see the note on the postgres service. The Self app and

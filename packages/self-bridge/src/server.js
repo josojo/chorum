@@ -28,8 +28,7 @@ import express from "express";
 // large transitive tree (qrcode -> react-spinners) whose ESM/CJS interop is
 // fragile across installs, and keeping it out of the import graph lets tests
 // import this module (and the test seams below) to exercise /callback's
-// dispatch without the SDK or a real passport. CONFIRM DURING IMPL
-// (SELF_MIGRATION.md): exact @selfxyz export names/shapes.
+// dispatch without the SDK or a real passport.
 
 import {
   DEFAULT_PROFILE,
