@@ -335,6 +335,28 @@ export function AskForm({
         </Field>
       </div>
 
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <Field
+          label="Participant credential"
+          name="delegationToken"
+          hint="Paste the DelegationToken your agent received when it onboarded. Asking is earned: your agent must have answered enough questions first. (v0)"
+          error={errors.delegationToken}
+        >
+          <textarea
+            name="delegationToken"
+            rows={3}
+            placeholder='{"version":2,"scope":"hearme-v1", … }'
+            className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs shadow-sm transition focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
+          />
+        </Field>
+      </div>
+
+      {errors._form ? (
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {errors._form}
+        </p>
+      ) : null}
+
       <div className="flex justify-stretch sm:justify-end">
         <SubmitButton />
       </div>

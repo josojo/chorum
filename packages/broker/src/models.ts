@@ -52,11 +52,17 @@ export const delegationTokenSchema = z
   .strict();
 export type DelegationToken = z.infer<typeof delegationTokenSchema>;
 
-// POST /v1/envelopes body. Exactly 5 fields — boundary-leakage check.
+// POST /v1/envelopes body. `no_signal` is optional (defaults false) so existing
+// agents that don't yet emit it keep working; when present it marks the §1.14
+// no-signal branch (the agent had no relevant memory and skipped generation).
+// It is unsigned metadata — the agent_signature still covers only
+// question_id||answer||nonce||delegation_hash, so adding it does not change the
+// signing input. Boundary-leakage (§12): at most six top-level fields.
 export const envelopeSchema = z
   .object({
     question_id: z.string().uuid(),
     answer: z.string(),
+    no_signal: z.boolean().optional().default(false),
     nonce: z.string(),
     delegation_token: delegationTokenSchema,
     agent_signature: z.string(),
@@ -93,6 +99,42 @@ export interface PlatformStats {
   respondents: number;
   answered_questions: number;
   avg_answers_per_question: number;
+}
+
+// POST /v1/askers/eligibility body. The asker proves a registered identity by
+// presenting their broker-signed DelegationToken (ARCHITECTURE.md §15.3 asker
+// auth). Exactly one field — same `.strict()` boundary discipline as envelopes.
+export const askerEligibilityRequestSchema = z
+  .object({
+    delegation_token: delegationTokenSchema,
+  })
+  .strict();
+export type AskerEligibilityRequest = z.infer<typeof askerEligibilityRequestSchema>;
+
+// POST /v1/askers/eligibility response — authenticated asker gating decision
+// (ARCHITECTURE.md §15.3). snake_case to match the other broker wire shapes.
+//
+// `authorized` is the AUTH result (did the token verify against a live, non-
+// revoked registration). `can_ask` is the GATE result (does the identity clear
+// the unlock threshold). When authorized === false, the gate fields are zeroed
+// and `auth_reason` carries why; when authorized === true, `reason` carries the
+// gate block reason (null ⇔ can_ask).
+export interface AskerEligibilityResponse {
+  authorized: boolean;
+  // A RejectionReason when authorized === false (or null when hidden); else null.
+  auth_reason: string | null;
+  // The verified identity (null when auth failed — we never echo an unverified id).
+  unique_identifier: string | null;
+  can_ask: boolean;
+  is_admin: boolean;
+  total_answers: number;
+  signal_answers: number;
+  required_total: number;
+  required_signal: number;
+  remaining_total: number;
+  remaining_signal: number;
+  // null ⇔ can_ask === true. One of AskerBlockReason otherwise.
+  reason: string | null;
 }
 
 // Specific reasons the broker rejects a registration or an envelope. Values

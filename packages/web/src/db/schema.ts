@@ -16,6 +16,7 @@ import {
   timestamp,
   integer,
   bigint,
+  boolean,
   jsonb,
   index,
   primaryKey,
@@ -25,6 +26,11 @@ import {
 export const askers = pgTable("askers", {
   id: uuid("id").primaryKey().defaultRandom(),
   displayName: text("display_name").notNull(),
+  // The verified Self nullifier of the asker, when they authenticated with a
+  // DelegationToken (asker auth, ARCHITECTURE.md §15.3). NULL for legacy /
+  // unauthenticated display-only rows. The broker verifies the credential and
+  // returns this identifier; the web app never derives it from user input.
+  uniqueIdentifier: text("unique_identifier"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -94,6 +100,13 @@ export const envelopes = pgTable(
       .references(() => questions.id),
     uniqueIdentifier: text("unique_identifier").notNull(),
     answer: text("answer").notNull(),
+    // §1.14: the agent had no relevant memory and skipped generation, so this
+    // envelope carries no opinion (answer is conventionally empty). A first-class
+    // aggregate bucket ("had no formed view"), and the signal/non-signal split
+    // the asker-credit gate counts on (§15.3). Unsigned metadata — NOT covered by
+    // agent_signature (which signs question_id||answer||nonce||delegation_hash);
+    // it only affects the answerer's own credit count, so the surface is bounded.
+    noSignal: boolean("no_signal").notNull().default(false),
     disclosedPredicates: jsonb("disclosed_predicates").notNull(),
     agentSignature: text("agent_signature").notNull(),
     delegationHash: text("delegation_hash").notNull(),
@@ -112,8 +125,19 @@ export const aggregates = pgTable("aggregates", {
   questionId: uuid("question_id")
     .primaryKey()
     .references(() => questions.id),
+  // Grand count of accepted envelopes, no_signal included.
   totalAnswers: integer("total_answers").notNull().default(0),
+  // Per-(predicate,value) bucket option tallies — SIGNAL answers only, e.g.
+  // {"region:EU": {"yes": 30, "no": 12}}. no_signal envelopes are excluded here
+  // and counted in the dedicated fields below (§1.14), so the option bars stay
+  // a clean breakdown of formed views.
   byPredicate: jsonb("by_predicate").notNull().default({}),
+  // First-class "no formed view" aggregation (§1.14). `noSignalTotal` is the
+  // headline count of no_signal envelopes; `noSignalByPredicate` is the same
+  // count split per disclosed bucket, e.g. {"region:EU": 5, "age_band:25-34": 3},
+  // so consumers can see "X% of EU 25-34 had no formed view".
+  noSignalTotal: integer("no_signal_total").notNull().default(0),
+  noSignalByPredicate: jsonb("no_signal_by_predicate").notNull().default({}),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

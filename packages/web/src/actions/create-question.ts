@@ -24,10 +24,19 @@ import { headers } from "next/headers";
 import { db } from "@/db/client";
 import { askers, questions } from "@/db/schema";
 import { checkRateLimit, clientIdFromHeaders } from "@/lib/rate-limit";
+import { checkAskerEligibility } from "@/lib/asker-auth";
 import {
   validateCreateQuestion,
   type CreateQuestionInput,
 } from "./validate-question";
+
+// Asker auth gate (ARCHITECTURE.md §15.3): require a verified participant
+// credential to open a question. On by default; set ASKER_AUTH_REQUIRED=false
+// for local demos with no broker / onboarding, in which case asks are anonymous
+// (unique_identifier stays NULL) exactly as in pre-gate v0.
+function askerAuthRequired(): boolean {
+  return (process.env.ASKER_AUTH_REQUIRED ?? "true") !== "false";
+}
 
 export type CreateQuestionResult =
   | { ok: true; questionId: string }
@@ -40,12 +49,15 @@ export type CreateQuestionResult =
 export async function createQuestion(
   input: CreateQuestionInput,
   dbi: typeof db = db,
+  uniqueIdentifier: string | null = null,
 ): Promise<{ questionId: string }> {
   // v0 display names are not identity. Create one display row per question
-  // so two humans choosing the same name are not collapsed together.
+  // so two humans choosing the same name are not collapsed together. When the
+  // asker authenticated (§15.3), stamp their verified Self nullifier on the row;
+  // it comes from the broker, never from user input.
   const askerRows = await dbi
     .insert(askers)
-    .values({ displayName: input.displayName })
+    .values({ displayName: input.displayName, uniqueIdentifier })
     .returning({ id: askers.id });
   const askerId = askerRows[0].id;
 
@@ -127,7 +139,29 @@ export async function createQuestionAction(
     return { ok: false, errors: parsed.errors };
   }
 
-  const { questionId } = await createQuestion(parsed.value);
+  // Asker gate (§15.3). Runs AFTER form validation (cheap, local) so a malformed
+  // form never burns a broker round-trip. A pasted credential is verified by the
+  // broker, which returns the asker's verified identity and whether they've
+  // earned the right to ask. No credential + auth required ⇒ blocked.
+  let uniqueIdentifier: string | null = null;
+  const tokenRaw = (formData.get("delegationToken") ?? "").toString().trim();
+  if (tokenRaw) {
+    const auth = await checkAskerEligibility(tokenRaw);
+    if (!auth.ok) {
+      return { ok: false, errors: { delegationToken: auth.message } };
+    }
+    uniqueIdentifier = auth.uniqueIdentifier;
+  } else if (askerAuthRequired()) {
+    return {
+      ok: false,
+      errors: {
+        delegationToken:
+          "Asking requires a participant credential. Paste the DelegationToken your agent received when it onboarded, or answer some questions first to earn the right to ask.",
+      },
+    };
+  }
+
+  const { questionId } = await createQuestion(parsed.value, db, uniqueIdentifier);
 
   // Force the home feed to refetch so the new question shows up immediately.
   revalidatePath("/");

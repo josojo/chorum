@@ -329,4 +329,20 @@ describe("createQuestion", () => {
       .args as Record<string, unknown>;
     expect(qInsert.options).toEqual(["Pizza", "Pasta", "Sushi"]);
   });
+
+  it("leaves unique_identifier NULL for an unauthenticated (display-only) ask", async () => {
+    const { fake, calls } = buildFakeDb({});
+    await createQuestion(input, fake);
+    const askerInsert = calls.find((c) => c.kind === "insert-asker")!
+      .args as Record<string, unknown>;
+    expect(askerInsert.uniqueIdentifier).toBeNull();
+  });
+
+  it("stamps the verified unique_identifier on the asker row (§15.3)", async () => {
+    const { fake, calls } = buildFakeDb({});
+    await createQuestion(input, fake, "self:verified-asker");
+    const askerInsert = calls.find((c) => c.kind === "insert-asker")!
+      .args as Record<string, unknown>;
+    expect(askerInsert.uniqueIdentifier).toBe("self:verified-asker");
+  });
 });

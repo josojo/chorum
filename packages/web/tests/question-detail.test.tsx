@@ -106,6 +106,52 @@ describe("QuestionDetail rendering", () => {
     ).toBeTruthy();
   });
 
+  it("surfaces no_signal as a first-class 'no formed view' breakdown (§1.14)", () => {
+    render(
+      <QuestionDetail
+        question={baseQuestion}
+        totalAnswers={20}
+        byPredicate={{ "region:EU": { yes: 9, no: 6 } }} // 15 signal
+        noSignalTotal={5}
+        noSignalByPredicate={{ "region:EU": 5 }}
+      />,
+    );
+    // Headline chip + section.
+    expect(screen.getByText("No formed view")).toBeTruthy();
+    expect(screen.getAllByText(/no formed view/i).length).toBeGreaterThan(0);
+    // Overall rate 5/20 = 25%, shown as the section subtitle.
+    expect(screen.getByText("25% overall")).toBeTruthy();
+    // Per-group rate: EU = 5 / (15 + 5) = 25%, with the raw count alongside.
+    expect(screen.getByText("(5)")).toBeTruthy();
+  });
+
+  it("does not render the no-formed-view section when nobody abstained", () => {
+    render(
+      <QuestionDetail
+        question={baseQuestion}
+        totalAnswers={5}
+        byPredicate={{ "region:EU": { yes: 5, no: 0 } }}
+        noSignalTotal={0}
+        noSignalByPredicate={{}}
+      />,
+    );
+    expect(screen.queryByText("No formed view")).toBeNull();
+  });
+
+  it("shows results (not the empty-state) when every answer was no_signal", () => {
+    render(
+      <QuestionDetail
+        question={baseQuestion}
+        totalAnswers={3}
+        byPredicate={{}}
+        noSignalTotal={3}
+        noSignalByPredicate={{ "region:EU": 3 }}
+      />,
+    );
+    expect(screen.queryByText(/No answers yet/i)).toBeNull();
+    expect(screen.getByText("No formed view")).toBeTruthy();
+  });
+
   it("places Geography above Age in the DOM order", () => {
     const { container } = render(
       <QuestionDetail

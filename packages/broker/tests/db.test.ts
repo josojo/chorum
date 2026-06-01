@@ -10,7 +10,7 @@ import type { FastifyInstance } from "fastify";
 import { type Db } from "../src/db";
 import type { DelegationToken } from "../src/models";
 import { startPg, truncateAll, type PgHandle } from "./pg";
-import { agentKeyB64, makeEnvelope, makeRevocation, makeEnrollment, mockVerifyProof } from "./helpers";
+import { agentKeyB64, makeEnvelope, makeRevocation, makeEnrollment, makeToken, mockVerifyProof } from "./helpers";
 
 let pg: PgHandle | null = null;
 let db: Db;
@@ -182,6 +182,64 @@ describe("POST /v1/envelopes (uniqueness + aggregate)", () => {
     expect(await totalAnswers(question.id)).toBe(1);
   });
 
+  it("stores no_signal and it does not count as signal (§1.14 / §15.4)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const tok = await devToken({ uid: "self:e-ns", nationality: "DE", thresholds: [18, 25, 35] });
+    const question = await insertQuestion({});
+    // no_signal is unsigned metadata; the agent_signature is unchanged, so we
+    // just set the flag on an otherwise-valid envelope (empty answer per §1.14).
+    const env = { ...makeEnvelope(tok, { questionId: question.id, answer: "", nonce: question.nonce }), no_signal: true };
+    expect((await app.inject({ method: "POST", url: "/v1/envelopes", payload: env })).json()).toEqual({
+      accepted: true,
+      reason: null,
+    });
+    const rows = (await db.execute(
+      sql`SELECT no_signal FROM envelopes WHERE unique_identifier = 'self:e-ns'`,
+    )) as unknown as Array<{ no_signal: boolean }>;
+    expect(rows[0].no_signal).toBe(true);
+    // And it counts toward total but not signal in the asker gate.
+    const elig = (await app.inject({
+      method: "POST",
+      url: "/v1/askers/eligibility",
+      payload: { delegation_token: tok },
+    })).json();
+    expect(elig).toMatchObject({ total_answers: 1, signal_answers: 0 });
+
+    // First-class aggregation (§1.14): counted in total + the dedicated
+    // no_signal fields, but NOT in the per-option by_predicate tallies.
+    const agg = (await db.execute(sql`
+      SELECT total_answers, by_predicate, no_signal_total, no_signal_by_predicate
+      FROM aggregates WHERE question_id = ${question.id}
+    `)) as unknown as Array<{
+      total_answers: number;
+      by_predicate: Record<string, unknown>;
+      no_signal_total: number;
+      no_signal_by_predicate: Record<string, number>;
+    }>;
+    expect(Number(agg[0].total_answers)).toBe(1);
+    expect(Number(agg[0].no_signal_total)).toBe(1);
+    // dev-register (DE) discloses region:EU + country:DE → each gets a no_signal
+    // count of 1, and the option tallies stay empty.
+    expect(agg[0].no_signal_by_predicate).toMatchObject({ "region:EU": 1, "country:DE": 1 });
+    expect(agg[0].by_predicate).toEqual({});
+  });
+
+  it("a signal answer leaves no_signal aggregates empty", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const tok = await devToken({ uid: "self:e-sig" });
+    const question = await insertQuestion({});
+    await app.inject({
+      method: "POST",
+      url: "/v1/envelopes",
+      payload: makeEnvelope(tok, { questionId: question.id, answer: "yes", nonce: question.nonce }),
+    });
+    const agg = (await db.execute(sql`
+      SELECT no_signal_total, no_signal_by_predicate FROM aggregates WHERE question_id = ${question.id}
+    `)) as unknown as Array<{ no_signal_total: number; no_signal_by_predicate: Record<string, number> }>;
+    expect(Number(agg[0].no_signal_total)).toBe(0);
+    expect(agg[0].no_signal_by_predicate).toEqual({});
+  });
+
   it("rejects a nonce mismatch and a bad agent signature", async (ctx) => {
     if (!pg) return ctx.skip();
     const tok = await devToken({ uid: "self:e-2" });
@@ -278,6 +336,122 @@ describe("GET /v1/stats", () => {
       answered_questions: 1,
     });
     expect(stats.questions).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §15.3)", () => {
+  // Seed one envelope (one answer) for `uid` against a fresh question. An empty
+  // answer marks a no-signal envelope (no_signal=true, §1.14); a non-empty
+  // answer is signal-bearing (no_signal=false).
+  async function seedAnswer(uid: string, answer: string): Promise<void> {
+    const q = await insertQuestion({});
+    const noSignal = answer.trim() === "";
+    await db.execute(sql`
+      INSERT INTO envelopes (
+        question_id, unique_identifier, answer, no_signal,
+        disclosed_predicates, agent_signature, delegation_hash
+      ) VALUES (
+        ${q.id}, ${uid}, ${answer}, ${noSignal},
+        '{}'::jsonb, 'sig', 'hash'
+      )
+    `);
+  }
+
+  // Authenticate as `uid` by minting a real broker-signed token (dev register)
+  // and posting it — the same credential an onboarded asker would present.
+  async function eligibilityFor(uid: string) {
+    const token = await devToken({ uid });
+    return (
+      await app.inject({
+        method: "POST",
+        url: "/v1/askers/eligibility",
+        payload: { delegation_token: token },
+      })
+    ).json();
+  }
+
+  it("rejects a token with no backing registration (auth fails)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    // A validly broker-signed token whose nullifier was never registered.
+    const token = makeToken({ uniqueIdentifier: "self:never-registered" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/askers/eligibility",
+      payload: { delegation_token: token },
+    });
+    expect(res.json()).toMatchObject({
+      authorized: false,
+      auth_reason: "registration_not_found",
+      unique_identifier: null,
+      can_ask: false,
+    });
+  });
+
+  it("rejects a token not signed by this broker", async (ctx) => {
+    if (!pg) return ctx.skip();
+    // A validly shaped token whose broker_signature has been tampered.
+    const token = { ...makeToken({ uniqueIdentifier: "self:x" }), broker_signature: "AAAA" };
+    expect((await app.inject({
+      method: "POST",
+      url: "/v1/askers/eligibility",
+      payload: { delegation_token: token },
+    })).json()).toMatchObject({ authorized: false, auth_reason: "broker_signature_invalid" });
+  });
+
+  it("authenticates a registered identity with zero answers — cannot ask yet", async (ctx) => {
+    if (!pg) return ctx.skip();
+    expect(await eligibilityFor("self:fresh")).toMatchObject({
+      authorized: true,
+      unique_identifier: "self:fresh",
+      can_ask: false,
+      total_answers: 0,
+      signal_answers: 0,
+      required_total: 50,
+      required_signal: 10,
+      remaining_total: 50,
+      remaining_signal: 10,
+      reason: "not_enough_answers",
+    });
+  });
+
+  it("counts total vs signal and unlocks at the threshold", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:asker-ok";
+    // 50 answers, exactly 10 of them signal-bearing — the §15.3 boundary.
+    for (let i = 0; i < 10; i++) await seedAnswer(uid, "yes");
+    for (let i = 0; i < 40; i++) await seedAnswer(uid, ""); // no_signal proxy
+    expect(await eligibilityFor(uid)).toMatchObject({
+      authorized: true,
+      can_ask: true,
+      total_answers: 50,
+      signal_answers: 10,
+      remaining_total: 0,
+      remaining_signal: 0,
+      reason: null,
+    });
+  });
+
+  it("enough total but too little signal is blocked (anti-farming, §15.4)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:asker-farm";
+    for (let i = 0; i < 3; i++) await seedAnswer(uid, "yes");
+    for (let i = 0; i < 55; i++) await seedAnswer(uid, "");
+    expect(await eligibilityFor(uid)).toMatchObject({
+      authorized: true,
+      can_ask: false,
+      total_answers: 58,
+      signal_answers: 3,
+      remaining_total: 0,
+      remaining_signal: 7,
+      reason: "not_enough_signal",
+    });
+  });
+
+  it("counts are scoped to the authenticated identity (no cross-talk)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    await seedAnswer("self:a", "yes");
+    await seedAnswer("self:b", "yes");
+    expect((await eligibilityFor("self:a")).total_answers).toBe(1);
   });
 });
 

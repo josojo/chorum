@@ -18,6 +18,7 @@ import { registerRegisterRoutes } from "./routes/register";
 import { registerEnvelopesRoutes } from "./routes/envelopes";
 import { registerRevocationsRoutes } from "./routes/revocations";
 import { registerStatsRoutes } from "./routes/stats";
+import { registerAskersRoutes } from "./routes/askers";
 import { registerDevRoutes } from "./routes/dev";
 
 export interface BuildAppOptions {
@@ -50,6 +51,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   registerEnvelopesRoutes(app);
   registerRevocationsRoutes(app);
   registerStatsRoutes(app);
+  registerAskersRoutes(app, { settings });
 
   // DANGER: testing-only synthetic-identity registration. Off unless explicitly
   // enabled; never mount in production (see routes/dev.ts and startupChecks.ts).

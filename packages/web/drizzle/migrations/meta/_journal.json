@@ -8,6 +8,27 @@
       "when": 1780206990701,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780321005692,
+      "tag": "0001_strong_sue_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780321294389,
+      "tag": "0002_conscious_sway",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780325386691,
+      "tag": "0003_purple_squirrel_girl",
+      "breakpoints": true
     }
   ]
 }

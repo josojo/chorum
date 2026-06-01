@@ -1,0 +1,1 @@
+ALTER TABLE "envelopes" ADD COLUMN "no_signal" boolean DEFAULT false NOT NULL;

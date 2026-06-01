@@ -28,3 +28,4 @@ kind: standalone
 provides_tools:
   - hearme_list_open_questions
   - hearme_submit_answer
+  - hearme_submit_no_signal

@@ -15,7 +15,7 @@ import {
   verifyRevocationSignature,
 } from "../src/verify/envelope";
 import { derivePredicates } from "../src/verify/predicates";
-import { classifyAnswer, computeByPredicate } from "../src/aggregates";
+import { classifyAnswer, computeByPredicate, computeNoSignal } from "../src/aggregates";
 import type { DelegationToken } from "../src/models";
 
 // The fixed golden DelegationToken (dev signing key) from the Python broker.
@@ -162,6 +162,24 @@ describe("answer classification + aggregation", () => {
       "region:EU": { yes: 1, no: 1 },
       "age_band:35-49": { yes: 1, no: 0 },
       "age_band:25-34": { yes: 0, no: 1 },
+    });
+  });
+
+  it("counts no_signal per bucket as a first-class breakdown (§1.14)", () => {
+    const envelopes = [
+      { answer: "yes", disclosed_predicates: { region: "EU", age_band: "25-34" } },
+      { answer: "", no_signal: true, disclosed_predicates: { region: "EU", age_band: "25-34" } },
+      { answer: "", no_signal: true, disclosed_predicates: { region: "EU", age_band: "50-64" } },
+    ];
+    // Signal tallies exclude the no_signal rows entirely.
+    expect(computeByPredicate(envelopes.filter((e) => !e.no_signal), ["yes", "no"])).toEqual({
+      "region:EU": { yes: 1, no: 0 },
+      "age_band:25-34": { yes: 1, no: 0 },
+    });
+    // no_signal is counted in its own per-bucket map.
+    expect(computeNoSignal(envelopes)).toEqual({
+      total: 2,
+      byPredicate: { "region:EU": 2, "age_band:25-34": 1, "age_band:50-64": 1 },
     });
   });
 });

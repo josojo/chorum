@@ -11,14 +11,15 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::contracts::{
-    py_str, ANSWER_PROMPT, DEFAULT_SCHEDULE, JOB_NAME, LIST_SCHEMA_PY, SUBMIT_SCHEMA_PY, TOOLSET,
+    py_str, ANSWER_PROMPT, DEFAULT_SCHEDULE, JOB_NAME, LIST_SCHEMA_PY, SUBMIT_NO_SIGNAL_SCHEMA_PY,
+    SUBMIT_SCHEMA_PY, TOOLSET,
 };
 use crate::Error;
 
 const PLUGIN_DIRNAME: &str = "hearme";
 
 /// Embedded Hermes manifest. Kept in step with packages/skill/plugin.yaml.
-pub const PLUGIN_MANIFEST: &str = "name: hearme\nversion: 0.0.1\ndescription: >-\n  Answer public yes/no questions on the user's behalf, using the host agent's\n  own model and memory. Inference needs no extra API key; a cron job drives the\n  answering cycle.\nauthor: Hearme\nkind: standalone\nprovides_tools:\n  - hearme_list_open_questions\n  - hearme_submit_answer\n";
+pub const PLUGIN_MANIFEST: &str = "name: hearme\nversion: 0.0.1\ndescription: >-\n  Answer public yes/no questions on the user's behalf, using the host agent's\n  own model and memory. Inference needs no extra API key; a cron job drives the\n  answering cycle.\nauthor: Hearme\nkind: standalone\nprovides_tools:\n  - hearme_list_open_questions\n  - hearme_submit_answer\n  - hearme_submit_no_signal\n";
 
 fn hermes_home() -> PathBuf {
     dirs::home_dir()
@@ -61,6 +62,7 @@ DEFAULT_SCHEDULE = @@DEFAULT_SCHEDULE@@
 ANSWER_PROMPT = @@ANSWER_PROMPT@@
 _LIST_SCHEMA = @@LIST_SCHEMA@@
 _SUBMIT_SCHEMA = @@SUBMIT_SCHEMA@@
+_SUBMIT_NO_SIGNAL_SCHEMA = @@SUBMIT_NO_SIGNAL_SCHEMA@@
 
 
 def _run(args):
@@ -87,6 +89,14 @@ def _handle_submit(args, **_kwargs):
     if not question_id or not answer:
         return json.dumps({"accepted": False, "reason": "question_id and answer are required"})
     return _run(["submit-answer", "--question-id", question_id, "--answer", answer])
+
+
+def _handle_submit_no_signal(args, **_kwargs):
+    a = args or {}
+    question_id = str(a.get("question_id") or "").strip()
+    if not question_id:
+        return json.dumps({"accepted": False, "reason": "question_id is required"})
+    return _run(["submit-no-signal", "--question-id", question_id])
 
 
 def _delegation_exists():
@@ -132,6 +142,14 @@ def register(ctx):
         description="Sign + submit one Hearme answer on the user's behalf.",
         emoji="\U0001f5f3️",
     )
+    ctx.register_tool(
+        name="hearme_submit_no_signal",
+        toolset=TOOLSET,
+        schema=_SUBMIT_NO_SIGNAL_SCHEMA,
+        handler=_handle_submit_no_signal,
+        description="Record that the user has no formed view on one Hearme question.",
+        emoji="\U0001f5f3️",
+    )
     _ensure_cron()
 "##;
 
@@ -142,6 +160,7 @@ def register(ctx):
         .replace("@@DEFAULT_SCHEDULE@@", &py_str(DEFAULT_SCHEDULE))
         .replace("@@ANSWER_PROMPT@@", &py_str(ANSWER_PROMPT))
         .replace("@@LIST_SCHEMA@@", LIST_SCHEMA_PY)
+        .replace("@@SUBMIT_NO_SIGNAL_SCHEMA@@", SUBMIT_NO_SIGNAL_SCHEMA_PY)
         .replace("@@SUBMIT_SCHEMA@@", SUBMIT_SCHEMA_PY)
 }
 
@@ -274,6 +293,8 @@ mod tests {
         assert!(!shim.contains("from hearme_skill"));
         assert!(shim.contains("list-questions"));
         assert!(shim.contains("submit-answer"));
+        assert!(shim.contains("submit-no-signal"));
+        assert!(shim.contains("hearme_submit_no_signal"));
         assert!(shim.contains("def register(ctx):"));
     }
 

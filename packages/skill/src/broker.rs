@@ -82,18 +82,30 @@ fn post_with_retry(
     Ok((false, "max retries exhausted".to_string()))
 }
 
-/// `POST /v1/envelopes`. The body must carry exactly the five canonical fields.
+/// `POST /v1/envelopes`. A normal answer carries exactly the five canonical
+/// fields; a no-signal envelope (§1.14) adds the optional `no_signal` flag. We
+/// accept either canonical shape and reject anything else, so a normal answer's
+/// wire body stays byte-identical to before.
 pub fn submit_envelope(base_url: &str, body: &serde_json::Value) -> Result<(bool, String), Error> {
-    assert_keys(
-        body,
+    let expected: &[&str] = if body.get("no_signal").is_some() {
+        &[
+            "question_id",
+            "answer",
+            "no_signal",
+            "nonce",
+            "delegation_token",
+            "agent_signature",
+        ]
+    } else {
         &[
             "question_id",
             "answer",
             "nonce",
             "delegation_token",
             "agent_signature",
-        ],
-    )?;
+        ]
+    };
+    assert_keys(body, expected)?;
     post_with_retry(base_url, "/v1/envelopes", body)
 }
 
