@@ -1,0 +1,50 @@
+[package]
+name = "hearme-skill"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.74"
+description = "Hearme standalone skill — local agent that answers public questions on the user's behalf, wired into Hermes and OpenClaw (ARCHITECTURE.md §6-8)."
+license = "Proprietary"
+publish = false
+
+# A single self-contained binary is the whole point: no Python, no Node, no
+# system OpenSSL. TLS comes from rustls (vendored), SQLite from the bundled
+# amalgamation (FTS5 enabled), crypto from pure-Rust ed25519-dalek.
+[[bin]]
+name = "hearme-skill"
+path = "src/main.rs"
+
+[lib]
+name = "hearme_skill"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+# NB: do NOT enable serde_json's `preserve_order` feature — canonical JSON relies
+# on the default BTreeMap-backed Map sorting keys (see canonical.rs).
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.10"
+ed25519-dalek = "2"
+base64 = "0.22"
+getrandom = "0.2"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+qrcode = { version = "0.14", default-features = false }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+regex = "1"
+dirs = "5"
+
+[dev-dependencies]
+tempfile = "3"
+
+# Optimise the release artifact for size — this is a download users curl onto
+# their box, and "smaller binary" is the explicit goal of the Rust rewrite.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

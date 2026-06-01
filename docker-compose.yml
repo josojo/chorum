@@ -1,11 +1,13 @@
 # `docker compose up` brings up the hearme v0 *server* stack: shared Postgres,
 # broker, web, and the self-bridge. None of these need a model-provider API key.
 #
-# The answering agent (the `hearme` Hermes plugin) is NOT a service here: it
-# runs inside the user's own Hermes agent, which already has a model configured.
-# Install it there with `pip install 'hearme-skill[hermes]'` and onboard:
+# The answering agent (the `hearme` skill) is NOT a service here: it runs inside
+# the user's own Hermes or OpenClaw agent, which already has a model configured.
+# Install the standalone binary (packages/skill, Rust), wire it into the host,
+# and onboard:
+#   curl -fsSL https://github.com/josojo/hearme/releases/latest/download/install.sh | sh
+#   hearme-skill install     # drops the plugin/skill into Hermes/OpenClaw
 #   hearme-skill onboard --bridge-url http://localhost:8787 --broker-url http://localhost:8000
-#   hearme-skill schedule   # registers the answering cron job inside Hermes
 #
 # First run:
 #   docker compose up --build
