@@ -354,6 +354,7 @@ export async function insertEnvelope(
     questionId: string;
     uniqueIdentifier: string;
     answer: string;
+    noSignal: boolean;
     disclosedPredicates: Record<string, string>;
     agentSignature: string;
     delegationHashHex: string;
@@ -361,10 +362,10 @@ export async function insertEnvelope(
 ): Promise<boolean> {
   const rows = (await db.execute(sql`
     INSERT INTO envelopes (
-      question_id, unique_identifier, answer, disclosed_predicates,
+      question_id, unique_identifier, answer, no_signal, disclosed_predicates,
       agent_signature, delegation_hash
     ) VALUES (
-      ${args.questionId}, ${args.uniqueIdentifier}, ${args.answer},
+      ${args.questionId}, ${args.uniqueIdentifier}, ${args.answer}, ${args.noSignal},
       ${JSON.stringify(args.disclosedPredicates)}::jsonb,
       ${args.agentSignature}, ${args.delegationHashHex}
     )
@@ -380,19 +381,18 @@ export async function insertEnvelope(
 // Backs the v0 asker unlock threshold (§15.3) — only the broker can read
 // envelopes, so this count must live here.
 //
-// "Signal-bearing" is `no_signal = false` (§1.14). The live envelopes schema has
-// no `no_signal` column yet (§3 lists it; §11 defers it), so v0 uses the
-// documented convention that a no-signal envelope carries an empty `answer`:
-// signal ⇔ a non-empty answer. When the column lands this becomes
-// `COUNT(*) FILTER (WHERE no_signal = false)` — a one-line swap.
+// "Signal-bearing" is `no_signal = false` (§1.14): the agent had relevant memory
+// and expressed an opinion, rather than skipping generation. The §15.4 anti-
+// farming clause counts on this split so grinding cheap no-signal envelopes
+// can't buy ask-rights.
 export async function askerAnswerCounts(
   db: Executor,
   uniqueIdentifier: string,
 ): Promise<{ total: number; signal: number }> {
   const rows = (await db.execute(sql`
     SELECT
-      COUNT(*)                                                      AS total,
-      COUNT(*) FILTER (WHERE btrim(answer) <> '')                  AS signal
+      COUNT(*)                                       AS total,
+      COUNT(*) FILTER (WHERE no_signal = false)      AS signal
     FROM envelopes
     WHERE unique_identifier = ${uniqueIdentifier}
   `)) as unknown as Rows<{ total: string | number; signal: string | number }>;

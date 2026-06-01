@@ -101,6 +101,7 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
         questionId: envelope.question_id,
         uniqueIdentifier: verified.uniqueIdentifier,
         answer: envelope.answer,
+        noSignal: envelope.no_signal,
         disclosedPredicates: token.disclosed_predicates,
         agentSignature: envelope.agent_signature,
         delegationHashHex: verified.delegationHash,

@@ -16,6 +16,7 @@ import {
   timestamp,
   integer,
   bigint,
+  boolean,
   jsonb,
   index,
   primaryKey,
@@ -99,6 +100,13 @@ export const envelopes = pgTable(
       .references(() => questions.id),
     uniqueIdentifier: text("unique_identifier").notNull(),
     answer: text("answer").notNull(),
+    // §1.14: the agent had no relevant memory and skipped generation, so this
+    // envelope carries no opinion (answer is conventionally empty). A first-class
+    // aggregate bucket ("had no formed view"), and the signal/non-signal split
+    // the asker-credit gate counts on (§15.3). Unsigned metadata — NOT covered by
+    // agent_signature (which signs question_id||answer||nonce||delegation_hash);
+    // it only affects the answerer's own credit count, so the surface is bounded.
+    noSignal: boolean("no_signal").notNull().default(false),
     disclosedPredicates: jsonb("disclosed_predicates").notNull(),
     agentSignature: text("agent_signature").notNull(),
     delegationHash: text("delegation_hash").notNull(),

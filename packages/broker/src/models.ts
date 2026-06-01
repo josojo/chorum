@@ -52,11 +52,17 @@ export const delegationTokenSchema = z
   .strict();
 export type DelegationToken = z.infer<typeof delegationTokenSchema>;
 
-// POST /v1/envelopes body. Exactly 5 fields — boundary-leakage check.
+// POST /v1/envelopes body. `no_signal` is optional (defaults false) so existing
+// agents that don't yet emit it keep working; when present it marks the §1.14
+// no-signal branch (the agent had no relevant memory and skipped generation).
+// It is unsigned metadata — the agent_signature still covers only
+// question_id||answer||nonce||delegation_hash, so adding it does not change the
+// signing input. Boundary-leakage (§12): at most six top-level fields.
 export const envelopeSchema = z
   .object({
     question_id: z.string().uuid(),
     answer: z.string(),
+    no_signal: z.boolean().optional().default(false),
     nonce: z.string(),
     delegation_token: delegationTokenSchema,
     agent_signature: z.string(),

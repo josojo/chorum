@@ -15,6 +15,13 @@
       "when": 1780321005692,
       "tag": "0001_strong_sue_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780321294389,
+      "tag": "0002_conscious_sway",
+      "breakpoints": true
     }
   ]
 }

@@ -112,6 +112,7 @@ export function makeEnvelope(
   return {
     question_id: args.questionId,
     answer: args.answer,
+    no_signal: false,
     nonce: args.nonce,
     delegation_token: token,
     agent_signature: Buffer.from(sig).toString("base64"),

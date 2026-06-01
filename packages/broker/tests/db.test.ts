@@ -182,6 +182,30 @@ describe("POST /v1/envelopes (uniqueness + aggregate)", () => {
     expect(await totalAnswers(question.id)).toBe(1);
   });
 
+  it("stores no_signal and it does not count as signal (§1.14 / §15.4)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const tok = await devToken({ uid: "self:e-ns" });
+    const question = await insertQuestion({});
+    // no_signal is unsigned metadata; the agent_signature is unchanged, so we
+    // just set the flag on an otherwise-valid envelope (empty answer per §1.14).
+    const env = { ...makeEnvelope(tok, { questionId: question.id, answer: "", nonce: question.nonce }), no_signal: true };
+    expect((await app.inject({ method: "POST", url: "/v1/envelopes", payload: env })).json()).toEqual({
+      accepted: true,
+      reason: null,
+    });
+    const rows = (await db.execute(
+      sql`SELECT no_signal FROM envelopes WHERE unique_identifier = 'self:e-ns'`,
+    )) as unknown as Array<{ no_signal: boolean }>;
+    expect(rows[0].no_signal).toBe(true);
+    // And it counts toward total but not signal in the asker gate.
+    const elig = (await app.inject({
+      method: "POST",
+      url: "/v1/askers/eligibility",
+      payload: { delegation_token: tok },
+    })).json();
+    expect(elig).toMatchObject({ total_answers: 1, signal_answers: 0 });
+  });
+
   it("rejects a nonce mismatch and a bad agent signature", async (ctx) => {
     if (!pg) return ctx.skip();
     const tok = await devToken({ uid: "self:e-2" });
@@ -283,16 +307,17 @@ describe("GET /v1/stats", () => {
 
 describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §15.3)", () => {
   // Seed one envelope (one answer) for `uid` against a fresh question. An empty
-  // answer stands in for a no-signal envelope (the v0 proxy for no_signal=true,
-  // §1.14); a non-empty answer is signal-bearing.
+  // answer marks a no-signal envelope (no_signal=true, §1.14); a non-empty
+  // answer is signal-bearing (no_signal=false).
   async function seedAnswer(uid: string, answer: string): Promise<void> {
     const q = await insertQuestion({});
+    const noSignal = answer.trim() === "";
     await db.execute(sql`
       INSERT INTO envelopes (
-        question_id, unique_identifier, answer,
+        question_id, unique_identifier, answer, no_signal,
         disclosed_predicates, agent_signature, delegation_hash
       ) VALUES (
-        ${q.id}, ${uid}, ${answer},
+        ${q.id}, ${uid}, ${answer}, ${noSignal},
         '{}'::jsonb, 'sig', 'hash'
       )
     `);
