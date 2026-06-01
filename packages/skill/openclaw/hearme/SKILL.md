@@ -34,16 +34,19 @@ Hearme", or on a scheduled Hearme answering run.
    not genuinely know how they would answer, SKIP it — never guess or invent a
    preference.
 
-3. Submit each answer you are confident about. The answer text must BEGIN with
-   one of that question's `options` EXACTLY (case-insensitive), followed by one
-   short sentence of reasoning in the user's voice:
+3. Submit each answer you are confident about. The answer must be EXACTLY one of
+   that question's `options` (case-insensitive) and nothing else — no reasoning,
+   no explanation, no extra words:
 
    ```bash
-   hearme-skill submit-answer --question-id "<question_id>" --answer "<option> — one short reason"
+   hearme-skill submit-answer --question-id "<question_id>" --answer "<option>"
    ```
 
    It prints JSON `{"accepted", "reason", "question_id"}`. The CLI re-checks the
-   user's policy and signs the answer locally before submitting.
+   user's policy, strips anything beyond the option label, and signs the answer
+   locally before submitting; an answer matching no option is rejected with
+   reason `not-an-option`. This guard protects your user's private context from
+   leaking — never try to append extra detail.
 
 4. Stop when there are no questions you can confidently answer. Never fabricate
    views your user does not hold.

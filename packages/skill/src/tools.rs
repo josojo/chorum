@@ -20,6 +20,36 @@ use crate::ledger::Ledger;
 use crate::policy::{decide, load_policy, Action, LedgerStats};
 use crate::Error;
 
+/// Match a free-form agent answer to exactly one of the question's options.
+///
+/// Strict, privacy-preserving normalisation: the answer must BEGIN with one of
+/// the options (case-insensitive), with the match ending on a word boundary
+/// (end-of-string or a non-alphanumeric char) so `"no"` cannot swallow a match
+/// for `"none of the above"`. Returns the question's CANONICAL option string —
+/// any trailing free text the agent appended is discarded, so nothing beyond
+/// the chosen option label is ever signed or sent on the wire. Prefers the
+/// longest matching option so multi-word options win over their prefixes.
+fn match_option<'a>(answer: &str, options: &'a [String]) -> Option<&'a str> {
+    let lower = answer.to_lowercase();
+    let mut best: Option<&'a str> = None;
+    for opt in options {
+        let opt_lower = opt.trim().to_lowercase();
+        if opt_lower.is_empty() || !lower.starts_with(&opt_lower) {
+            continue;
+        }
+        // `lower` starts with `opt_lower`, so this byte index is a char
+        // boundary; the next char (if any) must be a non-alphanumeric separator.
+        let boundary = match lower[opt_lower.len()..].chars().next() {
+            None => true,
+            Some(c) => !c.is_alphanumeric(),
+        };
+        if boundary && best.map_or(true, |b| opt.len() > b.len()) {
+            best = Some(opt.as_str());
+        }
+    }
+    best
+}
+
 fn ledger_stats(ledger: &Ledger, settings: &Settings) -> Result<LedgerStats, Error> {
     Ok(LedgerStats {
         answered_today: ledger.answered_today()?,
@@ -117,6 +147,21 @@ fn submit_impl(question_id: &str, answer_text: &str, settings: &Settings) -> Res
         }
     };
 
+    // Privacy backstop: constrain the answer to exactly one of the question's
+    // options. Enforced HERE, not in a prompt — a jailbroken/injected agent
+    // cannot smuggle extra text past this point. We sign and send only the
+    // canonical option label; any reasoning the agent appended is dropped.
+    let canonical = match match_option(answer_text, &question.options) {
+        Some(opt) => opt.to_string(),
+        None => {
+            return Ok(json!({
+                "accepted": false,
+                "reason": "not-an-option",
+                "question_id": question_id,
+            }));
+        }
+    };
+
     // Hard policy backstop, re-evaluated at submit time.
     let policy = load_policy(&settings.policy_path());
     let stats = LedgerStats {
@@ -143,7 +188,7 @@ fn submit_impl(question_id: &str, answer_text: &str, settings: &Settings) -> Res
     let agent_kp = load_or_create_agent_keypair(&settings.agent_key_path())?;
     let envelope = build_envelope(
         &question.question_id,
-        answer_text,
+        &canonical,
         &question.nonce,
         &token,
         &agent_kp,
@@ -157,7 +202,7 @@ fn submit_impl(question_id: &str, answer_text: &str, settings: &Settings) -> Res
     let (accepted, reason) = broker::submit_envelope(&settings.broker_url, &envelope)?;
 
     // rationale stays empty — the agent's reasoning never enters the ledger/wire.
-    ledger.record_answer(question_id, answer_text, "")?;
+    ledger.record_answer(question_id, &canonical, "")?;
     ledger.record_submission(
         question_id,
         &hash_of(&token),
@@ -248,4 +293,53 @@ fn revoke_impl(question_id: &str, settings: &Settings) -> Result<Value, Error> {
         "rejected".to_string()
     };
     Ok(json!({ "accepted": accepted, "reason": reason_out, "question_id": question_id }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn opts(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn exact_option_matches_and_canonicalises_case() {
+        let o = opts(&["yes", "no"]);
+        assert_eq!(match_option("YES", &o), Some("yes"));
+        assert_eq!(match_option("no", &o), Some("no"));
+    }
+
+    #[test]
+    fn trailing_reasoning_is_dropped_to_the_option() {
+        // A leaky answer still resolves to ONLY the canonical option label.
+        let o = opts(&["yes", "no"]);
+        assert_eq!(
+            match_option("yes — she runs prod from the Frankfurt box", &o),
+            Some("yes")
+        );
+    }
+
+    #[test]
+    fn prefix_must_end_on_a_word_boundary() {
+        // "no" must NOT match "none of the above".
+        let o = opts(&["yes", "no"]);
+        assert_eq!(match_option("none of the above", &o), None);
+    }
+
+    #[test]
+    fn prefers_the_longest_matching_option() {
+        let o = opts(&["pizza", "pizza margherita"]);
+        assert_eq!(
+            match_option("pizza margherita please", &o),
+            Some("pizza margherita")
+        );
+    }
+
+    #[test]
+    fn no_match_returns_none() {
+        let o = opts(&["yes", "no"]);
+        assert_eq!(match_option("maybe", &o), None);
+        assert_eq!(match_option("", &o), None);
+    }
 }
