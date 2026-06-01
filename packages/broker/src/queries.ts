@@ -374,6 +374,35 @@ export async function insertEnvelope(
   return rows.length === 1;
 }
 
+// ----- asker gating (answer-credit economy, §15) -------------------------
+
+// Count one identity's submitted answers, split into total and signal-bearing.
+// Backs the v0 asker unlock threshold (§15.3) — only the broker can read
+// envelopes, so this count must live here.
+//
+// "Signal-bearing" is `no_signal = false` (§1.14). The live envelopes schema has
+// no `no_signal` column yet (§3 lists it; §11 defers it), so v0 uses the
+// documented convention that a no-signal envelope carries an empty `answer`:
+// signal ⇔ a non-empty answer. When the column lands this becomes
+// `COUNT(*) FILTER (WHERE no_signal = false)` — a one-line swap.
+export async function askerAnswerCounts(
+  db: Executor,
+  uniqueIdentifier: string,
+): Promise<{ total: number; signal: number }> {
+  const rows = (await db.execute(sql`
+    SELECT
+      COUNT(*)                                                      AS total,
+      COUNT(*) FILTER (WHERE btrim(answer) <> '')                  AS signal
+    FROM envelopes
+    WHERE unique_identifier = ${uniqueIdentifier}
+  `)) as unknown as Rows<{ total: string | number; signal: string | number }>;
+  const row = rows[0];
+  return {
+    total: row ? Number(row.total) : 0,
+    signal: row ? Number(row.signal) : 0,
+  };
+}
+
 // ----- aggregates --------------------------------------------------------
 
 // Increment the aggregate row for one newly accepted envelope. The advisory

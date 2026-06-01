@@ -11,6 +11,11 @@ import {
   validateProductionConfig,
 } from "../src/startupChecks";
 import { isScopeEligible } from "../src/eligibility";
+import {
+  AskerBlockReason,
+  evaluateAskerEligibility,
+  parseAdminIdentifiers,
+} from "../src/askerGating";
 import { VerifyDelegationError, verifyDelegation } from "../src/verify/delegation";
 import { RejectionReason } from "../src/models";
 import { extractNullifierFromLog, nullifierCandidates } from "../src/selfRevocations";
@@ -88,6 +93,60 @@ describe("scope eligibility", () => {
     expect(
       isScopeEligible({ question: { scope: "continent", continent: "AS" }, disclosedPredicates: { region: "EU" } }),
     ).toBe(false);
+  });
+});
+
+describe("asker gating (unlock threshold, §15.3)", () => {
+  const thresholds = { requiredTotal: 50, requiredSignal: 10 };
+  const evalCounts = (total: number, signal: number, isAdmin = false) =>
+    evaluateAskerEligibility({ counts: { total, signal }, thresholds, isAdmin });
+
+  it("blocks below the total floor and reports how many remain", () => {
+    const r = evalCounts(20, 5);
+    expect(r.canAsk).toBe(false);
+    expect(r.reason).toBe(AskerBlockReason.NOT_ENOUGH_ANSWERS);
+    expect(r.remainingTotal).toBe(30);
+    expect(r.remainingSignal).toBe(5);
+  });
+
+  it("unlocks exactly at both thresholds (boundary)", () => {
+    const r = evalCounts(50, 10);
+    expect(r.canAsk).toBe(true);
+    expect(r.reason).toBeNull();
+    expect(r.remainingTotal).toBe(0);
+    expect(r.remainingSignal).toBe(0);
+  });
+
+  it("blocks one-short on either dimension", () => {
+    expect(evalCounts(49, 10).reason).toBe(AskerBlockReason.NOT_ENOUGH_ANSWERS);
+    expect(evalCounts(50, 9).reason).toBe(AskerBlockReason.NOT_ENOUGH_SIGNAL);
+  });
+
+  it("enough total but too few signal-bearing fails the anti-farming clause", () => {
+    // 60 answers but only 3 carried signal — the no-signal farm (§15.4).
+    const r = evalCounts(60, 3);
+    expect(r.canAsk).toBe(false);
+    expect(r.reason).toBe(AskerBlockReason.NOT_ENOUGH_SIGNAL);
+    expect(r.remainingTotal).toBe(0);
+    expect(r.remainingSignal).toBe(7);
+  });
+
+  it("admins bypass the threshold entirely (bootstrap valve)", () => {
+    const r = evalCounts(0, 0, true);
+    expect(r.canAsk).toBe(true);
+    expect(r.isAdmin).toBe(true);
+    expect(r.reason).toBeNull();
+    expect(r.remainingTotal).toBe(0);
+    expect(r.remainingSignal).toBe(0);
+  });
+
+  it("parses the admin allowlist from comma/space separated config", () => {
+    const set = parseAdminIdentifiers(" id-a, id-b\nid-c ,, ");
+    expect(set.has("id-a")).toBe(true);
+    expect(set.has("id-b")).toBe(true);
+    expect(set.has("id-c")).toBe(true);
+    expect(set.size).toBe(3);
+    expect(parseAdminIdentifiers("").size).toBe(0);
   });
 });
 

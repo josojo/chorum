@@ -95,6 +95,22 @@ export interface PlatformStats {
   avg_answers_per_question: number;
 }
 
+// GET /v1/askers/:unique_identifier/eligibility — the asker gating decision
+// (ARCHITECTURE.md §15.3). snake_case to match the other broker wire shapes.
+export interface AskerEligibilityResponse {
+  unique_identifier: string;
+  can_ask: boolean;
+  is_admin: boolean;
+  total_answers: number;
+  signal_answers: number;
+  required_total: number;
+  required_signal: number;
+  remaining_total: number;
+  remaining_signal: number;
+  // null ⇔ can_ask === true. One of AskerBlockReason otherwise.
+  reason: string | null;
+}
+
 // Specific reasons the broker rejects a registration or an envelope. Values
 // copied verbatim from the Python RejectionReason enum.
 export const RejectionReason = {

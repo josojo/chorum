@@ -63,6 +63,16 @@ export interface Settings {
   ratelimitEnvelopesPerMinute: number;
   ratelimitRevokePerMinute: number;
   ratelimitTrustProxyHeaders: boolean;
+
+  // Asker gating — the v0 unlock threshold of the answer-credit economy
+  // (ARCHITECTURE.md §15.3). An identity may open questions only once it has
+  // submitted at least `askerUnlockTotalAnswers` answers, of which at least
+  // `askerUnlockSignalAnswers` are opinion-bearing (signal). `askerAdmin
+  // Identifiers` is a comma/space-separated allowlist of unique_identifiers that
+  // bypass the threshold (the bootstrap valve, §15.3).
+  askerUnlockTotalAnswers: number;
+  askerUnlockSignalAnswers: number;
+  askerAdminIdentifiers: string;
 }
 
 function envStr(name: string, def: string): string {
@@ -126,6 +136,10 @@ export function getSettings(overrides: Partial<Settings> = {}): Settings {
     ratelimitEnvelopesPerMinute: envNum(`${P}RATELIMIT_ENVELOPES_PER_MINUTE`, 30),
     ratelimitRevokePerMinute: envNum(`${P}RATELIMIT_REVOKE_PER_MINUTE`, 10),
     ratelimitTrustProxyHeaders: envBool(`${P}RATELIMIT_TRUST_PROXY_HEADERS`, true),
+
+    askerUnlockTotalAnswers: envNum(`${P}ASKER_UNLOCK_TOTAL_ANSWERS`, 50),
+    askerUnlockSignalAnswers: envNum(`${P}ASKER_UNLOCK_SIGNAL_ANSWERS`, 10),
+    askerAdminIdentifiers: envStr(`${P}ASKER_ADMIN_IDENTIFIERS`, ""),
   };
   return { ...settings, ...overrides };
 }

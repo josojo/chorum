@@ -281,6 +281,84 @@ describe("GET /v1/stats", () => {
   });
 });
 
+describe("GET /v1/askers/:id/eligibility (unlock threshold, §15.3)", () => {
+  // Seed one envelope (one answer) for `uid` against a fresh question. An empty
+  // answer stands in for a no-signal envelope (the v0 proxy for no_signal=true,
+  // §1.14); a non-empty answer is signal-bearing.
+  async function seedAnswer(uid: string, answer: string): Promise<void> {
+    const q = await insertQuestion({});
+    await db.execute(sql`
+      INSERT INTO envelopes (
+        question_id, unique_identifier, answer,
+        disclosed_predicates, agent_signature, delegation_hash
+      ) VALUES (
+        ${q.id}, ${uid}, ${answer},
+        '{}'::jsonb, 'sig', 'hash'
+      )
+    `);
+  }
+
+  const eligibility = async (uid: string) =>
+    (
+      await app.inject({
+        method: "GET",
+        url: `/v1/askers/${encodeURIComponent(uid)}/eligibility`,
+      })
+    ).json();
+
+  it("an unknown identity has zero answers and cannot ask", async (ctx) => {
+    if (!pg) return ctx.skip();
+    expect(await eligibility("self:nobody")).toMatchObject({
+      can_ask: false,
+      total_answers: 0,
+      signal_answers: 0,
+      required_total: 50,
+      required_signal: 10,
+      remaining_total: 50,
+      remaining_signal: 10,
+      reason: "not_enough_answers",
+    });
+  });
+
+  it("counts total vs signal and unlocks at the threshold", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:asker-ok";
+    // 50 answers, exactly 10 of them signal-bearing — the §15.3 boundary.
+    for (let i = 0; i < 10; i++) await seedAnswer(uid, "yes");
+    for (let i = 0; i < 40; i++) await seedAnswer(uid, ""); // no_signal proxy
+    expect(await eligibility(uid)).toMatchObject({
+      can_ask: true,
+      total_answers: 50,
+      signal_answers: 10,
+      remaining_total: 0,
+      remaining_signal: 0,
+      reason: null,
+    });
+  });
+
+  it("enough total but too little signal is blocked (anti-farming, §15.4)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:asker-farm";
+    for (let i = 0; i < 3; i++) await seedAnswer(uid, "yes");
+    for (let i = 0; i < 55; i++) await seedAnswer(uid, "");
+    expect(await eligibility(uid)).toMatchObject({
+      can_ask: false,
+      total_answers: 58,
+      signal_answers: 3,
+      remaining_total: 0,
+      remaining_signal: 7,
+      reason: "not_enough_signal",
+    });
+  });
+
+  it("counts are scoped to the identity (no cross-talk)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    await seedAnswer("self:a", "yes");
+    await seedAnswer("self:b", "yes");
+    expect((await eligibility("self:a")).total_answers).toBe(1);
+  });
+});
+
 describe("GET /healthz", () => {
   it("returns ok", async (ctx) => {
     if (!pg) return ctx.skip();
