@@ -5,7 +5,7 @@
 //! subcommands) keep working unchanged. Answering commands print JSON to stdout;
 //! their exit code tracks `accepted` where applicable.
 
-use std::io::Read;
+use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -252,6 +252,21 @@ fn print_json(value: &serde_json::Value) {
     );
 }
 
+/// Print a prompt and block until the user presses Enter (onboarding pacing).
+fn wait_for_enter(prompt: &str) {
+    print!("{prompt}");
+    let _ = std::io::stdout().flush();
+    let mut buf = String::new();
+    let _ = std::io::stdin().read_line(&mut buf);
+}
+
+/// Clear the terminal (ANSI erase + cursor home). Terminals that don't support
+/// the escapes simply ignore them.
+fn clear_screen() {
+    print!("\x1b[2J\x1b[H");
+    let _ = std::io::stdout().flush();
+}
+
 fn settings_for(broker_url: Option<&str>) -> Settings {
     let mut s = get_settings();
     if let Some(url) = broker_url {
@@ -312,11 +327,48 @@ fn cmd_onboard(
             }
         };
 
-    println!("Scan these QR codes with the Self app (one per age threshold):\n");
+    // Two-step UX so the QR isn't buried under text (which forced users to zoom
+    // to scan): first explain, then — on Enter — clear the screen and show only
+    // the big QR with a short "scan in the Self app" line. Pauses are skipped
+    // when stdin isn't a terminal (e.g. piped) or with --no-wait.
+    let interactive = std::io::stdin().is_terminal() && !no_wait;
+    let n = request.urls.len();
+
+    // Step 1 — explanation only.
+    println!();
+    println!("Step 1 of 2 — verify you're a unique human with the Self app");
+    println!();
+    println!("  1. Install the Self app (https://self.xyz) and have your passport/ID ready.");
+    if n > 1 {
+        println!(
+            "  2. Next you'll see {n} QR codes (one per age threshold) — scan each with Self."
+        );
+    } else {
+        println!("  2. Next you'll see a QR code — scan it with the Self app.");
+    }
+    println!("  3. Your passport never leaves your phone; Hearme only learns a yes/no proof.");
+    println!();
+    if interactive {
+        wait_for_enter("Press Enter to show the QR code...");
+    }
+
+    // Step 2 — the QR(s) only: big code + a single "scan in the Self app" line.
     for (i, url) in request.urls.iter().enumerate() {
-        println!("--- proof {} of {} ---", i + 1, request.urls.len());
+        if interactive {
+            clear_screen();
+        }
+        if n > 1 {
+            println!("Scan in the Self app  ({} of {})", i + 1, n);
+        } else {
+            println!("Scan in the Self app");
+        }
+        println!();
         println!("{}", onboarding::render_qr_ascii(url));
-        println!("Or open: {url}\n");
+        println!("Can't scan? Open this link on your phone:\n{url}");
+        if interactive && i + 1 < n {
+            println!();
+            wait_for_enter("Press Enter for the next code...");
+        }
     }
     if no_wait {
         println!(

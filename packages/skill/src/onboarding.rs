@@ -64,9 +64,17 @@ pub fn begin_onboarding(
 
 /// Render a Self request URL as an ASCII/unicode QR. Falls back to the raw URL
 /// if the payload can't be encoded.
+///
+/// Uses error-correction level `L`: a Self universal-link URL is long, so the
+/// default level pushes the QR to a high version with many small modules that a
+/// phone can only read after zooming. Level `L` keeps the module count as low as
+/// the data allows, so the same URL renders a QR that scans from a normal
+/// terminal without zooming. `L` is fine here — the QR is shown on a screen for
+/// seconds, not printed and weathered.
 pub fn render_qr_ascii(payload: &str) -> String {
     use qrcode::render::unicode;
-    match qrcode::QrCode::new(payload.as_bytes()) {
+    use qrcode::{EcLevel, QrCode};
+    match QrCode::with_error_correction_level(payload.as_bytes(), EcLevel::L) {
         Ok(code) => code.render::<unicode::Dense1x2>().quiet_zone(true).build(),
         Err(_) => format!("[QR encode failed; open this link instead]\n{payload}\n"),
     }
