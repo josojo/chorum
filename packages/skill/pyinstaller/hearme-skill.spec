@@ -21,6 +21,7 @@ _COLLECT = [
     "pydantic_core",
     "pydantic_settings",
     "nacl",          # PyNaCl — cffi/libsodium native ext
+    "cffi",          # nacl binds libsodium through cffi
     "qrcode",
     "httpx",
     "httpcore",
@@ -37,6 +38,12 @@ for _pkg in _COLLECT:
     datas += _d
     binaries += _b
     hiddenimports += _h
+
+# `_cffi_backend` is a top-level compiled extension (not under the cffi package),
+# loaded by PyNaCl at runtime via ffi — PyInstaller's static analysis misses it,
+# so name it explicitly. Without it the binary builds but dies at startup with
+# `ModuleNotFoundError: No module named '_cffi_backend'`.
+hiddenimports += ["_cffi_backend"]
 
 
 a = Analysis(
