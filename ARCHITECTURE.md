@@ -43,6 +43,14 @@ Demographic disclosure is decided **once**, at install, when the user picks a di
 ### 1.4 Sybil resistance via stable scoped uniqueness; linkability is bounded and named
 The DelegationToken's `uniqueIdentifier` is the **Self nullifier** under the single scope `"hearme-v1"` (Self collapses domain + scope into one ≤31-ASCII scope string; the nullifier is `unique-per-user-per-scope`) — so the same passport produces the same identifier across every Hearme answer. The broker uses this for one-answer-per-`(question_id, uniqueIdentifier)` enforcement and for per-user honeypot scoring. This means **the broker can link a user's answers to each other** within Hearme. This is a deliberate v0 tradeoff: it buys "zero time cost per question" (no phone round-trip), and the broker is contractually bound to publish only aggregates. Epoch-rotated scopes (so identifiers rotate weekly/monthly) are a v0.2 upgrade documented in §13.
 
+### 1.4.1 Public agent credentials are for payouts, not anonymous answers
+Hearme has two identity surfaces and they must not be collapsed:
+
+- **Private answering identity (v0 default):** the Hearme-scoped Self nullifier plus the broker-signed DelegationToken. This is sufficient to answer questions, enforce one response per human per question, and keep raw Self proofs and public chain identifiers off the answer path.
+- **Public payout credential (v1 opt-in):** a Self Agent ID / ERC-8004 proof-of-human agent credential. This is required for users who want real, withdrawable payout eligibility beyond the minimal/test tier. It gives settlement contracts and outside verifiers an independently-checkable fact: "this signing agent is backed by a real Self-verified human," instead of trusting a Postgres `registrations` row inserted by the broker.
+
+This split is intentional. Reusing the public Agent ID NFT as the normal respondent identifier would make users more linkable across apps and questions than Hearme needs. Conversely, using only the private DelegationToken for money leaves the v1 payout layer trusting the broker not to fabricate registration rows and route rewards to itself. So v0 keeps answering private; v1 links a public agent credential only when the user asks to receive real payouts or higher payout tiers.
+
 ### 1.5 Verify all, trust none (broker side)
 The broker treats every envelope as potentially malicious. Verification is split in two:
 
@@ -193,6 +201,14 @@ CREATE TABLE registrations (
   revoked_at           TIMESTAMPTZ                 -- NULL unless revoked
 );
 
+-- v1 payout extension (not required for answering):
+-- add nullable public-agent-credential fields such as
+-- agent_id_registry, agent_id_chain_id, agent_id_token_id, agent_id_key, and
+-- payout_address/payout_authorization. These are deliberately separate from
+-- the v0 private answering identity so users can answer with only the
+-- Hearme-scoped DelegationToken, while users who want real withdrawals can
+-- opt into a public Self Agent ID / ERC-8004 credential (§1.4.1, §13).
+
 CREATE TABLE aggregates (
   question_id    UUID PRIMARY KEY REFERENCES questions(id),
   total_answers  INTEGER NOT NULL DEFAULT 0,
@@ -337,6 +353,7 @@ Python service. Single binary. Two responsibilities: dispatch open questions to 
   ]
   ```
 - `POST /v1/register` — agents enroll once at install. Body is the **enrollment bundle** `{self_proofs[], agent_key}` (see §8.5). The broker SNARK-verifies the proofs via the self-bridge, binds `nullifier ↔ agent_key`, and returns the broker-issued **DelegationToken** (the session credential) or `{accepted: false, reason}`. Idempotent: re-registering the same `(nullifier, agent_key)` re-issues a fresh token; a *different* agent_key for an already-bound nullifier is rejected (Sybil).
+- `POST /v1/agent-credential` — **future v1 payout path, not required for v0 answering.** An already-registered agent links a public Self Agent ID / ERC-8004 credential to the private Hearme registration. The broker verifies that the public credential's agent key is the same as, or explicitly delegates to, the registered `agent_key`, and records only the fields needed for payout settlement. This endpoint must never be required for anonymous answering; it is the opt-in bridge from private participation to real withdrawable payouts.
 - `POST /v1/envelopes` — agents submit answers. Body is the envelope (see §8.5). Returns `{accepted: true}` or `{accepted: false, reason}`.
 - `POST /v1/memory-commitments` — agents periodically commit a Merkle **root** over their whole local memory (§14.3). Body `{merkle_root, leaf_count, agent_signature}`; the broker assigns and co-signs `anchored_at` and returns the stored commitment. Reveals nothing about memory content. Grounding **audit** of a flagged answer happens out-of-band against a non-broker verifier (user device / TEE, §14.3); the broker only records the pass/fail in `audit_flags`.
 - `GET /healthz` — liveness.
@@ -630,6 +647,18 @@ The only time the phone produces cryptographic material for the agent. Built on 
 
 **Graceful degradation.** Only the `18+` proof is required (registration gate). The finer thresholds (§8.3) are optional; a user who declines the extra scans gets `age_band = "18+"` and still participates — they just don't contribute to generational breakdowns.
 
+### 8.1.1 Optional v1 payout credential
+
+The onboarding above is the complete v0 answering path. A user can participate and answer questions with only the Hearme-scoped Self nullifier and the broker-issued DelegationToken.
+
+For real withdrawable payouts in v1, the skill should offer a separate opt-in step: link a public **Self Agent ID** credential. Self Agent ID mints a soulbound ERC-721 / ERC-8004 agent identity backed by Self proof-of-human verification and lets services verify agent signatures against an on-chain registry. Hearme uses that public credential only as a payout eligibility and settlement primitive:
+
+- The public Agent ID must bind to the same `agent_key` used for Hearme envelopes, or to a payout key through an agent-signed authorization.
+- Settlement can then prove that a payout leaf belongs to a real human-backed signing agent, instead of trusting that the broker inserted an honest `registrations` row.
+- The Agent ID / NFT identifier is not included in `DelegationToken` and is not sent in normal answer envelopes. Putting it on the answer path would leak a cross-app public identifier and defeat the privacy reason for the Hearme-scoped nullifier.
+
+Users who do not link a public agent credential can still answer and appear in aggregates. They may receive only non-withdrawable accounting, testnet rewards, or the lowest/minimal payout tier until they opt into the public credential.
+
 ### 8.2 Refresh
 7 days before expiry, UI nudges the user. User opens the Self app, re-runs the proof set; the skill re-registers (`POST /v1/register`) and the broker re-verifies and re-issues the DelegationToken (same nullifier ⇒ idempotent registry bind). If ignored, the agent stops answering and surfaces a weekly nudge. (The Self ±1 day proof window is never a problem: registration always happens immediately after the scan.)
 
@@ -782,6 +811,7 @@ No phone contact anywhere in this lifecycle. The phone was only needed at instal
 Marked `# STUB:` in code and listed in each package's README under "Not yet real":
 
 - **Payments.** No money flows anywhere in v0. The pitch's "fraction of a cent" is deferred to v0.3. No payment fields in the schema.
+- **Public payout credential.** v0 answering uses only the private Hearme-scoped nullifier and DelegationToken. In v1, users who want real withdrawable payouts must link a public Self Agent ID / ERC-8004 proof-of-human agent credential (§1.4.1, §8.1.1). That public credential is not needed to answer, and must not be added to the answer envelope. Its job is settlement: prove a payout recipient is a real human-backed signing agent so the broker cannot fabricate fake `registrations` rows and pay itself.
 - **Asker auth.** Display name only; anyone can post. Asker accounts and auth land in v0.2.
 - **Real Self proof verification, verify-once — DESIGN (this change).** At `POST /v1/register`, `verify/self_identity.py` runs `@selfxyz/core`'s `SelfBackendVerifier.verify()` through the **self-bridge** (`packages/self-bridge`, a Node sidecar — `@selfxyz/core` is Node-only) on the enrollment bundle, enforces the bindings (agent_key via `userDefinedData`, scope, one shared nullifier ↔ unique_identifier), **derives** `region`/`age_band` from the disclosed nationality and older-than booleans, atomically binds the nullifier ↔ agent_key in the `registrations` registry, and `verify/credential.py` issues a **broker-signed DelegationToken**. Per envelope, only that token's broker signature + registry/revocation are checked — **no Self proof at answer time** (forced by Self's ±1 day proof window; also removes per-envelope SNARK cost and closes the §1.2 transit gap). Mock-passport proofs verify only with `SELF_MOCK_PASSPORT=1` (staging / Celo Sepolia). See `packages/proto/{enrollment,self,delegation}.json` and `packages/broker/src/hearme_broker/verify/`. *Flips to DONE once the code lands; migration plan is `SELF_MIGRATION.md`.* **Sybil hardening:** at registration the broker also performs a one-time on-chain read of Self's Celo Identity Registry to confirm the proof's Merkle root is live (§5) — this anchors the off-chain SNARK to the real registry (where one-passport→one-identity is enforced) and is the only on-chain dependency. **Residual caveats:** (a) a *Celo-side revocation made after registration* is not re-checked per answer (Hearme's own `registrations` registry governs revocation thereafter); (b) one human holding multiple legal passports yields multiple nullifiers — see the Sybil-resistance discussion in `IDENTITY.md`.
 - **Memory provider abstraction.** Skill hard-codes one provider (Mem0 or Holographic). Wire the abstraction in v0.2.
@@ -838,6 +868,7 @@ Each package has its own test suite; one cross-cutting end-to-end suite at the r
 
 - **Question dispatch transport.** v0 uses HTTP polling. Latency vs simplicity tradeoff: polling every 30s means answers arrive ~30s late. Worth it for v0; move to SSE or WebSocket in v0.2.
 - **Epoch-rotated scopes (privacy upgrade).** Replace `scope="hearme-v1"` with `scope="hearme-epoch-<N>"` where N rotates monthly (still ≤31 ASCII). Phone issues a small batch of epoch tokens at install. Benefit: broker can no longer link a user's answers across epochs. Note Self derives the nullifier from `scope`, so a new scope yields a fresh nullifier for the same passport.
+- **Self Agent ID for v1 payouts.** Define the exact public credential link: whether the Self Agent ID uses the same Ed25519 `agent_key`, an ECDSA operational key, or a separate payout key authorized by an `agent_signature`; whether payouts go to the NFT owner, the registered agent wallet, a token-bound account, or an agent-signed payout address; and how settlement checks the on-chain registry without leaking question-level participation. The invariant is fixed: public Agent ID is optional for answering but required for real withdrawable payouts above the minimal/test tier.
 - **Broker signing-key management.** The broker-issued DelegationToken is only as trustworthy as the `broker_key`. Where does it live (KMS / HSM / env), and how is it rotated? A rotation needs an overlap window where the broker accepts tokens from the previous key (or forces re-registration). v0: single key in config; harden in v0.2.
 - **Credential-vs-registry revocation latency.** Revocation flips `registrations.revoked_at`, checked per envelope — so revocation is immediate, but a stolen token works until then (and short of revocation, until `expires_at`). Shortening the credential TTL trades refresh friction for a tighter compromise window.
 - **DelegationToken storage at rest.** OS keychain, passphrase-encrypted file, or Hermes-identity-derived key? Tradeoff between usability and host-compromise resistance.
@@ -920,6 +951,8 @@ Some confabulation always leaks through. On the read side, weight each contribut
 §14.2–§14.7 make confabulation *detectably* unprofitable per answer. They do not, on their own, defeat the inverted threat model in §14.4: an **honest agent faithfully serving an adversarial user** who pre-loads a fabricated persona once and farms the per-answer bonus across every question forever. The override oracle (§14.5) — the system's strongest correspondence check — is structurally blind to this case, because a self-fabricating user never overrides their own agent. This section documents the planned defense. It is a **design for future iterations, not v0 behavior** — see *Current posture* at the end.
 
 The strategy is **kill the prize**, in two composable halves: cap the farmable reward (volume decay), and put the bonus at risk until the identity has earned trust (tiered vesting, unlocked by externally-verified data).
+
+**Payout eligibility starts with a public agent credential.** The v0 Hearme-scoped DelegationToken is the right primitive for private answering, but it is not enough for non-discretionary money movement: a Byzantine broker can fabricate private `registrations` rows unless payout settlement has portable evidence that the payee is a real human-backed agent. Therefore the first v1 trust unlock for real withdrawable payouts is linking a public Self Agent ID / ERC-8004 credential (§1.4.1, §8.1.1). The other trust tiers below then decide payout volume, vesting depth, and bonus eligibility; the public agent credential decides whether the settlement layer can pay at all without trusting broker-inserted rows.
 
 **The bond is the user's own withheld bonus, not posted cash.** A literal "post collateral to participate" bond inverts the platform's promise (you get *paid*; you do not pay to play) and would exclude exactly the low-income and censored users VISION §5 exists for. Instead, a fraction of every grounding bonus `β` (§14.2) is **retained in a per-identity vesting escrow** and released only after the identity completes more clean answers without an integrity strike. No cash is ever deposited — the "bond" is earnings-in-escrow, slashable on a detected failure. This **auto-sizes the stake to extraction**: the more you farm, the larger your unvested pipeline at risk. An honest user (strike-probability ≈ 0) loses nothing but a short delay measured in fractions of a cent.
 
