@@ -1,0 +1,22 @@
+# CI end-to-end overlay.
+#
+# Use explicitly on top of the base compose file:
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build \
+#     postgres migrator self-bridge broker
+#
+# The base file already runs the broker in dev mode (HEARME_BROKER_DEV_MODE=1)
+# and the self-bridge in mock-passport mode, which is exactly what an ephemeral
+# CI stack wants. The only thing this overlay adds is the phone-free onboarding
+# bypass: HEARME_BROKER_DEV_INSECURE_REGISTER=1 mounts POST /v1/dev/register,
+# which mints a broker-signed DelegationToken for a synthetic identity without
+# any Self proof (see packages/broker/src/routes/dev.ts and docs/E2E_TESTING.md).
+# Real Ed25519 keys, real signed envelopes, real eligibility + aggregate logic —
+# only the proof-of-personhood step is skipped. NEVER use this overlay anywhere
+# public; the staging overlay (docker-compose.staging.yml) deliberately leaves
+# the bypass off and fails closed if a dev default leaks through.
+services:
+  broker:
+    environment:
+      # DANGER — testing only. Mounts the synthetic-identity registration route
+      # so a fresh agent can onboard end-to-end without a phone in CI.
+      HEARME_BROKER_DEV_INSECURE_REGISTER: "1"

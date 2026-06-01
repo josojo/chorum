@@ -159,3 +159,79 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  e2e:
+    name: e2e (clean Hermes agent answers a question)
+    runs-on: ubuntu-latest
+    # The most lifelike check: spin up the real server stack, install a clean
+    # Hermes agent + the hearme plugin, onboard a fresh identity (phone-free dev
+    # bypass), and have it answer a seeded question — asserting the broker
+    # accepts the signed envelope and the aggregate moves. Everything is real
+    # except proof-of-personhood (and, per the model-bypass design, the answer is
+    # submitted via the binary the plugin shells out to rather than an LLM run).
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/skill
+      - name: Build the hearme-skill binary
+        working-directory: packages/skill
+        run: cargo build --release --locked
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Python + Hermes deps
+        # cryptography: the one-time agent keypair in ci-e2e.sh.
+        # hermes-agent: the real, clean agent we install the plugin into.
+        run: pip install --quiet cryptography "hermes-agent==0.15.2"
+
+      - name: Bring up the server stack (with the CI dev-register overlay)
+        # Only the services the e2e needs — the classifier wants an OpenRouter
+        # key and the web UI isn't asserted here, so both are left out.
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml \
+            up -d --build postgres migrator self-bridge broker
+
+      - name: Answer a question end-to-end (broker pipeline)
+        env:
+          BROKER_URL: http://127.0.0.1:8000
+          HEARME_BIN: packages/skill/target/release/hearme-skill
+          HEARME_SKILL_ROOT_DIR: ${{ github.workspace }}/.hermes/hearme
+        run: scripts/ci-e2e.sh
+
+      - name: Install the hearme plugin into the clean Hermes agent
+        run: |
+          packages/skill/target/release/hearme-skill install --host hermes --no-restart
+
+      - name: Assert Hermes recognizes and enables the plugin
+        run: |
+          set -euo pipefail
+          echo "-- hermes --version"
+          timeout 120 hermes --version </dev/null || true
+          echo "-- hermes plugins list (before enable)"
+          timeout 120 hermes plugins list </dev/null | tee plugins.txt
+          grep -qi hearme plugins.txt || { echo "FATAL: Hermes did not list the hearme plugin" >&2; exit 1; }
+          timeout 120 hermes plugins enable hearme </dev/null || true
+          echo "-- hermes plugins list (after enable)"
+          timeout 120 hermes plugins list </dev/null | tee plugins-after.txt
+          grep -qi hearme plugins-after.txt || { echo "FATAL: hearme missing after enable" >&2; exit 1; }
+
+      - name: Assert the gateway shim wires its tools + cron
+        run: |
+          python3 scripts/ci-hermes-plugin-load.py "$HOME/.hermes/plugins/hearme/__init__.py"
+
+      - name: Dump broker + bridge logs on failure
+        if: failure()
+        run: |
+          echo "=== broker ===";      docker logs hearme-broker      2>&1 | tail -n 200 || true
+          echo "=== self-bridge ==="; docker logs hearme-self-bridge 2>&1 | tail -n 100 || true
+          echo "=== postgres ===";    docker logs hearme-postgres    2>&1 | tail -n 50  || true
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
