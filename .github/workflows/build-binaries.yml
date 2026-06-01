@@ -5,15 +5,19 @@ name: build-binaries
 # attach both binaries plus install.sh to the GitHub Release. Each arch is built
 # natively on a runner of that arch (no cross-compilation; rusqlite's bundled
 # SQLite needs a C compiler, which the GitHub runners provide).
+#
+# Runs on push to main (catch release-build / aarch64 breakage post-merge) and on
+# version tags (the actual release). Not on PRs: the e2e job in ci.yml already
+# builds its own binary, and per-PR cross-arch release builds aren't worth the
+# cost. No `paths` filter — it would also gate tag pushes and could skip a
+# release build whose tagged commit happens not to touch packages/skill.
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
-  pull_request:
-    paths:
-      - "packages/skill/**"
-      - ".github/workflows/build-binaries.yml"
   workflow_dispatch:
 
 permissions:
