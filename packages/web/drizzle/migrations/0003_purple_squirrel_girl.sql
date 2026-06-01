@@ -1,0 +1,2 @@
+ALTER TABLE "aggregates" ADD COLUMN "no_signal_total" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "aggregates" ADD COLUMN "no_signal_by_predicate" jsonb DEFAULT '{}'::jsonb NOT NULL;

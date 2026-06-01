@@ -101,6 +101,9 @@ export default async function QuestionPage({ params }: PageProps) {
   const totalAnswers = aggRows[0]?.totalAnswers ?? 0;
   const byPredicate =
     (aggRows[0]?.byPredicate as ByPredicate | null) ?? ({} as ByPredicate);
+  const noSignalTotal = aggRows[0]?.noSignalTotal ?? 0;
+  const noSignalByPredicate =
+    (aggRows[0]?.noSignalByPredicate as Record<string, number> | null) ?? {};
 
   // `options` is jsonb in the DB; the Drizzle type-cast keeps callers honest
   // but the row may legitimately be missing in old fixtures — fall back to
@@ -126,6 +129,8 @@ export default async function QuestionPage({ params }: PageProps) {
       }}
       totalAnswers={totalAnswers}
       byPredicate={byPredicate}
+      noSignalTotal={noSignalTotal}
+      noSignalByPredicate={noSignalByPredicate}
     />
   );
 }

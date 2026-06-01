@@ -184,7 +184,7 @@ describe("POST /v1/envelopes (uniqueness + aggregate)", () => {
 
   it("stores no_signal and it does not count as signal (§1.14 / §15.4)", async (ctx) => {
     if (!pg) return ctx.skip();
-    const tok = await devToken({ uid: "self:e-ns" });
+    const tok = await devToken({ uid: "self:e-ns", nationality: "DE", thresholds: [18, 25, 35] });
     const question = await insertQuestion({});
     // no_signal is unsigned metadata; the agent_signature is unchanged, so we
     // just set the flag on an otherwise-valid envelope (empty answer per §1.14).
@@ -204,6 +204,40 @@ describe("POST /v1/envelopes (uniqueness + aggregate)", () => {
       payload: { delegation_token: tok },
     })).json();
     expect(elig).toMatchObject({ total_answers: 1, signal_answers: 0 });
+
+    // First-class aggregation (§1.14): counted in total + the dedicated
+    // no_signal fields, but NOT in the per-option by_predicate tallies.
+    const agg = (await db.execute(sql`
+      SELECT total_answers, by_predicate, no_signal_total, no_signal_by_predicate
+      FROM aggregates WHERE question_id = ${question.id}
+    `)) as unknown as Array<{
+      total_answers: number;
+      by_predicate: Record<string, unknown>;
+      no_signal_total: number;
+      no_signal_by_predicate: Record<string, number>;
+    }>;
+    expect(Number(agg[0].total_answers)).toBe(1);
+    expect(Number(agg[0].no_signal_total)).toBe(1);
+    // dev-register (DE) discloses region:EU + country:DE → each gets a no_signal
+    // count of 1, and the option tallies stay empty.
+    expect(agg[0].no_signal_by_predicate).toMatchObject({ "region:EU": 1, "country:DE": 1 });
+    expect(agg[0].by_predicate).toEqual({});
+  });
+
+  it("a signal answer leaves no_signal aggregates empty", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const tok = await devToken({ uid: "self:e-sig" });
+    const question = await insertQuestion({});
+    await app.inject({
+      method: "POST",
+      url: "/v1/envelopes",
+      payload: makeEnvelope(tok, { questionId: question.id, answer: "yes", nonce: question.nonce }),
+    });
+    const agg = (await db.execute(sql`
+      SELECT no_signal_total, no_signal_by_predicate FROM aggregates WHERE question_id = ${question.id}
+    `)) as unknown as Array<{ no_signal_total: number; no_signal_by_predicate: Record<string, number> }>;
+    expect(Number(agg[0].no_signal_total)).toBe(0);
+    expect(agg[0].no_signal_by_predicate).toEqual({});
   });
 
   it("rejects a nonce mismatch and a bad agent signature", async (ctx) => {

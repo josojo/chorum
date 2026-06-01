@@ -116,6 +116,7 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
         answer: envelope.answer,
         disclosedPredicates: token.disclosed_predicates,
         options: question.options,
+        noSignal: envelope.no_signal,
       });
     });
     if (duplicate) return ack(false, RejectionReason.DUPLICATE);

@@ -125,8 +125,19 @@ export const aggregates = pgTable("aggregates", {
   questionId: uuid("question_id")
     .primaryKey()
     .references(() => questions.id),
+  // Grand count of accepted envelopes, no_signal included.
   totalAnswers: integer("total_answers").notNull().default(0),
+  // Per-(predicate,value) bucket option tallies — SIGNAL answers only, e.g.
+  // {"region:EU": {"yes": 30, "no": 12}}. no_signal envelopes are excluded here
+  // and counted in the dedicated fields below (§1.14), so the option bars stay
+  // a clean breakdown of formed views.
   byPredicate: jsonb("by_predicate").notNull().default({}),
+  // First-class "no formed view" aggregation (§1.14). `noSignalTotal` is the
+  // headline count of no_signal envelopes; `noSignalByPredicate` is the same
+  // count split per disclosed bucket, e.g. {"region:EU": 5, "age_band:25-34": 3},
+  // so consumers can see "X% of EU 25-34 had no formed view".
+  noSignalTotal: integer("no_signal_total").notNull().default(0),
+  noSignalByPredicate: jsonb("no_signal_by_predicate").notNull().default({}),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

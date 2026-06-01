@@ -15,7 +15,7 @@ import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 
 import type { Db } from "./db";
 import type * as schema from "./schema";
-import { classifyAnswer, computeByPredicate } from "./aggregates";
+import { classifyAnswer, computeByPredicate, computeNoSignal } from "./aggregates";
 
 export type Tx = PgTransaction<
   PostgresJsQueryResultHKT,
@@ -415,35 +415,59 @@ export async function incrementAggregate(
     answer: string;
     disclosedPredicates: Record<string, string>;
     options?: readonly string[];
+    // §1.14: a no-signal envelope counts toward total_answers and the dedicated
+    // no_signal fields, but never toward the per-option by_predicate tallies.
+    noSignal?: boolean;
   },
 ): Promise<void> {
   const options = args.options && args.options.length ? args.options : ["yes", "no"];
+  const noSignal = args.noSignal === true;
   await db.execute(
     sql`SELECT pg_advisory_xact_lock(hashtextextended(${String(args.questionId)}::text, 0))`,
   );
   const rows = (await db.execute(sql`
-    SELECT total_answers, by_predicate
+    SELECT total_answers, by_predicate, no_signal_total, no_signal_by_predicate
     FROM aggregates
     WHERE question_id = ${args.questionId}
     FOR UPDATE
-  `)) as unknown as Rows<{ total_answers: number; by_predicate: unknown }>;
+  `)) as unknown as Rows<{
+    total_answers: number;
+    by_predicate: unknown;
+    no_signal_total: number;
+    no_signal_by_predicate: unknown;
+  }>;
   const row = rows[0];
 
-  const choice = classifyAnswer(args.answer, options);
+  const predEntries = Object.entries(args.disclosedPredicates ?? {});
   const empty: Record<string, number> = {};
   for (const o of options) empty[o] = 0;
+
+  // Signal answers contribute to the per-option buckets; no_signal contributes
+  // to the dedicated no_signal_by_predicate map instead.
   const delta: Record<string, Record<string, number>> = {};
-  for (const [k, v] of Object.entries(args.disclosedPredicates ?? {})) {
-    const key = `${k}:${v}`;
-    const bucket = delta[key] ?? { ...empty };
-    delta[key] = bucket;
-    if (choice !== null) bucket[choice] = (bucket[choice] ?? 0) + 1;
+  const nsDelta: Record<string, number> = {};
+  if (noSignal) {
+    for (const [k, v] of predEntries) nsDelta[`${k}:${v}`] = 1;
+  } else {
+    const choice = classifyAnswer(args.answer, options);
+    for (const [k, v] of predEntries) {
+      const key = `${k}:${v}`;
+      const bucket = delta[key] ?? { ...empty };
+      delta[key] = bucket;
+      if (choice !== null) bucket[choice] = (bucket[choice] ?? 0) + 1;
+    }
   }
 
   if (!row) {
     await db.execute(sql`
-      INSERT INTO aggregates (question_id, total_answers, by_predicate, updated_at)
-      VALUES (${args.questionId}, 1, ${JSON.stringify(delta)}::jsonb, now())
+      INSERT INTO aggregates (
+        question_id, total_answers, by_predicate,
+        no_signal_total, no_signal_by_predicate, updated_at
+      )
+      VALUES (
+        ${args.questionId}, 1, ${JSON.stringify(delta)}::jsonb,
+        ${noSignal ? 1 : 0}, ${JSON.stringify(nsDelta)}::jsonb, now()
+      )
     `);
     return;
   }
@@ -462,10 +486,22 @@ export async function incrementAggregate(
     merged[key] = out;
   }
 
+  const rawNs = row.no_signal_by_predicate;
+  const parsedNs: Record<string, number> =
+    typeof rawNs === "string"
+      ? JSON.parse(rawNs)
+      : ((rawNs ?? {}) as Record<string, number>);
+  const mergedNs: Record<string, number> = { ...parsedNs };
+  for (const [key, n] of Object.entries(nsDelta)) {
+    mergedNs[key] = (Number(mergedNs[key]) || 0) + n;
+  }
+
   await db.execute(sql`
     UPDATE aggregates
     SET total_answers = total_answers + 1,
         by_predicate = ${JSON.stringify(merged)}::jsonb,
+        no_signal_total = no_signal_total + ${noSignal ? 1 : 0},
+        no_signal_by_predicate = ${JSON.stringify(mergedNs)}::jsonb,
         updated_at = now()
     WHERE question_id = ${args.questionId}
   `);
@@ -476,10 +512,14 @@ export async function incrementAggregate(
 // caller holds the advisory lock / is inside the deletion transaction.
 async function recomputeAggregate(db: Executor, questionId: string): Promise<void> {
   const remaining = (await db.execute(sql`
-    SELECT answer, disclosed_predicates
+    SELECT answer, no_signal, disclosed_predicates
     FROM envelopes
     WHERE question_id = ${questionId}
-  `)) as unknown as Rows<{ answer: string; disclosed_predicates: unknown }>;
+  `)) as unknown as Rows<{
+    answer: string;
+    no_signal: boolean;
+    disclosed_predicates: unknown;
+  }>;
   const total = remaining.length;
   if (total === 0) {
     await db.execute(sql`DELETE FROM aggregates WHERE question_id = ${questionId}`);
@@ -489,19 +529,31 @@ async function recomputeAggregate(db: Executor, questionId: string): Promise<voi
     SELECT options FROM questions WHERE id = ${questionId}
   `)) as unknown as Rows<{ options: unknown }>;
   const options = normalizeOptions(optionsRows[0]?.options);
+  const envRows = remaining.map((r) => ({
+    answer: r.answer,
+    no_signal: r.no_signal === true,
+    disclosed_predicates: r.disclosed_predicates as Record<string, string>,
+  }));
   const byPredicate = computeByPredicate(
-    remaining.map((r) => ({
-      answer: r.answer,
-      disclosed_predicates: r.disclosed_predicates as Record<string, string>,
-    })),
+    // No-signal answers must not land in the per-option tallies (§1.14).
+    envRows.filter((r) => !r.no_signal),
     options,
   );
+  const noSignal = computeNoSignal(envRows);
   await db.execute(sql`
-    INSERT INTO aggregates (question_id, total_answers, by_predicate, updated_at)
-    VALUES (${questionId}, ${total}, ${JSON.stringify(byPredicate)}::jsonb, now())
+    INSERT INTO aggregates (
+      question_id, total_answers, by_predicate,
+      no_signal_total, no_signal_by_predicate, updated_at
+    )
+    VALUES (
+      ${questionId}, ${total}, ${JSON.stringify(byPredicate)}::jsonb,
+      ${noSignal.total}, ${JSON.stringify(noSignal.byPredicate)}::jsonb, now()
+    )
     ON CONFLICT (question_id) DO UPDATE
     SET total_answers = EXCLUDED.total_answers,
         by_predicate = EXCLUDED.by_predicate,
+        no_signal_total = EXCLUDED.no_signal_total,
+        no_signal_by_predicate = EXCLUDED.no_signal_by_predicate,
         updated_at = now()
   `);
 }

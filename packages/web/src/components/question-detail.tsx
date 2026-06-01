@@ -6,7 +6,7 @@
 // continent-bucketed, a ranked country/region list otherwise), then Age,
 // then any remaining dimensions in a generic chart.
 
-import { AggregateChart, isTally, type ByPredicate } from "./aggregate-chart";
+import { AggregateChart, isTally, tallyTotal, type ByPredicate } from "./aggregate-chart";
 import { AgeChart } from "./age-chart";
 import { CountryBreakdown } from "./country-breakdown";
 import { WorldMap, type ContinentDatum } from "./world-map";
@@ -37,6 +37,11 @@ export type QuestionDetailProps = {
   };
   totalAnswers: number;
   byPredicate: ByPredicate;
+  // First-class "no formed view" aggregation (§1.14). Optional so older callers
+  // / fixtures render unchanged. `noSignalTotal` is the headline count;
+  // `noSignalByPredicate` is the per-bucket split, e.g. {"region:EU": 5}.
+  noSignalTotal?: number;
+  noSignalByPredicate?: Record<string, number>;
 };
 
 const KNOWN_CONTINENTS: ReadonlyArray<Continent> = [
@@ -214,8 +219,93 @@ function SectionHeader({
   );
 }
 
+/**
+ * First-class "no formed view" aggregation (§1.14). A no_signal envelope is real
+ * data — the silent-majority finding forced polls hide — so we surface it as its
+ * own breakdown: an overall rate plus a per-group rate, where each group's
+ * denominator is its signal answers (from `byPredicate`) plus its no_signal
+ * count. Renders nothing when nobody abstained.
+ */
+function NoFormedView({
+  noSignalTotal,
+  totalAnswers,
+  byPredicate,
+  noSignalByPredicate,
+}: {
+  noSignalTotal: number;
+  totalAnswers: number;
+  byPredicate: ByPredicate;
+  noSignalByPredicate: Record<string, number>;
+}) {
+  if (noSignalTotal <= 0) return null;
+  const overallPct =
+    totalAnswers > 0 ? Math.round((noSignalTotal / totalAnswers) * 100) : 0;
+
+  const groups: Record<
+    string,
+    Array<{ value: string; count: number; rate: number }>
+  > = {};
+  for (const [key, raw] of Object.entries(noSignalByPredicate)) {
+    const count = Number(raw);
+    if (!Number.isFinite(count) || count <= 0) continue;
+    const idx = key.indexOf(":");
+    const dim = idx === -1 ? "other" : key.slice(0, idx);
+    const value = idx === -1 ? key : key.slice(idx + 1);
+    const signal = tallyTotal(byPredicate[key]);
+    const denom = signal + count;
+    const rate = denom > 0 ? Math.round((count / denom) * 100) : 0;
+    (groups[dim] ??= []).push({ value, count, rate });
+  }
+  for (const dim of Object.keys(groups)) {
+    groups[dim].sort((a, b) => b.rate - a.rate);
+  }
+  const dims = Object.keys(groups).sort();
+
+  return (
+    <section className="space-y-4">
+      <SectionHeader title="No formed view" subtitle={`${overallPct}% overall`} />
+      <p className="text-sm text-slate-600">
+        <span className="font-semibold tabular-nums text-slate-900">
+          {noSignalTotal}
+        </span>{" "}
+        of {totalAnswers}{" "}
+        {totalAnswers === 1 ? "respondent" : "respondents"} ({overallPct}%) had no
+        formed view — their agent had nothing to go on. This is a real result, not
+        a non-response.
+      </p>
+      {dims.length > 0 ? (
+        <div className="space-y-4">
+          {dims.map((dim) => (
+            <div key={dim}>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                {dim.replace(/_/g, " ")}
+              </h3>
+              <ul className="space-y-1.5">
+                {groups[dim].map((g) => (
+                  <li
+                    key={g.value}
+                    className="flex items-center justify-between gap-3 text-sm"
+                  >
+                    <span className="truncate text-slate-700">{g.value}</span>
+                    <span className="shrink-0 tabular-nums text-slate-500">
+                      {g.rate}%{" "}
+                      <span className="text-slate-400">({g.count})</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function QuestionDetail(props: QuestionDetailProps) {
   const { question, totalAnswers, byPredicate } = props;
+  const noSignalTotal = props.noSignalTotal ?? 0;
+  const noSignalByPredicate = props.noSignalByPredicate ?? {};
   const options = question.options;
   const parts = partition(byPredicate);
 
@@ -284,6 +374,17 @@ export function QuestionDetail(props: QuestionDetailProps) {
                 {totalAnswers === 1 ? "verified answer" : "verified answers"}
               </span>
             </span>
+            {noSignalTotal > 0 ? (
+              <span
+                title="Respondents whose agent had no formed view (§1.14)"
+                className="inline-flex items-baseline gap-1.5 rounded-full bg-white/80 px-3 py-1 shadow-sm ring-1 ring-slate-200"
+              >
+                <span className="text-base font-semibold text-slate-900 tabular-nums">
+                  {noSignalTotal}
+                </span>
+                <span className="text-slate-600">no formed view</span>
+              </span>
+            ) : null}
             <ShareButton title={question.text} />
             {question.status === "open" ? (
               <span className="sm:ml-auto">
@@ -294,7 +395,7 @@ export function QuestionDetail(props: QuestionDetailProps) {
         </div>
       </header>
 
-      {!hasAnyBreakdown ? (
+      {!hasAnyBreakdown && noSignalTotal === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 p-8 text-center text-sm text-slate-600">
           No answers yet — people&apos;s agents are still responding. This page
           updates on its own as results come in.
@@ -368,6 +469,13 @@ export function QuestionDetail(props: QuestionDetailProps) {
           </div>
         </section>
       ) : null}
+
+      <NoFormedView
+        noSignalTotal={noSignalTotal}
+        totalAnswers={totalAnswers}
+        byPredicate={byPredicate}
+        noSignalByPredicate={noSignalByPredicate}
+      />
     </article>
   );
 }

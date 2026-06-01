@@ -63,6 +63,31 @@ function emptyTally(options: readonly string[]): Record<string, number> {
 export interface EnvelopeRow {
   answer: unknown;
   disclosed_predicates: Record<string, string> | string | null;
+  // §1.14: true when the agent had no formed view. Optional for back-compat with
+  // rows/fixtures predating the column (treated as a normal signal answer).
+  no_signal?: boolean;
+}
+
+// Pure function, the no_signal counterpart of computeByPredicate (§1.14). Each
+// no_signal envelope contributes 1 to every disclosed (predicate, value) bucket;
+// signal answers contribute nothing. Returns {total, byPredicate}.
+export function computeNoSignal(envelopes: Iterable<EnvelopeRow>): {
+  total: number;
+  byPredicate: Record<string, number>;
+} {
+  let total = 0;
+  const byPredicate: Record<string, number> = {};
+  for (const env of envelopes) {
+    if (env.no_signal !== true) continue;
+    total += 1;
+    let preds = env.disclosed_predicates ?? {};
+    if (typeof preds === "string") preds = JSON.parse(preds);
+    for (const [k, v] of Object.entries(preds as Record<string, string>)) {
+      const key = `${k}:${v}`;
+      byPredicate[key] = (byPredicate[key] ?? 0) + 1;
+    }
+  }
+  return { total, byPredicate };
 }
 
 // Pure function. Each envelope contributes its classified option to every
