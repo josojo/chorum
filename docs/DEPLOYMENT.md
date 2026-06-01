@@ -61,6 +61,58 @@ ARCHITECTURE §13 lists this as the broker-signing-key open question; until
 rotation is automated, plan downtime + force re-registration of all live
 delegations on key change.
 
+### 1.1 Where the secrets live: AWS SSM Parameter Store
+
+The deployed boxes (staging + prod, both EC2 in `eu-central-1`) do **not** keep
+a hand-maintained `.env` as the source of truth. Every secret lives in **AWS
+SSM Parameter Store** under a per-env path:
+
+| Path | Type | Holds |
+|---|---|---|
+| `/hearme/staging/HEARME_STAGING_*` | `SecureString` (passwords, signing key, OpenRouter key) / `String` (host, callback URL) | staging |
+| `/hearme/prod/HEARME_PROD_*` | same split | prod |
+
+The leaf of each path is the **exact** env var name the compose overlays
+reference (`docker-compose.staging.yml` / `docker-compose.prod.yml`), so the
+on-box `.env` is just a projection of `/hearme/<env>/*`. The full key list per
+env is in `staging.env.example` / `prod.env.example`.
+
+**Seed / rotate** — fill a local copy of the example file, push it, delete it:
+
+```sh
+scripts/push-secrets-to-ssm.sh staging ./staging.env   # or: prod ./prod.env
+shred -u ./staging.env
+```
+
+Then redeploy so the box picks up the new value.
+
+**Staging deploy** renders the secrets automatically: `deploy-staging.yml`
+streams `scripts/render-secrets-env.sh staging` onto the box as `~/hearme/.env`
+before `docker compose up` (the runner already holds the `hearme-staging` AWS
+creds). Rotating a staging secret = change it in SSM, then push to `main` (or
+re-run the workflow).
+
+**Prod deploy is manual** — render the `.env` onto the box yourself, then bring
+the stack up:
+
+```sh
+scripts/render-secrets-env.sh prod \
+  | ssh -i ~/.ssh/hearme-prod.pem ubuntu@<prod-ip> 'umask 077; cat > ~/hearme/.env'
+ssh -i ~/.ssh/hearme-prod.pem ubuntu@<prod-ip> \
+  'cd ~/hearme && git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans'
+```
+
+**IAM** — the principal that renders secrets needs, scoped to its env's path:
+
+```
+ssm:GetParametersByPath   arn:aws:ssm:eu-central-1:<acct>:parameter/hearme/<env>/*
+kms:Decrypt               the key SSM used (alias/aws/ssm by default)
+```
+
+`push-secrets-to-ssm.sh` additionally needs `ssm:PutParameter` + `kms:Encrypt`.
+The staging deploy uses the `hearme-staging` IAM user (already wired into
+`deploy-staging.yml`); prod rendering uses your operator credentials.
+
 ---
 
 ## 2. Rate limiting (already on by default)
