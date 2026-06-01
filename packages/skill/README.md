@@ -1,529 +1,205 @@
 # hearme-skill
 
-The Hearme answering skill — a local agent that answers questions on the user's
-behalf, signs them, and submits them to the broker. It runs on **Hermes** and
-**OpenClaw** from one shared core.
+The Hearme answering skill — a local agent that answers public questions on the
+user's behalf, signs them with an Ed25519 agent key, and submits them to the
+broker. It wires into **Hermes** and **OpenClaw** from one shared core.
 
-See [ARCHITECTURE.md §6-8](../../ARCHITECTURE.md) for the canonical spec this
-package implements. This README documents how to install, run, and test it.
+This package is a **single self-contained Rust binary** (`hearme-skill`). There
+is no Python or Node toolchain to install and no second codebase: the binary is
+the implementation, and each host gets a thin adapter that shells out to it.
 
-> **Just want to install it?** Jump to
-> [Install from a prebuilt binary](#install-from-a-prebuilt-binary-no-python-or-node) —
-> two commands, no Python or Node toolchain, same flow on Hermes and OpenClaw.
-> The sections below cover from-source / in-process installs and development.
+See [ARCHITECTURE.md §6-8](../../ARCHITECTURE.md) for the canonical spec. This
+README covers install, the CLI, how it wires into each host, configuration, and
+building from source.
 
-## Architecture overview
+> **Just want to install it?** Two commands, no toolchain — jump to
+> [Install](#install-prebuilt-binary).
 
-Seven linear layers (ARCHITECTURE.md §7). Each layer is one module; layers
-below never call layers above.
+## Why a Rust binary
 
-```
-        ┌────────────────────────┐
-   in   │  Channel (broker I/O)  │   out          broker.py
-        └────────────┬───────────┘
-                     │
-        ┌────────────▼───────────┐
-        │  Policy (gate)         │                policy.py
-        └────────────┬───────────┘
-                     │
-        ┌────────────▼───────────┐
-        │  Persona (projection)  │                persona.py + memory/
-        └────────────┬───────────┘
-                     │
-        ┌────────────▼───────────┐
-        │  Answerer (LLM)        │                answerer.py + llm/
-        └────────────┬───────────┘
-                     │
-        ┌────────────▼───────────┐
-        │  Envelope              │                envelope.py + delegation.py
-        │  (signs, binds nonce)  │                + crypto/
-        └────────────┬───────────┘
-                     │
-        ┌────────────▼───────────┐
-        │  Ledger (local SQLite) │                ledger.py
-        └────────────┬───────────┘
-                     │
-        ┌────────────▼───────────┐
-        │  UI (Hermes channels)  │                ui.py
-        └────────────────────────┘
-```
+The skill used to ship as a PyInstaller-frozen Python CLI (~30–50 MB). It is now
+a ~3 MB statically-featured Rust binary: TLS via rustls (no system OpenSSL),
+SQLite via the bundled amalgamation (FTS5 enabled), Ed25519 via `ed25519-dalek`,
+canonical JSON via key-sorted `serde_json`. The crypto is **byte-identical** to
+the TypeScript broker's verifier — the golden vectors in
+`packages/broker/tests/goldens.test.ts` are pinned as unit tests in
+[`src/canonical.rs`](src/canonical.rs) and [`src/crypto.rs`](src/crypto.rs).
 
-The DelegationToken is set up out-of-band by `onboarding.py` (§8) and lives
-encrypted on disk. **The Envelope layer is the only layer that reads it.**
-In particular, **the Answerer never sees the DelegationToken or
-`unique_identifier`** — enforced by the function signature in `answerer.py`
-and asserted by `tests/test_identity_inference_separation.py`.
-
-## Install + run
-
-The end-user install is the prebuilt binary —
-[Install from a prebuilt binary](#install-from-a-prebuilt-binary-no-python-or-node)
-(`curl … | sh`, then `hearme-skill install`, then `hearme-skill onboard …`). The
-rest of this section is the **from-source / development** path.
+## Install (prebuilt binary)
 
 ```bash
-# from packages/skill/  (development install)
-pip install -e '.[dev]'
-
-# 1. Generate the agent key, show the Self QR codes (one per age threshold),
-#    collect the proofs, and register with the broker (verify-once). Scan with
-#    the Self app (a mock passport works with SELF_MOCK_PASSPORT=1). Requires the
-#    self-bridge (packages/self-bridge) and the broker running.
-hearme-skill onboard --bridge-url http://localhost:8787 --broker-url http://localhost:8000
-
-# 2. (Dev only) Replay a captured proof fixture through /v1/register instead of
-#    scanning live (prints the broker-issued token):
-python ../../scripts/mock-onboard.py --from-bridge /tmp/bridge-result.json \
-    --broker-url http://localhost:8000 > /tmp/token.json
-hearme-skill accept-mock-delegation /tmp/token.json
-
-# 3. Configure policy (sample below). Hearme defaults to off.
-$EDITOR ~/.hermes/hearme/policy.yaml
-```
-
-In production this package is a **Hermes plugin**. Hermes discovers it via the
-`hermes_agent.plugins` entry point (`hearme = hearme_skill.plugin:register`)
-and calls `register(ctx)`, which exposes two tools — `hearme_list_open_questions`
-and `hearme_submit_answer` — under the `hearme` toolset. A Hermes **cron job**
-(`schedule.py`) fires on a schedule and the host agent answers open questions
-through those tools, **using its own configured model and memory**. There is no
-second model-provider API key and no model SDK imported here — see
-[Running inside Hermes](#running-inside-hermes).
-
-## Sample `policy.yaml`
-
-```yaml
-# ~/.hermes/hearme/policy.yaml
-#
-# All categories default to off (§1.1). `auto_answer` is the master switch for
-# the unattended cron flow: the tools only surface and accept a question when
-# the policy gate returns "answer", which requires `auto_answer: true`. Leave it
-# false and the agent will never auto-submit (the §1.12 override stays with you).
-
-topic_allowlist:
-  - coffee
-  - travel
-topic_blocklist:
-  - politics
-
-max_answers_per_day: 50
-min_payment: 0.0              # v0: ignored, no payment field on questions
-auto_answer: true            # required for the cron job to auto-submit
-auto_submit_window_seconds: 0 # legacy preview window for the dev loop only
-```
-
-## Configuration knobs (env vars, prefix `HEARME_SKILL_`)
-
-| Variable                                | Default                  | Meaning                                              |
-|-----------------------------------------|--------------------------|------------------------------------------------------|
-| `HEARME_SKILL_BROKER_URL`               | `http://localhost:8000`  | Where to find `hearme-broker`.                       |
-| `HEARME_SKILL_POLL_INTERVAL_SECONDS`    | `30`                     | Cadence for `GET /v1/questions/open`.               |
-| `HEARME_SKILL_AUTO_SUBMIT_WINDOW_SECONDS` | `0`                    | Default preview window (policy.yaml overrides).      |
-| `HEARME_SKILL_ROOT_DIR`                 | `~/.hermes/hearme/`      | Where keys, ledger, and token live.                  |
-
-`POLL_INTERVAL_SECONDS` / `AUTO_SUBMIT_WINDOW_SECONDS` apply only to the dev
-loop (`dev_runner`); the production path is the Hermes cron job, whose cadence
-is set with `hearme-skill schedule --schedule ...`. In the agentic tools,
-idempotency comes from the ledger (`has_submission`), not a polling cursor — so
-a question the agent skips reappears next cycle.
-
-## Privacy guarantees
-
-What the broker sees, per envelope (the five-field POST body in §8.5):
-`question_id`, `answer`, `nonce`, `delegation_token`, `agent_signature`.
-
-What the broker NEVER sees:
-- The user's raw memory / source quotes / chain-of-thought.
-- The `Answer.rationale` field (it never leaves the local ledger).
-- Demographic fields outside what's pre-baked into the DelegationToken's
-  `disclosed_predicates` at install time (§1.3).
-- Passport material (the skill never holds it; the phone does).
-- Whether a question is a honeypot (the skill doesn't even ask itself —
-  §1.7).
-
-Coercion resistance (§1.6): the skill emits no signed receipt beyond the
-envelope itself, ships no plaintext log off-device, and takes no
-screenshots. The local audit trail in `~/.hermes/hearme/ledger.sqlite` is
-the only persistence.
-
-## Testing
-
-```bash
-pytest
-```
-
-Mandatory tests (per ARCHITECTURE.md §12, all in `tests/`):
-
-- `test_policy.py` — deterministic gate decisions.
-- `test_ledger.py` — schema + idempotency.
-- `test_delegation_lifecycle.py` — load / expiry / refresh-window detection.
-- `test_envelope_signing.py` — property: flip any byte → signature rejects.
-- `test_persona_projection.py` — snapshot tests; no demographics or raw IDs.
-- `test_answerer.py` — fake LLM client, no live calls.
-- `test_identity_inference_separation.py` — answerer double asserts on call
-  args; can never receive DelegationToken / `unique_identifier`.
-- `test_no_phone_contact.py` — 100 simulated answers, phone bridge mock
-  receives ZERO calls (§1.13).
-- `test_tools.py` — the framework-agnostic answering tools: policy backstop,
-  replay-safety, and that the delegation token never leaves `submit_answer`.
-
-Per §12, **no live LLM calls in CI**. All Answerer tests use the
-deterministic `FakeLLMClient` in `llm/client.py`.
-
-## Install from a prebuilt binary (no Python or Node)
-
-The skill is also published as a single self-contained Linux binary, so users
-don't need a Python or Node toolchain — just download it and add the skill. The
-same binary backs **both** hosts (it's the frozen `hearme-skill` CLI), so the
-flow is identical whether you run Hermes or OpenClaw:
-
-```bash
-# 1. Download the binary for this machine (Linux x86_64 / aarch64) and make it
-#    runnable. Installs to ~/.local/bin/hearme-skill.
+# 1. Download the binary for this machine (Linux x86_64 / aarch64). Installs to
+#    ~/.local/bin/hearme-skill. No Python, pip, or Node required.
 curl -fsSL https://github.com/josojo/hearme/releases/latest/download/install.sh | sh
 
-# 2. Add the skill/plugin to whatever agent is installed (auto-detects Hermes
-#    and/or OpenClaw; use --host to force one).
+# 2. Wire it into whatever agent host is installed (auto-detects Hermes and/or
+#    OpenClaw; use --host hermes|openclaw|both to force one).
 hearme-skill install
 
 # 3. One-time identity setup (Self verify-once; needs the broker + self-bridge).
 hearme-skill onboard --broker-url <url> --bridge-url <url>
 ```
 
-How the binary wires into each host:
+> **Linux-first.** Only Linux x86_64/aarch64 binaries are published (the matrix
+> in `.github/workflows/build-binaries.yml` is easy to extend). On other
+> platforms, build from source (below). `install.sh` drops the binary in
+> `~/.local/bin`; if that's not on the host's `PATH`, add it or point the
+> generated Hermes shim / OpenClaw `SKILL.md` at the absolute path.
 
-- **OpenClaw** reads the `SKILL.md` (dropped at `~/.openclaw/skills/hearme/`) and
-  the agent runs the binary via its `exec` tool — exactly the
-  [Running inside OpenClaw](#running-inside-openclaw) path, no `pip`/`npx`.
-- **Hermes** gets a generated **subprocess shim** plugin at
-  `~/.hermes/plugins/hearme/` whose two tool handlers shell out to the binary.
-  Because the logic lives in the binary, the gateway needs **no** pip-installed
-  `hearme_skill` package — the shim is stdlib-only and registers the same
-  `hearme_list_open_questions` / `hearme_submit_answer` tools (and self-schedules
-  the cron job using the gateway's `cron` package).
-
-So there is one implementation (this Python codebase, frozen into a binary) and a
-thin per-host adapter — no second codebase to keep in sync.
-
-The binaries are built and published by `.github/workflows/build-binaries.yml`
-(PyInstaller on `ubuntu-latest` + `ubuntu-24.04-arm`) and attached to each `v*`
-GitHub Release. Build locally with `pip install '.[build]' && pyinstaller
-pyinstaller/hearme-skill.spec` (→ `dist/hearme-skill`).
-
-> **Caveats (Linux-first, flagged).** Only Linux x86_64/aarch64 binaries are
-> published today — macOS/Windows still use the `pip install` path (the matrix
-> in the workflow is easy to extend). `install.sh` drops the binary in
-> `~/.local/bin`; if that's not on the gateway's `PATH`, either add it or point
-> the OpenClaw `SKILL.md` / Hermes shim at the absolute path. Unsigned binaries
-> on macOS would need notarization (n/a for the Linux builds here).
-
-## Running inside Hermes
-
-Production answering runs inside the user's existing [Hermes
-agent](https://github.com/NousResearch/hermes) (>= 0.14). The agent already has
-a model + provider configured in `~/.hermes/config.yaml`, so Hearme adds **no
-new API key** — inference is whatever model the user already runs.
-
-> **Easiest path:** use the
-> [prebuilt binary](#install-from-a-prebuilt-binary-no-python-or-node) —
-> `hearme-skill install` drops a self-contained subprocess-shim plugin that
-> needs **no** `pip install` into the gateway venv. The steps below are the
-> from-source install that registers the **in-process** plugin (slightly faster,
-> no per-call subprocess; pick this if you're developing the skill or already
-> manage the gateway venv).
-
-```bash
-# 1. Install hearme-skill into the SAME venv your hermes-gateway runs from.
-#    Find that Python via the cgroup line of `systemctl --user status
-#    hermes-gateway` (typically `/path/to/.venv/bin/python`):
-GATEWAY_PY=/home/youruser/.venv/bin/python   # adjust to your install
-GATEWAY_BIN=$(dirname "$GATEWAY_PY")          # same venv's bin/ dir
-"$GATEWAY_PY" -m pip install \
-  'git+https://github.com/josojo/hearme.git#subdirectory=packages/skill'
-#    Developing against a local checkout? Use an editable install instead:
-#    "$GATEWAY_PY" -m pip install -e packages/skill
-#    The venv has no pip? Bootstrap it once:
-#    "$GATEWAY_PY" -m ensurepip --upgrade
-
-# 2. Write the Hermes plugin drop-in (~/.hermes/plugins/hearme/) and restart
-#    the gateway so it picks up the freshly-installed package.
-#
-#    `hearme-skill` is a console script pip dropped into the venv's bin/ dir;
-#    it is not a python -m module. Call the executable directly with its
-#    absolute path so you pick the gateway venv's copy (not whatever's on
-#    your shell $PATH from pyenv or another venv). The module form
-#    `"$GATEWAY_PY" -m hearme_skill.skill install-plugin` works too — note
-#    the UNDERSCORE in the module name; the dist name uses a hyphen but
-#    Python modules cannot.
-"$GATEWAY_BIN/hearme-skill" install-plugin
-
-# 3. Opt the plugin in. Hermes 0.14 doesn't auto-enable user plugins; until
-#    `hearme` is in `plugins.enabled` of ~/.hermes/config.yaml the gateway
-#    discovers it (it shows in `hermes plugins list`) but skips loading it
-#    (no entry in `hermes tools list`). `hermes plugins enable` updates the
-#    config and reloads the gateway.
-hermes plugins enable hearme
-
-# 4. Onboard once (verify-once with Self; needs the broker + self-bridge).
-#    Generates the agent key, walks the Self QR flow, registers with the
-#    broker, persists the DelegationToken, and (if a token exists)
-#    self-registers the answering cron job.
-"$GATEWAY_BIN/hearme-skill" onboard \
-  --bridge-url http://localhost:8787 --broker-url http://localhost:8000
-
-# 5. Author your policy (see the sample above). `auto_answer: true` is what
-#    lets the cron job answer unattended.
-$EDITOR ~/.hermes/hearme/policy.yaml
-```
-
-Steps 1–4 are the install proper; step 5 is policy. Conceptually: (1) makes
-`hearme_skill` importable by the gateway, (2) registers it as a Hermes plugin
-on disk, (3) opts in so Hermes actually loads it, (4) wires your identity in
-and schedules the cron.
-
-> **Why the absolute paths?** Putting `/home/youruser/.venv/bin` on `$PATH`
-> turns `hearme-skill install-plugin` into the same command. If you do that,
-> just `hearme-skill install-plugin` works. But on a box where the gateway
-> runs as a systemd unit and you also have pyenv on `$PATH`, the bare name
-> can resolve to a `hearme-skill` from a *different* venv that doesn't have
-> the package — pinning the absolute path is the safe default.
-
-Verify with:
-
-```bash
-hermes plugins list | grep hearme
-hermes tools list   | grep hearme        # expect hearme_list_open_questions + _submit_answer
-```
-
-Already onboarded and just need to re-register the cron job? It's idempotent
-(`$GATEWAY_BIN` from step 1):
-
-```bash
-"$GATEWAY_BIN/hearme-skill" schedule              # default schedule (see schedule.py:DEFAULT_SCHEDULE)
-# "$GATEWAY_BIN/hearme-skill" schedule --schedule "0 * * * *"   # or a cron expression
-```
-
-`onboard` automatically persists the `--broker-url` / `--bridge-url` you
-onboarded against to `~/.hermes/.env` so the cron job (which starts in a fresh
-process and doesn't inherit your shell env) hits the same broker — otherwise it
-falls back to `http://localhost:8000` and the next `hearme_list_open_questions`
-call dies with `httpx.ConnectError: All connection attempts failed`. If you
-already onboarded without that, do a one-shot recovery (no need to re-onboard):
-
-```bash
-"$GATEWAY_BIN/hearme-skill" install-plugin \
-  --broker-url http://3.74.46.46:8000 \
-  --bridge-url http://3.74.46.46:8787
-```
-
-### Why this install shape (and not `hermes plugins install`)
-
-Hermes ships two builtin install commands; neither fits a monorepo Python plugin:
-
-- **`hermes skills install …`** is for SKILL.md files the agent reads as instructions — wrong subsystem. We're a plugin (Python code that registers tools).
-- **`hermes plugins install owner/repo`** clones the repo root, expects `plugin.yaml` at the top, and **does not pip-install dependencies**. Our `plugin.yaml` lives in `packages/skill/`, and we have third-party deps (`pynacl`, `pydantic`, `httpx`, …), so this path silently half-installs and never registers the tools. Hermes' own docs recommend pip-distribution for plugins with deps.
-
-So: one pip command (installs code + deps into the gateway venv) followed by `hearme-skill install-plugin` (writes the directory drop-in Hermes loads at boot). `onboard` chains them automatically.
-
-### Install troubleshooting
-
-- **Tools missing from `hermes tools list` after install.** Walk these in order:
-  1. The package isn't in the gateway's venv — confirm with
-     `"$GATEWAY_PY" -m pip show hearme-skill`. The gateway's Python is whatever
-     `systemctl --user status hermes-gateway` shows under cgroup.
-  2. The plugin drop-in under `~/.hermes/plugins/hearme/` is missing or stale.
-     `hearme-skill install-plugin` rewrites both files.
-  3. `hearme` isn't in `plugins.enabled` of `~/.hermes/config.yaml`. Symptom:
-     `hermes plugins list` shows it, `hermes tools list` doesn't, and the
-     gateway log says `Skipping 'hearme' (not in plugins.enabled)`. Fix:
-     `hermes plugins enable hearme`.
-  4. The gateway wasn't restarted. `systemctl --user restart hermes-gateway`.
-- **The venv has no `pip`.** Some venvs ship without it (`python -m venv --without-pip`, `uv venv`, etc.). Bootstrap once: `"$GATEWAY_PY" -m ensurepip --upgrade`.
-- **Half-installed leftover from a failed `hermes plugins install josojo/hearme`.** That command clones the whole monorepo into `~/.hermes/plugins/hearme/` (mostly junk, no manifest at the right level) and then refuses re-installs. Wipe and use the canonical path: `rm -rf ~/.hermes/plugins/hearme && hearme-skill install-plugin`.
-- **`Plugin 'hearme' has no register() function` in DEBUG logs but our `plugin.py` clearly has one.** This means Hermes loaded us via the pip entry-point path (it dedupes by plugin name and the entry-point wins over the directory drop-in), and the entry-point value resolved to the *function* rather than the *module*. Pre-2026-05 builds shipped `hearme = "hearme_skill.plugin:register"`, which makes `ep.load()` return the function and then `getattr(<func>, "register")` is `None`. Fixed by changing the entry to `hearme = "hearme_skill.plugin"`. If you hit this on an older checkout, upgrade the package: `"$GATEWAY_PY" -m pip install --force-reinstall --no-deps 'git+https://github.com/josojo/hearme.git#subdirectory=packages/skill'`.
-- **`Unknown tool 'hearme_list_open_questions'` in the gateway logs.** Always means the plugin loader never ran or ran but registered zero tools. The four-step walk under the first bullet covers the common cases. Bring the journal up with the relevant detail:
-  ```bash
-  journalctl --user -u hermes-gateway --since "30 sec ago" -o cat \
-    | grep -iE 'plugin|hearme|traceback|skipping' -A 3
-  ```
-
-### How a cycle runs
-
-1. The `hermes gateway` daemon fires the `hearme-answer-cycle` cron job on its
-   schedule (default every 15 minutes).
-2. Hermes runs **your** configured model with the `hearme` toolset enabled,
-   under the prompt in `schedule.py:ANSWER_PROMPT`.
-3. The agent calls `hearme_list_open_questions`, decides each answer from what
-   it knows about you (its own memory), and calls `hearme_submit_answer`.
-4. `hearme_submit_answer` (deterministic, in `tools.py`) re-checks the policy
-   gate, loads the delegation token + agent key, signs the envelope, and posts
-   it to the broker.
-
-The model never sees the delegation token, `unique_identifier`, or the signing
-nonce — those live only inside the tools. Unattended auto-submit is gated by
-`auto_answer: true` (see the §1.12 note in [ARCHITECTURE.md](../../ARCHITECTURE.md)).
-
-### Dev loop (no Hermes, no key)
-
-`python -m hearme_skill.dev_runner` runs the legacy in-process pipeline against
-the broker with `FakeLLMClient` + `Mem0StubProvider` — no network LLM, no API
-key. This exercises Persona → Answerer → Envelope locally and is what CI uses
-(ARCHITECTURE.md §12, "never live LLM in CI"). It is **not** the production path.
-
-## Running inside OpenClaw
-
-[OpenClaw](https://openclaw.ai) is a second supported host for the *same*
-answering core. Where Hermes loads a Python plugin, OpenClaw reads a `SKILL.md`
-and the agent runs the `hearme-skill` CLI through its built-in `exec` tool.
-Identity, the policy gate, envelope signing, the ledger, and fetching open
-questions are all shared with Hermes — only the adapter differs (`openclaw.py`
-vs `plugin.py`).
-
-> **Easiest path:** the
-> [prebuilt binary](#install-from-a-prebuilt-binary-no-python-or-node) needs no
-> Python *or* Node — `hearme-skill install` writes the `SKILL.md` and registers
-> the cron. The steps below install the CLI from source instead (`pipx`/`pip`).
-
-```bash
-# 1. Install the CLI somewhere OpenClaw can reach on PATH (Python >= 3.11).
-pipx install 'git+https://github.com/josojo/hearme.git#subdirectory=packages/skill'
-#    (or pip install ... into an env whose bin/ is on the gateway's PATH)
-
-# 2. Drop the skill under ~/.openclaw/skills/hearme/ and register the answering
-#    cron job. Re-runnable; --no-cron writes the skill only.
-hearme-skill install-openclaw
-
-# 3. Onboard once (verify-once with Self; needs the broker + self-bridge). This
-#    is host-agnostic and also wires up whatever host it detects.
-hearme-skill onboard \
-  --bridge-url http://localhost:8787 --broker-url http://localhost:8000
-
-# 4. Author your policy (same file + format as the Hermes flow). State still
-#    lives under ~/.hermes/hearme/ by default — a historical path shared by both
-#    hosts; move it with HEARME_SKILL_ROOT_DIR if you set it for onboard AND the
-#    cron run.
-$EDITOR ~/.hermes/hearme/policy.yaml
-```
-
-`hearme-skill onboard` is host-aware: `--host auto` (the default) detects
-OpenClaw (`openclaw` on PATH or `~/.openclaw/`) and/or Hermes (`~/.hermes/`) and
-wires up each — so on an OpenClaw box `onboard` alone installs the skill and the
-cron. Force it with `--host openclaw` / `--host hermes` / `--host both`.
-
-The CLI the skill drives (thin wrappers over the framework-agnostic functions in
-`tools.py` — the exact functions the Hermes plugin tools call):
+## CLI
 
 | command | what it does |
 |---------|--------------|
-| `hearme-skill list-questions` | JSON list of open questions the policy permits |
+| `hearme-skill install [--host auto\|hermes\|openclaw\|both]` | detect host(s), install the plugin/skill for each |
+| `hearme-skill install-plugin` | write the Hermes drop-in (`~/.hermes/plugins/hearme/`) + restart the gateway |
+| `hearme-skill install-openclaw` | write the OpenClaw skill (`~/.openclaw/skills/hearme/`) + register the cron |
+| `hearme-skill onboard --broker-url U --bridge-url U` | Self verify-once: agent key, QR codes, register, store token, wire up host(s) |
+| `hearme-skill accept-mock-delegation <token.json>` | dev: store a broker-issued token JSON (`-` for stdin) |
+| `hearme-skill list-questions` | JSON list of open questions the policy permits answering |
 | `hearme-skill submit-answer --question-id ID --answer "Yes — ..."` | sign + submit one answer |
-| `hearme-skill review-answers` | JSON of the user's own submitted answers (local) |
+| `hearme-skill review-answers` | JSON of the user's own submitted answers (local ledger read) |
 | `hearme-skill revoke-answer --question-id ID` | retract one answer (§1.12) |
+| `hearme-skill chatgpt-import <export.zip>` | import a ChatGPT export into a local FTS DB |
+| `hearme-skill chatgpt-query "..." [--topic T]` | query the imported memory DB |
 
-### Install shape (and the git-root caveat)
+`schedule` exists for surface-compatibility but is a no-op in the standalone
+binary — the Hermes `cron` API lives inside the gateway's Python process. The
+generated plugin shim self-registers the answering cron job once a delegation
+token exists, so `install` + `onboard` is all you need.
 
-`hearme-skill install-openclaw` writes `~/.openclaw/skills/hearme/SKILL.md`
-(global, all agents) and runs `openclaw cron add` for the daily answering cycle.
-A committed copy of the skill lives at `packages/skill/openclaw/hearme/`, so from
-a checkout you can also `openclaw skills install ./packages/skill/openclaw/hearme
---as hearme`. Note `openclaw skills install git:owner/repo` expects `SKILL.md` at
-the repo *root*, which ours isn't (it's in this subdirectory) — the same reason
-the Hermes side ships its own `install-plugin`. The CLI + `install-openclaw` is
-the deterministic path.
+## How it wires into each host
 
-OpenClaw needs the broker URL in the scheduled run's environment. `onboard` /
-`install-openclaw` persist a non-default `--broker-url` / `--bridge-url` to
-`~/.openclaw/.env` (OpenClaw's global env file) so the cron run reaches the same
-broker; otherwise it falls back to `http://localhost:8000`.
+Both hosts ultimately run the **same binary**; only the adapter differs.
 
-> **Assumptions flagged.** The cron registration shells out to `openclaw cron
-> add --name … --cron … --session isolated --message …` and de-dupes via
-> `openclaw cron list`. If your OpenClaw build's cron CLI differs, the step
-> fails closed and prints the exact command to run by hand. The `SKILL.md`
-> `metadata` gating block is kept to a single JSON line per OpenClaw's parser.
+- **Hermes** — `install` / `install-plugin` writes a two-file directory drop-in
+  at `~/.hermes/plugins/hearme/`: `plugin.yaml` (manifest) and `__init__.py`, a
+  **generated stdlib-only Python subprocess shim**. The gateway is Python but
+  needs no `hearme_skill` package — the shim registers the same
+  `hearme_list_open_questions` / `hearme_submit_answer` tools and shells out to
+  the binary for each call (and self-schedules the cron via the gateway's `cron`
+  package once a token exists). The shim's tool schemas + answering prompt are
+  baked in from [`src/contracts.rs`](src/contracts.rs) so they cannot drift.
+- **OpenClaw** — `install` / `install-openclaw` drops a `SKILL.md` at
+  `~/.openclaw/skills/hearme/` whose instructions tell the agent to run the
+  binary's CLI via OpenClaw's built-in `exec` tool, and registers a daily
+  answering cron via `openclaw cron add`. The committed
+  [`openclaw/hearme/SKILL.md`](openclaw/hearme/SKILL.md) is embedded into the
+  binary verbatim (`include_str!`), so the file `openclaw skills install ./…`
+  reads and the file the installer writes are the same bytes by construction.
+
+`onboard --host auto` (default) detects which host(s) are present and wires up
+each. Non-default `--broker-url` / `--bridge-url` are persisted to the host's
+env file (`~/.hermes/.env` or `~/.openclaw/.env`) so the scheduled run — a fresh
+process that doesn't inherit your shell — hits the same broker.
+
+## Sample `policy.yaml`
+
+```yaml
+# ~/.hermes/hearme/policy.yaml
+topic_allowlist:
+  - coffee
+  - travel
+topic_blocklist:
+  - politics
+max_answers_per_day: 50
+auto_answer: true            # master switch for unattended auto-submit
+auto_answer_topics: [ai, agents, gaming, music]   # light topics answered even when auto_answer is false
+```
+
+**Light-topic auto-answer by default.** So a freshly-onboarded agent
+participates instead of sitting idle, questions whose `topic` matches the
+curated low-stakes set (`DEFAULT_AUTO_ANSWER_TOPICS` in
+[`src/policy.rs`](src/policy.rs) — AI/agents, IT/software, hobbies,
+entertainment) are answered unattended. Sensitive topics (politics, health,
+finance, …) are deliberately absent and still require `auto_answer: true`. The
+`topic_blocklist` always wins; matching is by word-token (`ai agents` matches
+`ai`, but `fair` does not). Set `auto_answer_topics: []` to disable the default.
+
+## Configuration (env vars, prefix `HEARME_SKILL_`)
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `HEARME_SKILL_BROKER_URL` | `http://localhost:8000` | Where to find the broker. |
+| `HEARME_SKILL_SELF_BRIDGE_URL` | `http://localhost:8787` | self-bridge, used only during onboarding. |
+| `HEARME_SKILL_ROOT_DIR` | `~/.hermes/hearme/` | Where the agent key, ledger, token, and policy live. |
+| `HEARME_SKILL_MEMORY_BACKEND` | `stub` | `chatgpt-export` to read the imported ChatGPT DB. |
+
+Idempotency comes from the ledger (`has_submission`), not a polling cursor — a
+question the agent skips reappears next cycle.
+
+## Privacy guarantees
+
+What the broker sees per envelope (the five-field POST body, §8.5):
+`question_id`, `answer`, `nonce`, `delegation_token`, `agent_signature`.
+
+What it NEVER sees: the user's raw memory / chain-of-thought; any local
+rationale (never leaves the ledger); demographic fields beyond what's baked into
+the DelegationToken's `disclosed_predicates` at install time (§1.3); passport
+material (the phone holds it, never the skill); or whether a question is a
+honeypot — the policy gate never inspects question text (§1.7).
+
+The DelegationToken and signing nonce never leave the crate: `list-questions`
+deliberately omits the nonce, and the token is read only by the envelope/builder
+path. The local audit trail in `~/.hermes/hearme/ledger.sqlite` is the only
+persistence.
 
 ## ChatGPT export memory sidewheel
 
-Hearme can also use a local memory DB built from a ChatGPT data export. This
-does **not** read the running ChatGPT macOS app or scrape its private storage;
-the user downloads an export from ChatGPT and imports it explicitly.
+Builds a local FTS memory DB from a ChatGPT data export the user downloads — it
+never reads the running ChatGPT app.
+
+```bash
+hearme-skill chatgpt-import ~/Downloads/chatgpt-export.zip   # ZIP, dir, or conversations.json
+hearme-skill chatgpt-query "Do I like espresso?" --topic coffee
+```
+
+Indexes only user-authored messages by default (`--include-assistant` adds
+replies). The DB lives at `~/.hermes/hearme/chatgpt_memory.sqlite` unless `--db`
+is given.
+
+## Build from source
 
 ```bash
 cd packages/skill
-pip install -e .
-
-# Import a ChatGPT export ZIP, extracted export directory, or conversations.json.
-hearme-skill chatgpt-import ~/Downloads/chatgpt-export.zip
-
-# Optional smoke test against the local DB.
-hearme-skill chatgpt-query "Do I like espresso?" --topic coffee
-
-# Use the imported DB in the standalone/dev host.
-HEARME_SKILL_MEMORY_BACKEND=chatgpt-export python -m hearme_skill.dev_runner
+cargo build --release        # -> target/release/hearme-skill (~3 MB, stripped)
+cargo test                   # unit tests, incl. broker golden vectors
+cargo clippy --all-targets -- -D warnings
+cargo fmt --check
 ```
 
-By default the importer indexes only user-authored messages. Add
-`--include-assistant` if you want assistant replies included too. The local DB
-lives at `~/.hermes/hearme/chatgpt_memory.sqlite` unless `--db` is supplied.
+CI: [`build-binaries.yml`](../../.github/workflows/build-binaries.yml) builds and
+publishes the Linux x86_64/aarch64 release assets natively on matching runners
+(no cross-compile; rusqlite's bundled SQLite needs a C compiler, which the
+runners provide). [`ci.yml`](../../.github/workflows/ci.yml) runs fmt + clippy +
+test on every PR.
 
-## Not yet real (every `# STUB:` in code)
+## Module map
 
-- **Payments.** No payment fields on the wire; `policy.min_payment`
-  parsed for forward-compat but never read. (ARCHITECTURE.md §11)
-- **Memory provider.** `Mem0StubProvider` is still the deterministic default.
-  The optional ChatGPT export sidewheel imports a user-provided export into
-  local SQLite FTS and can be selected with
-  `HEARME_SKILL_MEMORY_BACKEND=chatgpt-export`. Hermes memory remains the
-  production integration path.
-- **Multi-channel UI.** Telegram-only in v0; `InMemoryChannel` stub for
-  tests. The `Channel` Protocol is the v0.2 plug point.
-- **Live revocation handling.** The skill respects expiry; it does not yet
-  consult a broker-side revocation feed. The broker already has the
-  `revocations` table ready.
-- **Honeypot signal parsing.** Stubbed; the Policy layer deliberately
-  never branches on "is this a test" (§1.7).
-- **Encrypted-at-rest storage.** Both the agent key (`crypto/keystore.py`)
-  and the delegation token (`delegation.py`) are written as plaintext with
-  0600 perms. SQLCipher / OS keychain in v0.1. Ledger encryption likewise.
-- **Self proof verification is broker-side.** The skill never runs the SNARK; it
-  collects the Self proofs and posts them to the broker's `/v1/register`, which
-  verifies them once and returns the signed DelegationToken the skill replays.
-- **Lost-phone recovery.** Re-enroll from a fresh install.
+| module | role |
+|--------|------|
+| `canonical.rs` | canonical JSON + `delegation_hash` + envelope/revocation signing inputs (broker byte-compat) |
+| `crypto.rs` | Ed25519 keypair load/create/sign + on-disk keystore |
+| `models.rs` | `Question`, opaque `DelegationToken`, wire shapes |
+| `delegation.rs` | token store/load/expiry + `validate_token` |
+| `envelope.rs` | build + sign the 5-field envelope and 3-field revocation |
+| `policy.rs` | the deterministic gate + light-topic default |
+| `ledger.rs` | local SQLite ledger (questions/answers/submissions/spend) |
+| `broker.rs` | HTTP client: open questions, submit, revoke, register |
+| `tools.rs` | framework-agnostic `list_open_questions` / `submit_answer` / `review` / `revoke` |
+| `onboarding.rs` | Self verify-once flow + QR rendering |
+| `contracts.rs` | shared constants + the tool schemas baked into the Hermes shim |
+| `hermes.rs` | Hermes plugin-dir install, subprocess shim, env upsert, gateway restart |
+| `openclaw.rs` | OpenClaw skill install + cron registration |
+| `chatgpt.rs` | ChatGPT export import + FTS query |
+| `cli.rs` / `main.rs` | argument parsing + dispatch |
 
-## Design choices worth flagging
+## Not yet real
 
-- **Light-topic auto-answer by default.** So a freshly-onboarded agent
-  actually participates instead of sitting idle on the cron, questions whose
-  `topic` tag matches the curated low-stakes set (`DEFAULT_AUTO_ANSWER_TOPICS`
-  in `policy.py` — AI/agents, IT/software, hobbies, entertainment) are answered
-  unattended. Sensitive topics (politics, health, finance, …) are deliberately
-  absent and still require the global `auto_answer: true` opt-in. The
-  `topic_blocklist` always wins, and matching is by word-token (so the tag
-  `ai agents` matches `ai`, but `fair` does not). Tune or disable it in
-  `policy.yaml`:
-  ```yaml
-  # broaden, narrow, or empty out ([]) the light-topic set
-  auto_answer_topics: [ai, agents, gaming, music, knitting]
-  # or open everything (tagged or not) to unattended answering:
-  auto_answer: true
-  ```
-- **Untagged questions still prompt.** A question with no `topic` can't be
-  classified as light, so it falls back to the user (`prompt_user`) unless
-  `auto_answer: true` — §1.12 "override is sacred" still holds for anything
-  outside the light set.
-- **`Answer.rationale` is captured locally** for the audit ledger, but the
-  `build_envelope` API takes `answer_text: str` (not `Answer`) so it's
-  structurally impossible for the rationale to slip onto the wire.
-- **Persona projection is paranoid about demographics**: even though the
-  v0 memory stub never emits demographic fields, `persona.project` filters
-  any fact whose lowercased form starts with `age:`, `gender:`, `country:`,
-  `region:`, or `ethnicity:`. Demographics live in the DelegationToken
-  only.
-
-## Wire-format alignment
-
-The Pydantic models in `hearme_skill.models` mirror `packages/proto/`
-field-for-field. The canonical-JSON helper in `hearme_skill.crypto.canonical`
-produces byte-identical output to the broker's verifier (sorted keys, no
-whitespace, UTC `Z` suffix). The end-to-end suite at the repo root will
-fail if these drift apart.
+- **Payments** — no payment field on the wire (`min_payment` not modelled). (§11)
+- **Encrypted-at-rest storage** — the agent key and delegation token are written
+  as plaintext with 0600 perms; ledger likewise. SQLCipher / OS keychain later (§13).
+- **Self proof verification is broker-side** — the skill collects the proofs and
+  posts them to `/v1/register`; the broker verifies once and returns the signed token.
+- **Live revocation feed** — the skill respects expiry but doesn't yet consult a
+  broker-side revocation list.
+- **Lost-phone recovery** — re-enroll from a fresh install.

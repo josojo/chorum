@@ -1,9 +1,10 @@
 name: build-binaries
 
-# Build the standalone `hearme-skill` binary for Linux x86_64 and aarch64 with
-# PyInstaller, smoke-test it, upload it as a CI artifact, and — on a version tag
-# — attach both binaries plus install.sh to the GitHub Release. PyInstaller does
-# not cross-compile, so each arch is built on a runner of that arch.
+# Build the standalone `hearme-skill` binary (Rust) for Linux x86_64 and
+# aarch64, smoke-test it, upload it as a CI artifact, and — on a version tag —
+# attach both binaries plus install.sh to the GitHub Release. Each arch is built
+# natively on a runner of that arch (no cross-compilation; rusqlite's bundled
+# SQLite needs a C compiler, which the GitHub runners provide).
 
 on:
   push:
@@ -36,33 +37,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install package + PyInstaller
-        run: |
-          python -m pip install --upgrade pip
-          pip install . pyinstaller
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/skill
 
       - name: Build binary
-        run: pyinstaller pyinstaller/hearme-skill.spec
+        run: cargo build --release --locked
 
       - name: Smoke-test the binary
         run: |
-          ./dist/hearme-skill --help
+          ./target/release/hearme-skill --help
           # list-questions never raises: with no broker reachable it prints a
-          # JSON {"error": ...} and exits 0. Confirms the frozen runtime works.
-          ./dist/hearme-skill list-questions
+          # JSON {"error": ...} and exits 0. Confirms the built binary works.
+          ./target/release/hearme-skill list-questions
 
       - name: Rename for release
-        run: mv dist/hearme-skill "dist/hearme-skill-linux-${{ matrix.arch }}"
+        run: mv target/release/hearme-skill "target/release/hearme-skill-linux-${{ matrix.arch }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: hearme-skill-linux-${{ matrix.arch }}
-          path: packages/skill/dist/hearme-skill-linux-${{ matrix.arch }}
+          path: packages/skill/target/release/hearme-skill-linux-${{ matrix.arch }}
           if-no-files-found: error
 
       - name: Attach to release (tags only)
@@ -70,5 +70,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            packages/skill/dist/hearme-skill-linux-${{ matrix.arch }}
+            packages/skill/target/release/hearme-skill-linux-${{ matrix.arch }}
             packages/skill/scripts/install.sh
