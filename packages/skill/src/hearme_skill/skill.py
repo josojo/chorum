@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import shutil
 import subprocess
@@ -24,6 +25,7 @@ from typing import Any
 import httpx
 
 from . import answerer as answerer_mod
+from . import hermes_shim
 from . import persona as persona_mod
 from .broker import BrokerClient
 from .config import get_settings
@@ -268,9 +270,50 @@ def _cmd_onboard(args: argparse.Namespace) -> int:
             path, written = result
             keys = ", ".join(sorted(written))
             print(f"Persisted {keys} to {path}.")
-    _try_install_plugin_after_onboard()
-    _try_schedule_after_onboard()
+    _post_onboard_setup(
+        host=getattr(args, "host", "auto"),
+        broker_url=broker_url,
+        bridge_url=bridge_url,
+    )
     return 0
+
+
+def _resolve_hosts(host: str) -> list[str]:
+    """Which agent host(s) to wire up after onboarding.
+
+    ``auto`` (default) detects installed hosts: Hermes if ``~/.hermes`` exists,
+    OpenClaw if its CLI/dir is present (both if both). Falls back to Hermes when
+    neither is detected, preserving the original behaviour. Explicit values:
+    ``hermes``, ``openclaw``, or ``both``.
+    """
+
+    host = (host or "auto").lower()
+    if host == "both":
+        return ["hermes", "openclaw"]
+    if host in {"hermes", "openclaw"}:
+        return [host]
+
+    from . import openclaw as _oc
+
+    hosts: list[str] = []
+    if (Path.home() / ".hermes").exists():
+        hosts.append("hermes")
+    if _oc.openclaw_available():
+        hosts.append("openclaw")
+    return hosts or ["hermes"]
+
+
+def _post_onboard_setup(
+    *, host: str, broker_url: str | None, bridge_url: str | None
+) -> None:
+    """Wire up the detected/selected agent host(s) after identity onboarding."""
+
+    hosts = _resolve_hosts(host)
+    if "hermes" in hosts:
+        _try_install_plugin_after_onboard()
+        _try_schedule_after_onboard()
+    if "openclaw" in hosts:
+        _try_install_openclaw_after_onboard(broker_url=broker_url, bridge_url=bridge_url)
 
 
 def _try_schedule_after_onboard() -> None:
@@ -355,7 +398,10 @@ def _cmd_schedule(args: argparse.Namespace) -> int:
 #   hearme-skill onboard --bridge-url ... --broker-url ...
 
 _PLUGIN_DIRNAME = "hearme"
-_PLUGIN_SHIM = "from hearme_skill.plugin import register  # noqa: F401\n"
+# Shim written into ~/.hermes/plugins/hearme/__init__.py when hearme_skill is
+# pip-installed in the gateway venv. Binary installs use the subprocess shim
+# instead (see install_plugin_dir + hermes_shim.build_subprocess_shim).
+_PLUGIN_SHIM = hermes_shim.IMPORT_SHIM
 
 # Embedded manifest. Kept in sync by hand with `packages/skill/plugin.yaml` —
 # they're both ~20 lines and rarely change. The tool names below mirror the
@@ -441,8 +487,10 @@ def _persist_broker_urls(
     bridge_url: str | None,
     broker_default: str,
     bridge_default: str,
+    env_path: Path | None = None,
 ) -> tuple[Path, dict[str, str]] | None:
-    """Persist any explicitly-provided URLs to ``~/.hermes/.env``.
+    """Persist any explicitly-provided URLs to an env file (``~/.hermes/.env``
+    by default; pass ``env_path`` for the OpenClaw ``~/.openclaw/.env``).
 
     "Explicit" means the value differs from the localhost-default config
     fallback — we don't want `hearme-skill onboard` on a dev box to write
@@ -458,22 +506,41 @@ def _persist_broker_urls(
         updates["HEARME_SKILL_SELF_BRIDGE_URL"] = bridge_url
     if not updates:
         return None
-    path = upsert_hermes_env(updates)
+    path = upsert_hermes_env(updates, env_path=env_path)
     return path, updates
 
 
-def install_plugin_dir(*, plugin_dir: Path | None = None) -> Path:
+def install_plugin_dir(
+    *, plugin_dir: Path | None = None, binary_path: str | None = None
+) -> Path:
     """Write the Hermes directory-install drop-in. Idempotent.
 
     Returns the directory written. Always overwrites the two files so a stale
     half-cloned install (e.g. from a failed `hermes plugins install`) is
     cleanly replaced.
+
+    Shim selection:
+
+    * **Binary mode** — when running as the frozen ``hearme-skill`` executable
+      (``sys.frozen``) or when ``binary_path`` is passed explicitly, the shim
+      shells out to that binary so the gateway needs no pip-installed
+      ``hearme_skill`` package.
+    * **Pip mode** — otherwise the shim re-exports ``register`` from the
+      installed ``hearme_skill`` package.
     """
 
     target = plugin_dir or _plugin_dir()
     target.mkdir(parents=True, exist_ok=True)
     (target / "plugin.yaml").write_text(_PLUGIN_MANIFEST)
-    (target / "__init__.py").write_text(_PLUGIN_SHIM)
+
+    resolved_bin = binary_path
+    if resolved_bin is None and getattr(sys, "frozen", False):
+        resolved_bin = sys.executable
+    if resolved_bin:
+        shim = hermes_shim.build_subprocess_shim(resolved_bin)
+    else:
+        shim = _PLUGIN_SHIM
+    (target / "__init__.py").write_text(shim)
     return target
 
 
@@ -577,6 +644,213 @@ def _try_install_plugin_after_onboard() -> None:
         )
 
 
+# --- OpenClaw skill install ------------------------------------------------
+#
+# OpenClaw (openclaw.ai) is a second host for the SAME hearme core. Its
+# extension unit is a SKILL.md directory whose instructions tell the host agent
+# to run our CLI via the built-in `exec` tool — so the OpenClaw adapter is just
+# "drop the skill dir + register a cron job", mirroring install-plugin +
+# schedule on the Hermes side. All the real work stays in tools.py. See
+# openclaw.py.
+
+
+def _report_openclaw_cron(result: dict) -> None:
+    """Print the outcome of :func:`openclaw.ensure_openclaw_cron`."""
+
+    from . import openclaw
+
+    if result.get("created"):
+        print(f"Registered OpenClaw cron job '{result.get('name')}'.")
+    elif result.get("reason") == "already present":
+        print(f"OpenClaw cron job '{result.get('name')}' already present.")
+    else:
+        print(
+            "Note: could not register the OpenClaw cron job "
+            f"({result.get('reason')}). Register it by hand once OpenClaw is "
+            "running:\n"
+            f"  openclaw cron add --name {openclaw.CRON_NAME} "
+            f'--cron "{openclaw.DEFAULT_SCHEDULE}" --session isolated '
+            f'--message "{openclaw.CRON_MESSAGE}"',
+            file=sys.stderr,
+        )
+
+
+def _cmd_install_openclaw(args: argparse.Namespace) -> int:
+    from . import openclaw
+
+    target = openclaw.install_openclaw_skill()
+    print(f"Wrote OpenClaw skill to {target / 'SKILL.md'}")
+
+    broker_url = getattr(args, "broker_url", None)
+    bridge_url = getattr(args, "bridge_url", None)
+    if broker_url or bridge_url:
+        try:
+            defaults = get_settings().__class__()
+            result = _persist_broker_urls(
+                broker_url=broker_url,
+                bridge_url=bridge_url,
+                broker_default=defaults.broker_url,
+                bridge_default=defaults.self_bridge_url,
+                env_path=openclaw.openclaw_env_path(),
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"Could not persist broker URLs to {openclaw.openclaw_env_path()} ({exc}).",
+                file=sys.stderr,
+            )
+        else:
+            if result is not None:
+                path, written = result
+                keys = ", ".join(sorted(written))
+                print(f"Persisted {keys} to {path}.")
+
+    if not args.no_cron:
+        _report_openclaw_cron(openclaw.ensure_openclaw_cron(schedule=args.schedule))
+
+    print(
+        "OpenClaw snapshots skills at session start — start a new session (or "
+        "run `openclaw gateway restart`) to pick up hearme."
+    )
+    return 0
+
+
+def _try_install_openclaw_after_onboard(
+    *, broker_url: str | None, bridge_url: str | None
+) -> None:
+    """Best-effort: drop in the OpenClaw skill + cron after onboarding.
+
+    The OpenClaw analog of ``_try_install_plugin_after_onboard`` +
+    ``_try_schedule_after_onboard``. Failures print a hint but never break
+    onboarding — the user can run ``hearme-skill install-openclaw`` later.
+    """
+
+    from . import openclaw
+
+    try:
+        target = openclaw.install_openclaw_skill()
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"Note: could not write the OpenClaw skill ({exc}). "
+            "Run `hearme-skill install-openclaw` to retry.",
+            file=sys.stderr,
+        )
+        return
+    print(f"Installed OpenClaw skill at {target / 'SKILL.md'}.")
+    # Persist non-default broker/bridge URLs so the scheduled OpenClaw run (a
+    # fresh process) hits the same broker.
+    try:
+        defaults = get_settings().__class__()
+        result = _persist_broker_urls(
+            broker_url=broker_url,
+            bridge_url=bridge_url,
+            broker_default=defaults.broker_url,
+            bridge_default=defaults.self_bridge_url,
+            env_path=openclaw.openclaw_env_path(),
+        )
+    except Exception:  # noqa: BLE001
+        result = None
+    if result is not None:
+        path, written = result
+        print(f"Persisted {', '.join(sorted(written))} to {path}.")
+    _report_openclaw_cron(openclaw.ensure_openclaw_cron())
+
+
+# --- unified host-aware install --------------------------------------------
+#
+# One command that wires up whichever agent host(s) are present, so the binary
+# flow collapses to: download the binary (install.sh) -> `hearme-skill install`
+# -> `hearme-skill onboard`. Reuses the per-host installers above.
+
+
+def _cmd_install(args: argparse.Namespace) -> int:
+    hosts = _resolve_hosts(args.host)
+    done: list[str] = []
+
+    if "hermes" in hosts:
+        target = install_plugin_dir()
+        print(f"Installed Hermes plugin drop-in at {target}.")
+        if not args.no_restart:
+            ok, msg = _restart_gateway()
+            if ok:
+                print("Restarted hermes-gateway.")
+            else:
+                print(
+                    f"Could not auto-restart the gateway ({msg}). Restart it manually:\n"
+                    "  systemctl --user restart hermes-gateway",
+                    file=sys.stderr,
+                )
+        done.append("hermes")
+
+    if "openclaw" in hosts:
+        from . import openclaw
+
+        target = openclaw.install_openclaw_skill()
+        print(f"Installed OpenClaw skill at {target / 'SKILL.md'}.")
+        if not args.no_cron:
+            _report_openclaw_cron(openclaw.ensure_openclaw_cron(schedule=args.schedule))
+        done.append("openclaw")
+
+    if not done:
+        print(
+            "No supported agent detected (looked for ~/.hermes and OpenClaw on "
+            "PATH / ~/.openclaw). Re-run with --host hermes|openclaw|both.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        "Next: run `hearme-skill onboard --broker-url <url> --bridge-url <url>` "
+        "once to set up your Self identity."
+    )
+    return 0
+
+
+# --- answering CLI (shared core; the OpenClaw skill calls these via `exec`) --
+#
+# Thin wrappers over the framework-agnostic functions in tools.py — the SAME
+# core the Hermes plugin tools call. They print JSON to stdout so the OpenClaw
+# agent can parse the result, and are handy for debugging the Hermes path too.
+
+
+def _settings_for(broker_url: str | None):
+    settings = get_settings()
+    if broker_url:
+        settings = settings.model_copy(update={"broker_url": broker_url})
+    return settings
+
+
+def _cmd_list_questions(args: argparse.Namespace) -> int:
+    from .tools import list_open_questions
+
+    print(json.dumps(list_open_questions(settings=_settings_for(args.broker_url))))
+    return 0
+
+
+def _cmd_submit_answer(args: argparse.Namespace) -> int:
+    from .tools import submit_answer
+
+    result = submit_answer(
+        args.question_id, args.answer, settings=_settings_for(args.broker_url)
+    )
+    print(json.dumps(result))
+    return 0 if result.get("accepted") else 1
+
+
+def _cmd_review_answers(args: argparse.Namespace) -> int:
+    from .tools import review_my_answers
+
+    print(json.dumps(review_my_answers(limit=args.limit, settings=_settings_for(None))))
+    return 0
+
+
+def _cmd_revoke_answer(args: argparse.Namespace) -> int:
+    from .tools import revoke_answer
+
+    result = revoke_answer(args.question_id, settings=_settings_for(args.broker_url))
+    print(json.dumps(result))
+    return 0 if result.get("accepted") else 1
+
+
 def _cmd_chatgpt_import(args: argparse.Namespace) -> int:
     settings = get_settings()
     settings.root_dir.mkdir(parents=True, exist_ok=True)
@@ -643,6 +917,15 @@ def cli() -> int:
         action="store_true",
         help="Print the QR/link and exit without waiting for the proof.",
     )
+    p_onboard.add_argument(
+        "--host",
+        choices=["auto", "hermes", "openclaw", "both"],
+        default="auto",
+        help=(
+            "Which agent host to wire up after onboarding (install the skill +"
+            " register the answering cron job). 'auto' detects what's installed."
+        ),
+    )
     p_onboard.set_defaults(func=_cmd_onboard)
 
     p_accept = sub.add_parser(
@@ -700,6 +983,104 @@ def cli() -> int:
         help="Persist HEARME_SKILL_SELF_BRIDGE_URL=<url> in ~/.hermes/.env.",
     )
     p_install.set_defaults(func=_cmd_install_plugin)
+
+    p_inst = sub.add_parser(
+        "install",
+        help=(
+            "Detect the agent host(s) and install the hearme skill/plugin for each."
+            " The one-step companion to the prebuilt-binary install (install.sh)."
+        ),
+    )
+    p_inst.add_argument(
+        "--host",
+        choices=["auto", "hermes", "openclaw", "both"],
+        default="auto",
+        help="Which host(s) to install for (default: auto-detect).",
+    )
+    p_inst.add_argument(
+        "--no-restart",
+        action="store_true",
+        help="Skip restarting the Hermes gateway.",
+    )
+    p_inst.add_argument(
+        "--no-cron",
+        action="store_true",
+        help="Skip registering the OpenClaw cron job.",
+    )
+    p_inst.add_argument(
+        "--schedule",
+        default=None,
+        help="Cron expression for the OpenClaw answering cycle (default: 0 9 * * *).",
+    )
+    p_inst.set_defaults(func=_cmd_install)
+
+    p_oc = sub.add_parser(
+        "install-openclaw",
+        help=(
+            "Drop the OpenClaw skill under ~/.openclaw/skills/hearme/ and register"
+            " the answering cron job. Run once after `pip install hearme-skill`."
+        ),
+    )
+    p_oc.add_argument(
+        "--no-cron",
+        action="store_true",
+        help="Skip registering the OpenClaw cron job (write the skill only).",
+    )
+    p_oc.add_argument(
+        "--schedule",
+        default=None,
+        help="Cron expression for the answering cycle (default: 0 9 * * *).",
+    )
+    p_oc.add_argument(
+        "--broker-url",
+        default=None,
+        help="Persist HEARME_SKILL_BROKER_URL=<url> in ~/.openclaw/.env.",
+    )
+    p_oc.add_argument(
+        "--bridge-url",
+        default=None,
+        help="Persist HEARME_SKILL_SELF_BRIDGE_URL=<url> in ~/.openclaw/.env.",
+    )
+    p_oc.set_defaults(func=_cmd_install_openclaw)
+
+    p_list_q = sub.add_parser(
+        "list-questions",
+        help="Print (as JSON) the open questions the policy permits answering.",
+    )
+    p_list_q.add_argument(
+        "--broker-url",
+        default=None,
+        help="Override the broker URL (default: $HEARME_SKILL_BROKER_URL).",
+    )
+    p_list_q.set_defaults(func=_cmd_list_questions)
+
+    p_submit = sub.add_parser(
+        "submit-answer",
+        help="Sign + submit one answer on the user's behalf; prints JSON.",
+    )
+    p_submit.add_argument("--question-id", required=True, help="The question_id to answer.")
+    p_submit.add_argument(
+        "--answer",
+        required=True,
+        help="Answer text: start with one of the question's options exactly, then one sentence.",
+    )
+    p_submit.add_argument("--broker-url", default=None, help="Override the broker URL.")
+    p_submit.set_defaults(func=_cmd_submit_answer)
+
+    p_review = sub.add_parser(
+        "review-answers",
+        help="Print (as JSON) the user's own recently submitted answers (local read).",
+    )
+    p_review.add_argument("--limit", type=int, default=20, help="Max answers to list.")
+    p_review.set_defaults(func=_cmd_review_answers)
+
+    p_revoke = sub.add_parser(
+        "revoke-answer",
+        help="Retract one of the user's previously-submitted answers; prints JSON.",
+    )
+    p_revoke.add_argument("--question-id", required=True, help="The question_id to revoke.")
+    p_revoke.add_argument("--broker-url", default=None, help="Override the broker URL.")
+    p_revoke.set_defaults(func=_cmd_revoke_answer)
 
     p_cg_import = sub.add_parser(
         "chatgpt-import",

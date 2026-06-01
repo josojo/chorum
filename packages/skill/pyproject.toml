@@ -44,6 +44,12 @@ dev = [
 hermes = [
     "hermes-agent>=0.14",
 ]
+# Freeze the CLI into a single self-contained `hearme-skill` binary
+# (`pyinstaller pyinstaller/hearme-skill.spec`). CI uses this to publish the
+# Linux x86_64 / aarch64 release assets that the install.sh bootstrap downloads.
+build = [
+    "pyinstaller>=6.3",
+]
 
 # Discovered by hermes-agent's plugin loader (entry-point group
 # `hermes_agent.plugins`). The value MUST resolve to the module that contains
