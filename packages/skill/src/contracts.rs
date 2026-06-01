@@ -16,7 +16,7 @@ pub const JOB_NAME: &str = "hearme-answer-cycle";
 pub const DEFAULT_SCHEDULE: &str = "0 9 * * *";
 
 /// The behavioural contract handed to the Hermes agent each cycle.
-pub const ANSWER_PROMPT: &str = "You answer public multiple-choice questions on behalf of your user, in their voice.\n\n1. Call hearme_list_open_questions. Each returned question carries an 'options' array (e.g. ['yes','no'] or ['pizza','pasta','sushi']) — those are the only valid answers.\n2. For each question, decide your user's honest answer based ONLY on what you actually know about them from your memory and past conversations. If you do not genuinely know how they would answer, SKIP it — do not guess or invent a preference.\n3. The answer must be EXACTLY one of the question's options and nothing else — no reasoning, no explanation, no extra words. Anything beyond the option label is discarded before submission to protect your user's private context.\n4. Submit each answer with hearme_submit_answer(question_id=..., answer=<the option, verbatim>).\n\nWhen there are no questions you can confidently answer, stop. Never fabricate views your user does not hold.";
+pub const ANSWER_PROMPT: &str = "You answer public multiple-choice questions on behalf of your user, in their voice.\n\n1. Call hearme_list_open_questions. Each returned question carries an 'options' array (e.g. ['yes','no'] or ['pizza','pasta','sushi']) — those are the only valid answers.\n2. For each question, decide your user's honest answer based ONLY on what you actually know about them from your memory and past conversations.\n3. If you genuinely know how they would answer, submit it with hearme_submit_answer(question_id=..., answer=<the option, verbatim>). The answer must be EXACTLY one of the question's options and nothing else — no reasoning, no explanation, no extra words; anything beyond the option label is discarded before submission to protect your user's private context.\n4. If you do NOT know how your user would answer, do not guess — call hearme_submit_no_signal(question_id=...) instead. 'No formed view' is real, valuable data, not a reason to stay silent. Only leave a question entirely alone when it is off-limits for your user.\n\nNever fabricate views your user does not hold.";
 
 /// OpenAI-style tool schema for `hearme_list_open_questions`, as a Python dict
 /// literal (baked into the generated shim).
@@ -37,6 +37,19 @@ pub const SUBMIT_SCHEMA_PY: &str = r#"{
             "answer": {"type": "string", "description": "The user's answer: exactly one of the question's options, verbatim, with no additional text."},
         },
         "required": ["question_id", "answer"],
+    },
+}"#;
+
+/// OpenAI-style tool schema for `hearme_submit_no_signal`, as a Python dict literal.
+pub const SUBMIT_NO_SIGNAL_SCHEMA_PY: &str = r#"{
+    "name": "hearme_submit_no_signal",
+    "description": "Record that the user has NO formed view on one Hearme question — call this instead of guessing when you do not know how they would answer. It submits a signed 'no opinion' data point (a first-class result, not silence). Only call this for questions returned by hearme_list_open_questions. Returns {accepted, reason, question_id}.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "question_id": {"type": "string", "description": "The question_id from hearme_list_open_questions."},
+        },
+        "required": ["question_id"],
     },
 }"#;
 

@@ -118,6 +118,13 @@ enum Command {
         #[arg(long)]
         broker_url: Option<String>,
     },
+    /// Record that the user has no formed view on one question (§1.14); prints JSON.
+    SubmitNoSignal {
+        #[arg(long)]
+        question_id: String,
+        #[arg(long)]
+        broker_url: Option<String>,
+    },
     /// Print (as JSON) the user's own recently submitted answers (local read).
     ReviewAnswers {
         #[arg(long, default_value_t = 20)]
@@ -200,6 +207,23 @@ pub fn run() -> i32 {
         } => {
             let result =
                 tools::submit_answer(&question_id, &answer, &settings_for(broker_url.as_deref()));
+            let accepted = result
+                .get("accepted")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            print_json(&result);
+            if accepted {
+                0
+            } else {
+                1
+            }
+        }
+        Command::SubmitNoSignal {
+            question_id,
+            broker_url,
+        } => {
+            let result =
+                tools::submit_no_signal(&question_id, &settings_for(broker_url.as_deref()));
             let accepted = result
                 .get("accepted")
                 .and_then(|v| v.as_bool())

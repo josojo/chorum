@@ -30,13 +30,11 @@ Hearme", or on a scheduled Hearme answering run.
    set of valid answers (e.g. `["yes","no"]` or `["pizza","pasta","sushi"]`).
 
 2. For each question, decide your user's honest answer based ONLY on what you
-   actually know about them from your memory and past conversations. If you do
-   not genuinely know how they would answer, SKIP it — never guess or invent a
-   preference.
+   actually know about them from your memory and past conversations.
 
-3. Submit each answer you are confident about. The answer must be EXACTLY one of
-   that question's `options` (case-insensitive) and nothing else — no reasoning,
-   no explanation, no extra words:
+3. If you are confident, submit it. The answer must be EXACTLY one of that
+   question's `options` (case-insensitive) and nothing else — no reasoning, no
+   explanation, no extra words:
 
    ```bash
    hearme-skill submit-answer --question-id "<question_id>" --answer "<option>"
@@ -48,7 +46,17 @@ Hearme", or on a scheduled Hearme answering run.
    reason `not-an-option`. This guard protects your user's private context from
    leaking — never try to append extra detail.
 
-4. Stop when there are no questions you can confidently answer. Never fabricate
+4. If you do NOT know how your user would answer, do not guess — record that they
+   have no formed view instead:
+
+   ```bash
+   hearme-skill submit-no-signal --question-id "<question_id>"
+   ```
+
+   "No opinion" is real, valuable data, not a reason to stay silent. Only leave a
+   question entirely alone when it is off-limits for your user.
+
+5. Stop once every question has an answer or a no-signal record. Never fabricate
    views your user does not hold.
 
 ## Reviewing or retracting (the user's override is sacred)

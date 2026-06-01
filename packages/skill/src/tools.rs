@@ -15,7 +15,7 @@ use crate::broker;
 use crate::config::Settings;
 use crate::crypto::load_or_create_agent_keypair;
 use crate::delegation::{hash_of, load_usable, DelegationError};
-use crate::envelope::{build_envelope, build_revocation};
+use crate::envelope::{build_envelope, build_no_signal_envelope, build_revocation};
 use crate::ledger::Ledger;
 use crate::policy::{decide, load_policy, Action, LedgerStats};
 use crate::Error;
@@ -203,6 +203,113 @@ fn submit_impl(question_id: &str, answer_text: &str, settings: &Settings) -> Res
 
     // rationale stays empty — the agent's reasoning never enters the ledger/wire.
     ledger.record_answer(question_id, &canonical, "")?;
+    ledger.record_submission(
+        question_id,
+        &hash_of(&token),
+        &agent_signature,
+        accepted,
+        if reason.is_empty() {
+            None
+        } else {
+            Some(reason.as_str())
+        },
+    )?;
+
+    let reason_out = if !reason.is_empty() {
+        reason
+    } else if accepted {
+        "ok".to_string()
+    } else {
+        "rejected".to_string()
+    };
+    Ok(json!({ "accepted": accepted, "reason": reason_out, "question_id": question_id }))
+}
+
+/// Record that the user has NO formed view on one question (§1.14).
+/// Shape: `{"accepted": bool, "reason": str, "question_id": str}`. Submits a
+/// no-signal envelope (empty answer, `no_signal: true`) so "no opinion" becomes
+/// real aggregate data rather than silence. Same delegation/replay/policy
+/// backstop as `submit_answer`; never panics.
+pub fn submit_no_signal(question_id: &str, settings: &Settings) -> Value {
+    match submit_no_signal_impl(question_id, settings) {
+        Ok(v) => v,
+        Err(e) => json!({ "accepted": false, "reason": e.to_string(), "question_id": question_id }),
+    }
+}
+
+fn submit_no_signal_impl(question_id: &str, settings: &Settings) -> Result<Value, Error> {
+    let ledger = Ledger::open(&settings.ledger_path())?;
+    // §1.9 replay-safety: one envelope per question, no_signal or not.
+    if ledger.has_submission(question_id)? {
+        return Ok(
+            json!({ "accepted": false, "reason": "already-submitted", "question_id": question_id }),
+        );
+    }
+
+    let token = match load_usable(&settings.delegation_path()) {
+        Ok(t) => t,
+        Err(DelegationError::Missing) => {
+            return Ok(
+                json!({ "accepted": false, "reason": "no-delegation", "question_id": question_id }),
+            )
+        }
+        Err(DelegationError::Expired) => {
+            return Ok(
+                json!({ "accepted": false, "reason": "delegation-expired", "question_id": question_id }),
+            )
+        }
+        Err(e) => return Err(Box::new(e)),
+    };
+
+    // Re-fetch so we read the authoritative nonce + confirm still-open.
+    let questions = broker::fetch_open_questions(&settings.broker_url)?;
+    let question = match questions.into_iter().find(|q| q.question_id == question_id) {
+        Some(q) => q,
+        None => {
+            return Ok(
+                json!({ "accepted": false, "reason": "question-not-open", "question_id": question_id }),
+            )
+        }
+    };
+
+    // Policy still applies: recording "no opinion" is participating, so a
+    // blocked topic or an exhausted daily cap declines here too (§7.2). No
+    // option matching — a no-signal envelope carries no answer.
+    let policy = load_policy(&settings.policy_path());
+    let stats = LedgerStats {
+        has_active_delegation: true,
+        ..ledger_stats(&ledger, settings)?
+    };
+    let decision = decide(&question, &policy, &stats);
+    if decision.action != Action::Answer {
+        return Ok(json!({
+            "accepted": false,
+            "reason": format!("policy-declined:{}", decision.reason),
+            "question_id": question_id,
+        }));
+    }
+
+    ledger.record_question(
+        &question.question_id,
+        &question.text,
+        question.topic.as_deref(),
+        &question.closes_at,
+        &question.nonce,
+    )?;
+
+    let agent_kp = load_or_create_agent_keypair(&settings.agent_key_path())?;
+    let envelope =
+        build_no_signal_envelope(&question.question_id, &question.nonce, &token, &agent_kp);
+    let agent_signature = envelope
+        .get("agent_signature")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+
+    let (accepted, reason) = broker::submit_envelope(&settings.broker_url, &envelope)?;
+
+    // Empty answer text records the no-signal outcome in the local ledger.
+    ledger.record_answer(question_id, "", "")?;
     ledger.record_submission(
         question_id,
         &hash_of(&token),

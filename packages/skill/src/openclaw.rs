@@ -161,6 +161,7 @@ mod tests {
         let _: serde_json::Value = serde_json::from_str(json_part).unwrap();
         assert!(SKILL_MD.contains("hearme-skill list-questions"));
         assert!(SKILL_MD.contains("hearme-skill submit-answer"));
+        assert!(SKILL_MD.contains("hearme-skill submit-no-signal"));
     }
 
     #[test]
