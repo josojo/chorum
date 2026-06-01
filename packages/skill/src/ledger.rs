@@ -178,7 +178,7 @@ impl Ledger {
 
     pub fn list_recent_submissions(&self, limit: i64) -> Result<Vec<SubmissionRecord>, Error> {
         let mut stmt = self.conn.prepare(
-            "SELECT question_id, submitted_at, accepted, reason FROM submissions\
+            "SELECT question_id, submitted_at, accepted, reason FROM submissions \
              ORDER BY submitted_at DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(rusqlite::params![limit], |r| {
@@ -228,5 +228,37 @@ impl Ledger {
             )
             .ok();
         Ok(r)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_ledger() -> (tempfile::TempDir, Ledger) {
+        let dir = tempfile::tempdir().unwrap();
+        let ledger = Ledger::open(&dir.path().join("ledger.sqlite")).unwrap();
+        (dir, ledger)
+    }
+
+    // Regression: list_recent_submissions once built `FROM submissions\` glued to
+    // `ORDER BY` (a Rust string line-continuation eats the newline AND the next
+    // line's indentation), yielding `submissionsORDER` — a SQL syntax error that
+    // broke `review-answers`. This exercises the full record -> read round-trip.
+    #[test]
+    fn list_recent_submissions_round_trips() {
+        let (_dir, ledger) = temp_ledger();
+        ledger
+            .record_question("q1", "Q one", Some("ai"), "2030-01-01T00:00:00Z", "n1")
+            .unwrap();
+        ledger.record_answer("q1", "Yes", "").unwrap();
+        ledger
+            .record_submission("q1", "dhash", "sig", true, None)
+            .unwrap();
+
+        let recent = ledger.list_recent_submissions(20).unwrap();
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].question_id, "q1");
+        assert!(recent[0].accepted);
     }
 }
