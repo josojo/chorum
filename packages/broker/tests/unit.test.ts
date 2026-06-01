@@ -17,6 +17,11 @@ import {
   parseAdminIdentifiers,
 } from "../src/askerGating";
 import { VerifyDelegationError, verifyDelegation } from "../src/verify/delegation";
+import {
+  ASKER_SESSION_TTL_MS,
+  issueAskerSession,
+  verifyAskerSession,
+} from "../src/verify/askerSession";
 import { RejectionReason } from "../src/models";
 import { extractNullifierFromLog, nullifierCandidates } from "../src/selfRevocations";
 import { makeToken } from "./helpers";
@@ -175,6 +180,70 @@ describe("delegation verification", () => {
       expect.unreachable();
     } catch (e) {
       expect((e as VerifyDelegationError).reason).toBe(RejectionReason.BROKER_SIGNATURE_INVALID);
+    }
+  });
+});
+
+describe("asker session (Sign in with Self credential)", () => {
+  const uid = "self:asker-session-1";
+
+  it("issues a session that verifies and carries the identity", () => {
+    const s = issueAskerSession({
+      unique_identifier: uid,
+      issued_at: new Date(),
+      expires_at: new Date(Date.now() + ASKER_SESSION_TTL_MS),
+    });
+    expect(s.kind).toBe("asker_session");
+    expect(s.version).toBe(1);
+    expect(verifyAskerSession(s).uniqueIdentifier).toBe(uid);
+  });
+
+  it("rejects an expired session", () => {
+    const s = issueAskerSession({
+      unique_identifier: uid,
+      issued_at: new Date(Date.now() - 2 * ASKER_SESSION_TTL_MS),
+      expires_at: new Date(Date.now() - ASKER_SESSION_TTL_MS),
+    });
+    try {
+      verifyAskerSession(s);
+      expect.unreachable();
+    } catch (e) {
+      expect((e as VerifyDelegationError).reason).toBe(RejectionReason.TOKEN_EXPIRED);
+    }
+  });
+
+  it("rejects a session whose identity was swapped (signature no longer matches)", () => {
+    const s = issueAskerSession({
+      unique_identifier: uid,
+      issued_at: new Date(),
+      expires_at: new Date(Date.now() + ASKER_SESSION_TTL_MS),
+    });
+    try {
+      verifyAskerSession({ ...s, unique_identifier: "self:evil" });
+      expect.unreachable();
+    } catch (e) {
+      expect((e as VerifyDelegationError).reason).toBe(
+        RejectionReason.BROKER_SIGNATURE_INVALID,
+      );
+    }
+  });
+
+  it("rejects a session signed by a different broker key", () => {
+    const other = getSettings({ brokerSigningKey: Buffer.alloc(32, 7).toString("base64") });
+    const s = issueAskerSession({
+      unique_identifier: uid,
+      issued_at: new Date(),
+      expires_at: new Date(Date.now() + ASKER_SESSION_TTL_MS),
+      settings: other,
+    });
+    // Verified against the default dev key — must not pass.
+    try {
+      verifyAskerSession(s);
+      expect.unreachable();
+    } catch (e) {
+      expect((e as VerifyDelegationError).reason).toBe(
+        RejectionReason.BROKER_SIGNATURE_INVALID,
+      );
     }
   });
 });
