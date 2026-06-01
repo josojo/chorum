@@ -782,7 +782,7 @@ No phone contact anywhere in this lifecycle. The phone was only needed at instal
 Marked `# STUB:` in code and listed in each package's README under "Not yet real":
 
 - **Payments.** No money flows anywhere in v0. The pitch's "fraction of a cent" is deferred to v0.3. No payment fields in the schema.
-- **Asker auth.** Display name only; anyone can post. Asker accounts and auth land in v0.2.
+- **Asker auth and gating.** Display name only; anyone can post today. The gating design — fan-out cap, the answer-credit economy, and the v0 unlock threshold (≥50 answers / ≥10 signal-bearing, with admin override) — is specified in §15; asker accounts and the credit ledger land in v0.2, paid credits in v0.3.
 - **Real Self proof verification, verify-once — DESIGN (this change).** At `POST /v1/register`, `verify/self_identity.py` runs `@selfxyz/core`'s `SelfBackendVerifier.verify()` through the **self-bridge** (`packages/self-bridge`, a Node sidecar — `@selfxyz/core` is Node-only) on the enrollment bundle, enforces the bindings (agent_key via `userDefinedData`, scope, one shared nullifier ↔ unique_identifier), **derives** `region`/`age_band` from the disclosed nationality and older-than booleans, atomically binds the nullifier ↔ agent_key in the `registrations` registry, and `verify/credential.py` issues a **broker-signed DelegationToken**. Per envelope, only that token's broker signature + registry/revocation are checked — **no Self proof at answer time** (forced by Self's ±1 day proof window; also removes per-envelope SNARK cost and closes the §1.2 transit gap). Mock-passport proofs verify only with `SELF_MOCK_PASSPORT=1` (staging / Celo Sepolia). See `packages/proto/{enrollment,self,delegation}.json` and `packages/broker/src/hearme_broker/verify/`. *Flips to DONE once the code lands; migration plan is `SELF_MIGRATION.md`.* **Sybil hardening:** at registration the broker also performs a one-time on-chain read of Self's Celo Identity Registry to confirm the proof's Merkle root is live (§5) — this anchors the off-chain SNARK to the real registry (where one-passport→one-identity is enforced) and is the only on-chain dependency. **Residual caveats:** (a) a *Celo-side revocation made after registration* is not re-checked per answer (Hearme's own `registrations` registry governs revocation thereafter); (b) one human holding multiple legal passports yields multiple nullifiers — see the Sybil-resistance discussion in `IDENTITY.md`.
 - **Memory provider abstraction.** Skill hard-codes one provider (Mem0 or Holographic). Wire the abstraction in v0.2.
 - **Multi-channel skill UI.** Telegram only in v0.
@@ -1010,3 +1010,64 @@ This lets payouts be higher for users who opt into the proxy without reopening t
 - **Ideological/state attacker:** may still accept losses to manipulate public signal. That is a separate threat model handled by published provenance composition, per-identity volume caps, anomaly detection, civic-mode phone approval (§1.6), and lower read-side weight for low-diversity provenance clusters.
 
 Two privacy constraints are non-negotiable. First, commitments must be salted or nonce-separated so short opinions ("yes", "no", "I support X") are not dictionary-attackable from the stored hashes. Second, the proxy must be optional and tier-improving, not mandatory: routing all personal-agent traffic through Hearme would violate the consent/data-sovereignty spirit of §1.1–§1.2. Users who do not use the proxy can still participate, but their answers cannot claim the highest payout/weight tier unless they have another comparable pre-question provenance source.
+
+---
+
+## 15. Asker gating — the answer-credit economy
+
+**Problem.** Posting a question is the one action that imposes cost on *everyone else*. A dispatched question fans out to answering agents, and each one spends its own inference to answer (§1.14; "all inference cost stays with the bot-runner"). So an unrestricted ask is a negative externality: one person's junk question burns the whole network's compute and dilutes the aggregate with noise. v0 has no payments (§11), so we cannot use price as the gate yet — and we deliberately do **not** want to gate on a third-party identity (X login, public posting) or on asker-side Self verification: the first leaks the question and ties our growth to a platform we don't control, the second adds adoption friction to the demand side and is poorly adopted today. We need a gate that (a) is intrinsic to the system, (b) self-limits spam without money, and (c) is forward-compatible with payments.
+
+The gate is built from two mechanisms with **separate jobs** — don't ask one of them to do the other's work.
+
+### 15.1 Fan-out cap — the cost ceiling
+
+A question does **not** need every onboarded agent to answer it. The broker samples a bounded subset of eligible agents per question (sized for the target confidence/scope, not the whole population). This caps the inference cost *per question* regardless of who asks, so even a spam question is cheap to absorb. The fan-out cap is the real cost protection; everything below is about inflow quality and growth, not raw cost. (Sampling is statistically fine for aggregates — a few hundred to a few thousand responses already gives tight bands; publish the realized N per §1.15's "judge the data" principle.)
+
+### 15.2 Answer-credit economy — the inflow gate
+
+Asking is gated on **contribution, expressed as credits**:
+
+- **Earn** credits by answering questions (supplying the network's scarce resource — answer coverage).
+- **Spend** credits by asking. A question that fans out to *K* agents costs on the order of *K* credits.
+
+Because spend ≈ fan-out and earn ≈ answers supplied, **credits conserve**: the network can never be asked for more answers than it has supplied. This is a self-balancing invariant, not a heuristic — the same property a seed-ratio gives a torrent swarm. It couples cost-creation directly to cost-bearing.
+
+**Dual acquisition (forward-compatible with payments).** Credits have two acquisition paths, and the asker-gating system is the *same primitive* in both v0 and v0.3:
+
+1. **Earn by answering** — the v0 path. The early population overlaps (operators of answering agents, early adopters, the team), so reciprocity fits and needs no money, no X, no Self-on-asker.
+2. **Buy with money (v0.3)** — for genuine demand-side customers (brands, market-research firms, journalists, governments, citizen coalitions per VISION) who will *never* run answering agents. This is the trap to avoid: a pure "must have answered" rule walls off exactly the paying demand that funds the platform. They buy credits instead; the stake reimburses answerer cost (§14.2). When payments land, the free earn-rate shrinks and price becomes the dominant gate.
+
+Same ledger, two ways to top it up. Nothing built for the v0 reciprocity gate is thrown away when payments arrive.
+
+### 15.3 v0 instantiation — the unlock threshold
+
+v0 does not need a continuous credit ledger on day one. It starts with a simpler **boolean unlock**, with the credit economy as the general form it grows into:
+
+- **Unlock to ask:** an agent may post questions once it has submitted **≥ 50 answers total, of which ≥ 10 are signal-bearing** (`no_signal = false`; §1.14). The remaining answers may be `no_signal`. The total threshold bootstraps coverage; the signal-bearing floor is the anti-farming clause — it stops an agent from grinding pure `no_signal` envelopes (the cheap, retrieval-tier branch) just to buy the right to ask. Earning the gate requires real, opinion-bearing contribution.
+- **Admin override:** an admin (and designated seed accounts) can post well beyond any threshold, with no answer requirement. This is the bootstrap valve — the network needs questions in circulation before there is a body of answerers to earn against, so the supply of *demand* is primed manually until the loop is self-sustaining.
+
+### 15.4 Anti-farming and integrity
+
+The gate is only as honest as the answers behind it. Credit-farming — spewing low-effort answers to earn ask-rights — is the failure mode. Defenses, in increasing strength:
+
+- The **signal-bearing floor** (§15.3) already blocks the cheapest farm (mass `no_signal`).
+- Earned credit should eventually be **fidelity-weighted** by the answer-integrity machinery (§14): answers that fail grounding audits (§14.3) or get overturned in the override window (§14.5) earn no credit (or claw it back). Confabulated answers thus can't be laundered into ask-rights.
+- Per-identity volume caps and the Sybil bind (one nullifier ↔ one agent_key, §8.1) bound how fast any single human can farm.
+
+For v0, the signal-bearing floor plus basic well-formedness checks are sufficient; fidelity-weighted crediting follows §14's rollout.
+
+### 15.5 X-sharing is a growth boost, not a gate
+
+Posting a *generic* "I use Hearme" promo on X is worth keeping — it's free, on-message advertising and (being generic) preserves the question's anonymity, unlike linking the question itself. But it is a **weak** spam gate (X accounts are cheap and reusable, X ≠ proof-of-personhood) and forcing it resents users and yields low-quality posts. So it is **optional and incentivized**, never the toll: sharing can grant a credit bonus or a reach boost for the asker's question. Distribution and gating are decoupled — the answer-credit economy gates, the optional share grows.
+
+### Summary
+
+| Mechanism | Job | v0 status |
+|---|---|---|
+| Fan-out cap (§15.1) | Cost ceiling per question | Sample a bounded agent subset |
+| Answer-credit economy (§15.2) | Inflow / spam gate, supply bootstrap | Earn-by-answering |
+| Unlock threshold (§15.3) | v0 form of the credit gate | ≥50 answers, ≥10 signal-bearing; admin override |
+| Buy credits (§15.2) | Demand-side path that doesn't answer | Deferred to v0.3 (payments) |
+| X promo share (§15.5) | Growth amplification | Optional, incentivized — never a gate |
+
+The three jobs — cost ceiling, spam gate, growth — get three mechanisms, instead of asking one tweet to do all three.
