@@ -13,17 +13,21 @@ name: deploy-staging
 #                                               same one already provisioning
 #                                               EC2). Needs ec2:Authorize/
 #                                               RevokeSecurityGroupIngress on
-#                                               sg-05db2170c9271f2c6.
+#                                               sg-05db2170c9271f2c6, plus
+#                                               ssm:GetParametersByPath +
+#                                               kms:Decrypt on
+#                                               /hearme/staging/* (to render the
+#                                               secrets — see below).
 #   STAGING_SSH_KEY                           - contents of hearme-staging.pem
 #                                               (the EC2 keypair, NOT a GH
 #                                               deploy key).
 #
-# Required on the staging host in /home/ubuntu/hearme/.env:
-#   HEARME_STAGING_POSTGRES_ADMIN_PASSWORD
-#   HEARME_STAGING_POSTGRES_WEB_PASSWORD
-#   HEARME_STAGING_POSTGRES_BROKER_PASSWORD
-#   HEARME_STAGING_BROKER_SIGNING_KEY
-#   HEARME_STAGING_SELF_ENDPOINT
+# Staging secrets are NOT a hand-maintained file on the box anymore. They live
+# in AWS SSM Parameter Store under /hearme/staging/* (SecureString for secrets,
+# String for the public hostname/URL). This workflow renders them onto the box
+# as ~/hearme/.env each deploy via scripts/render-secrets-env.sh, so the on-box
+# .env is a derived artifact. To rotate a secret, change it in SSM (or run
+# scripts/push-secrets-to-ssm.sh) and redeploy. See docs/DEPLOYMENT.md §1.
 
 on:
   push:
@@ -92,6 +96,21 @@ jobs:
           printf '%s\n' "$STAGING_SSH_KEY" > ~/.ssh/staging
           chmod 600 ~/.ssh/staging
           ssh-keyscan -H "$STAGING_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Render staging secrets from SSM onto the box
+        # SSM Parameter Store (/hearme/staging/*) is the single source of truth
+        # for staging secrets (docs/DEPLOYMENT.md §1). Render on the runner —
+        # which already holds the hearme-staging AWS creds — then stream the
+        # .env to the box over SSH. render-secrets-env.sh exits non-zero if the
+        # path is empty, and we write to .env.new + mv so a perms/region slip
+        # fails the deploy instead of clobbering the box's good .env with an
+        # empty one. The plaintext never lands on the runner's disk.
+        run: |
+          rendered="$(scripts/render-secrets-env.sh staging)"
+          printf '%s\n' "$rendered" \
+            | ssh -i ~/.ssh/staging -o ConnectTimeout=10 \
+                  "$STAGING_USER@$STAGING_HOST" \
+                  'umask 077; mkdir -p ~/hearme; cat > ~/hearme/.env.new && mv ~/hearme/.env.new ~/hearme/.env'
 
       - name: Pull main and rebuild on staging
         run: |
