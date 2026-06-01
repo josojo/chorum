@@ -3,8 +3,8 @@ name: build-binaries
 # Build the standalone `hearme-skill` binary (Rust) for Linux x86_64 and
 # aarch64, smoke-test it, upload it as a CI artifact, and — on a version tag —
 # attach both binaries plus install.sh to the GitHub Release. Each arch is built
-# natively on a runner of that arch (no cross-compilation; rusqlite's bundled
-# SQLite needs a C compiler, which the GitHub runners provide).
+# natively on a runner of that arch and targets musl so release binaries do not
+# inherit the GitHub runner's glibc version requirement.
 #
 # Runs on push to main (catch release-build / aarch64 breakage post-merge) and on
 # version tags (the actual release). Not on PRs: the e2e job in ci.yml already
@@ -33,8 +33,10 @@ jobs:
         include:
           - runner: ubuntu-latest
             arch: x86_64
+            target: x86_64-unknown-linux-musl
           - runner: ubuntu-24.04-arm
             arch: aarch64
+            target: aarch64-unknown-linux-musl
     defaults:
       run:
         working-directory: packages/skill
@@ -43,6 +45,11 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl C toolchain
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
@@ -50,23 +57,23 @@ jobs:
           workspaces: packages/skill
 
       - name: Build binary
-        run: cargo build --release --locked
+        run: cargo build --release --locked --target "${{ matrix.target }}"
 
       - name: Smoke-test the binary
         run: |
-          ./target/release/hearme-skill --help
+          ./target/${{ matrix.target }}/release/hearme-skill --help
           # list-questions never raises: with no broker reachable it prints a
           # JSON {"error": ...} and exits 0. Confirms the built binary works.
-          ./target/release/hearme-skill list-questions
+          ./target/${{ matrix.target }}/release/hearme-skill list-questions
 
       - name: Rename for release
-        run: mv target/release/hearme-skill "target/release/hearme-skill-linux-${{ matrix.arch }}"
+        run: mv "target/${{ matrix.target }}/release/hearme-skill" "target/${{ matrix.target }}/release/hearme-skill-linux-${{ matrix.arch }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: hearme-skill-linux-${{ matrix.arch }}
-          path: packages/skill/target/release/hearme-skill-linux-${{ matrix.arch }}
+          path: packages/skill/target/${{ matrix.target }}/release/hearme-skill-linux-${{ matrix.arch }}
           if-no-files-found: error
 
       - name: Attach to release (tags only)
@@ -74,5 +81,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            packages/skill/target/release/hearme-skill-linux-${{ matrix.arch }}
+            packages/skill/target/${{ matrix.target }}/release/hearme-skill-linux-${{ matrix.arch }}
             packages/skill/scripts/install.sh
