@@ -95,10 +95,30 @@ export interface PlatformStats {
   avg_answers_per_question: number;
 }
 
-// GET /v1/askers/:unique_identifier/eligibility — the asker gating decision
+// POST /v1/askers/eligibility body. The asker proves a registered identity by
+// presenting their broker-signed DelegationToken (ARCHITECTURE.md §15.3 asker
+// auth). Exactly one field — same `.strict()` boundary discipline as envelopes.
+export const askerEligibilityRequestSchema = z
+  .object({
+    delegation_token: delegationTokenSchema,
+  })
+  .strict();
+export type AskerEligibilityRequest = z.infer<typeof askerEligibilityRequestSchema>;
+
+// POST /v1/askers/eligibility response — authenticated asker gating decision
 // (ARCHITECTURE.md §15.3). snake_case to match the other broker wire shapes.
+//
+// `authorized` is the AUTH result (did the token verify against a live, non-
+// revoked registration). `can_ask` is the GATE result (does the identity clear
+// the unlock threshold). When authorized === false, the gate fields are zeroed
+// and `auth_reason` carries why; when authorized === true, `reason` carries the
+// gate block reason (null ⇔ can_ask).
 export interface AskerEligibilityResponse {
-  unique_identifier: string;
+  authorized: boolean;
+  // A RejectionReason when authorized === false (or null when hidden); else null.
+  auth_reason: string | null;
+  // The verified identity (null when auth failed — we never echo an unverified id).
+  unique_identifier: string | null;
   can_ask: boolean;
   is_admin: boolean;
   total_answers: number;

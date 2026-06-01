@@ -10,7 +10,7 @@ import type { FastifyInstance } from "fastify";
 import { type Db } from "../src/db";
 import type { DelegationToken } from "../src/models";
 import { startPg, truncateAll, type PgHandle } from "./pg";
-import { agentKeyB64, makeEnvelope, makeRevocation, makeEnrollment, mockVerifyProof } from "./helpers";
+import { agentKeyB64, makeEnvelope, makeRevocation, makeEnrollment, makeToken, mockVerifyProof } from "./helpers";
 
 let pg: PgHandle | null = null;
 let db: Db;
@@ -281,7 +281,7 @@ describe("GET /v1/stats", () => {
   });
 });
 
-describe("GET /v1/askers/:id/eligibility (unlock threshold, §15.3)", () => {
+describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §15.3)", () => {
   // Seed one envelope (one answer) for `uid` against a fresh question. An empty
   // answer stands in for a no-signal envelope (the v0 proxy for no_signal=true,
   // §1.14); a non-empty answer is signal-bearing.
@@ -298,17 +298,52 @@ describe("GET /v1/askers/:id/eligibility (unlock threshold, §15.3)", () => {
     `);
   }
 
-  const eligibility = async (uid: string) =>
-    (
+  // Authenticate as `uid` by minting a real broker-signed token (dev register)
+  // and posting it — the same credential an onboarded asker would present.
+  async function eligibilityFor(uid: string) {
+    const token = await devToken({ uid });
+    return (
       await app.inject({
-        method: "GET",
-        url: `/v1/askers/${encodeURIComponent(uid)}/eligibility`,
+        method: "POST",
+        url: "/v1/askers/eligibility",
+        payload: { delegation_token: token },
       })
     ).json();
+  }
 
-  it("an unknown identity has zero answers and cannot ask", async (ctx) => {
+  it("rejects a token with no backing registration (auth fails)", async (ctx) => {
     if (!pg) return ctx.skip();
-    expect(await eligibility("self:nobody")).toMatchObject({
+    // A validly broker-signed token whose nullifier was never registered.
+    const token = makeToken({ uniqueIdentifier: "self:never-registered" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/askers/eligibility",
+      payload: { delegation_token: token },
+    });
+    expect(res.json()).toMatchObject({
+      authorized: false,
+      auth_reason: "registration_not_found",
+      unique_identifier: null,
+      can_ask: false,
+    });
+  });
+
+  it("rejects a token not signed by this broker", async (ctx) => {
+    if (!pg) return ctx.skip();
+    // A validly shaped token whose broker_signature has been tampered.
+    const token = { ...makeToken({ uniqueIdentifier: "self:x" }), broker_signature: "AAAA" };
+    expect((await app.inject({
+      method: "POST",
+      url: "/v1/askers/eligibility",
+      payload: { delegation_token: token },
+    })).json()).toMatchObject({ authorized: false, auth_reason: "broker_signature_invalid" });
+  });
+
+  it("authenticates a registered identity with zero answers — cannot ask yet", async (ctx) => {
+    if (!pg) return ctx.skip();
+    expect(await eligibilityFor("self:fresh")).toMatchObject({
+      authorized: true,
+      unique_identifier: "self:fresh",
       can_ask: false,
       total_answers: 0,
       signal_answers: 0,
@@ -326,7 +361,8 @@ describe("GET /v1/askers/:id/eligibility (unlock threshold, §15.3)", () => {
     // 50 answers, exactly 10 of them signal-bearing — the §15.3 boundary.
     for (let i = 0; i < 10; i++) await seedAnswer(uid, "yes");
     for (let i = 0; i < 40; i++) await seedAnswer(uid, ""); // no_signal proxy
-    expect(await eligibility(uid)).toMatchObject({
+    expect(await eligibilityFor(uid)).toMatchObject({
+      authorized: true,
       can_ask: true,
       total_answers: 50,
       signal_answers: 10,
@@ -341,7 +377,8 @@ describe("GET /v1/askers/:id/eligibility (unlock threshold, §15.3)", () => {
     const uid = "self:asker-farm";
     for (let i = 0; i < 3; i++) await seedAnswer(uid, "yes");
     for (let i = 0; i < 55; i++) await seedAnswer(uid, "");
-    expect(await eligibility(uid)).toMatchObject({
+    expect(await eligibilityFor(uid)).toMatchObject({
+      authorized: true,
       can_ask: false,
       total_answers: 58,
       signal_answers: 3,
@@ -351,11 +388,11 @@ describe("GET /v1/askers/:id/eligibility (unlock threshold, §15.3)", () => {
     });
   });
 
-  it("counts are scoped to the identity (no cross-talk)", async (ctx) => {
+  it("counts are scoped to the authenticated identity (no cross-talk)", async (ctx) => {
     if (!pg) return ctx.skip();
     await seedAnswer("self:a", "yes");
     await seedAnswer("self:b", "yes");
-    expect((await eligibility("self:a")).total_answers).toBe(1);
+    expect((await eligibilityFor("self:a")).total_answers).toBe(1);
   });
 });
 

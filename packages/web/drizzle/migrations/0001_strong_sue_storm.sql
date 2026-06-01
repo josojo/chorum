@@ -1,0 +1,1 @@
+ALTER TABLE "askers" ADD COLUMN "unique_identifier" text;
