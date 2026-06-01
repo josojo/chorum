@@ -1,10 +1,16 @@
 # hearme-skill
 
-The Hearme Hermes skill — a local agent that answers questions on the user's
-behalf, signs them, and submits them to the broker.
+The Hearme answering skill — a local agent that answers questions on the user's
+behalf, signs them, and submits them to the broker. It runs on **Hermes** and
+**OpenClaw** from one shared core.
 
 See [ARCHITECTURE.md §6-8](../../ARCHITECTURE.md) for the canonical spec this
 package implements. This README documents how to install, run, and test it.
+
+> **Just want to install it?** Jump to
+> [Install from a prebuilt binary](#install-from-a-prebuilt-binary-no-python-or-node) —
+> two commands, no Python or Node toolchain, same flow on Hermes and OpenClaw.
+> The sections below cover from-source / in-process installs and development.
 
 ## Architecture overview
 
@@ -50,8 +56,13 @@ and asserted by `tests/test_identity_inference_separation.py`.
 
 ## Install + run
 
+The end-user install is the prebuilt binary —
+[Install from a prebuilt binary](#install-from-a-prebuilt-binary-no-python-or-node)
+(`curl … | sh`, then `hearme-skill install`, then `hearme-skill onboard …`). The
+rest of this section is the **from-source / development** path.
+
 ```bash
-# from packages/skill/
+# from packages/skill/  (development install)
 pip install -e '.[dev]'
 
 # 1. Generate the agent key, show the Self QR codes (one per age threshold),
@@ -213,6 +224,14 @@ agent](https://github.com/NousResearch/hermes) (>= 0.14). The agent already has
 a model + provider configured in `~/.hermes/config.yaml`, so Hearme adds **no
 new API key** — inference is whatever model the user already runs.
 
+> **Easiest path:** use the
+> [prebuilt binary](#install-from-a-prebuilt-binary-no-python-or-node) —
+> `hearme-skill install` drops a self-contained subprocess-shim plugin that
+> needs **no** `pip install` into the gateway venv. The steps below are the
+> from-source install that registers the **in-process** plugin (slightly faster,
+> no per-call subprocess; pick this if you're developing the skill or already
+> manage the gateway venv).
+
 ```bash
 # 1. Install hearme-skill into the SAME venv your hermes-gateway runs from.
 #    Find that Python via the cgroup line of `systemctl --user status
@@ -359,6 +378,11 @@ and the agent runs the `hearme-skill` CLI through its built-in `exec` tool.
 Identity, the policy gate, envelope signing, the ledger, and fetching open
 questions are all shared with Hermes — only the adapter differs (`openclaw.py`
 vs `plugin.py`).
+
+> **Easiest path:** the
+> [prebuilt binary](#install-from-a-prebuilt-binary-no-python-or-node) needs no
+> Python *or* Node — `hearme-skill install` writes the `SKILL.md` and registers
+> the cron. The steps below install the CLI from source instead (`pipx`/`pip`).
 
 ```bash
 # 1. Install the CLI somewhere OpenClaw can reach on PATH (Python >= 3.11).
