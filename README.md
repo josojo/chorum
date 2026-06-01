@@ -2,7 +2,7 @@
 
 v0 implementation of the system described in [ARCHITECTURE.md](./ARCHITECTURE.md).
 
-**Identity:** proof-of-personhood is built on **Self** ([self.xyz](https://self.xyz)) — see [IDENTITY.md](./IDENTITY.md) for the why and [SELF_MIGRATION.md](./SELF_MIGRATION.md) for the zkPassport→Self code-migration plan.
+**Identity:** proof-of-personhood is built on **Self** ([self.xyz](https://self.xyz)) — see [IDENTITY.md](./IDENTITY.md) for the why.
 
 ## Status
 
