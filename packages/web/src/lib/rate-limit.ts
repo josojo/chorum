@@ -2,7 +2,7 @@
 //
 // v0 — basic spam mitigation on question creation while asker auth stays
 // deferred (ARCHITECTURE §11). The composite point is the same as on the
-// broker (packages/broker/src/hearme_broker/ratelimit.py): an in-memory,
+// broker (packages/broker/src/ratelimit.ts): an in-memory,
 // per-process sliding window — appropriate for the single-instance v0
 // deployment, NOT a substitute for a shared cache (Redis) once we scale
 // horizontally. The policy API stays the same when we swap the backing.

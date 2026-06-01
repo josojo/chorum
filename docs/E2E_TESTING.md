@@ -22,12 +22,12 @@ logic — only the personhood check is skipped. **Never enable in production.**
 # 1. Postgres (initialises schema + roles + demo seed on first run)
 docker compose up -d postgres
 
-# 2. Broker with the bypass enabled (local venv; or add the env to the broker
+# 2. Broker with the bypass enabled (local; or add the env to the broker
 #    service and `docker compose up -d broker`)
-cd packages/broker
+cd packages/broker && npm ci
 HEARME_BROKER_DEV_INSECURE_REGISTER=1 \
 HEARME_BROKER_DATABASE_URL="postgres://hearme_broker:hearme_broker_dev@localhost:5432/hearme" \
-  .venv/bin/uvicorn hearme_broker.main:app --host 127.0.0.1 --port 8000
+  npm run dev
 
 # 3. Create N synthetic identities and answer every eligible open question
 packages/skill/.venv/bin/python scripts/dev-seed-identities.py \
