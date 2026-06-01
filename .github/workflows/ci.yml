@@ -222,7 +222,15 @@ jobs:
           timeout 120 hermes plugins list </dev/null | tee plugins-after.txt
           grep -qi hearme plugins-after.txt || { echo "FATAL: hearme missing after enable" >&2; exit 1; }
 
-      - name: Assert the gateway shim wires its tools + cron
+      - name: Answer a question through the plugin's registered tool handler
+        # Loads the same shim a gateway loads, then calls the registered
+        # hearme_list_open_questions / hearme_submit_answer handlers against the
+        # live broker using the identity onboarded above — proving the continuous
+        # path: plugin tool handler -> hearme-skill binary -> broker accepted.
+        env:
+          HEARME_SKILL_ROOT_DIR: ${{ github.workspace }}/.hermes/hearme
+          HEARME_SKILL_BROKER_URL: http://127.0.0.1:8000
+          HEARME_E2E_LIVE_SUBMIT: "1"
         run: |
           python3 scripts/ci-hermes-plugin-load.py "$HOME/.hermes/plugins/hearme/__init__.py"
 

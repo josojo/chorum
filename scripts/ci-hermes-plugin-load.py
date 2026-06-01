@@ -1,20 +1,34 @@
 #!/usr/bin/env python3
 """Load the generated Hermes plugin shim the way a gateway would, and assert it
-wires up correctly.
+wires up correctly — optionally answering a question end-to-end through the
+plugin's own registered tool handlers.
 
 `hermes plugins list` confirms Hermes *recognizes* the dropped-in manifest, but
-it doesn't prove the shim's Python actually imports and registers its tools. This
-harness closes that gap without needing a running gateway or a model: it imports
-the generated ``~/.hermes/plugins/hearme/__init__.py`` shim, hands ``register()``
-a recording context (like the gateway's plugin loader does), stubs the gateway's
-``cron.jobs`` API, and asserts that:
+it doesn't prove the shim's Python actually imports, registers its tools, and
+that calling those tools answers a question. This harness closes that gap without
+needing a model: it imports the generated ``~/.hermes/plugins/hearme/__init__.py``
+shim, hands ``register()`` a recording context (like the gateway's plugin loader
+does), stubs the gateway's ``cron.jobs`` API, and asserts that:
 
-  1. both tools (hearme_list_open_questions, hearme_submit_answer) get registered, and
+  1. both tools (hearme_list_open_questions, hearme_submit_answer) get registered;
   2. with a delegation token present, the answering cron job self-registers with
-     the baked-in name / schedule / prompt.
+     the baked-in name / schedule / prompt; and
+  3. (when HEARME_E2E_LIVE_SUBMIT=1) calling the *registered* tool handlers
+     actually lists an open question and submits an accepted answer to a live
+     broker — the same handler -> binary -> broker path a running gateway drives.
 
-This is the same __init__.py the real gateway loads, so a pass means "when a
-clean Hermes gateway loads the hearme plugin, the plugin wires itself up."
+This is the same __init__.py the real gateway loads and the same handlers it would
+call, so a pass means "when a clean Hermes gateway loads the hearme plugin, the
+plugin wires itself up and its answer tool works against the broker." The only
+things not exercised are a real gateway *process* dispatching the tool and an LLM
+*deciding* to call it (both intentionally out of scope here).
+
+Env:
+  HEARME_SKILL_ROOT_DIR   the agent home the shim/binary read (delegation + key).
+                          If unset, a throwaway home with a dummy token is used
+                          (enough for the wiring asserts, but not a live submit).
+  HEARME_SKILL_BROKER_URL broker the binary submits to (live submit only).
+  HEARME_E2E_LIVE_SUBMIT  set to 1 to run the live list+submit assertion.
 
 Usage:
     ci-hermes-plugin-load.py [path/to/plugins/hearme/__init__.py]
@@ -23,6 +37,7 @@ Usage:
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import sys
 import tempfile
@@ -38,12 +53,22 @@ def main(argv: list[str]) -> int:
         print("       Run `hearme-skill install --host hermes` first.", file=sys.stderr)
         return 1
 
-    # A delegation token must exist for the shim to self-register the cron, so
-    # point the shim's agent home at a temp dir that has one.
-    root = Path(tempfile.mkdtemp()) / "hearme-agent"
-    root.mkdir(parents=True)
-    (root / "delegation.token").write_text("{}")
-    os.environ["HEARME_SKILL_ROOT_DIR"] = str(root)
+    live_submit = os.environ.get("HEARME_E2E_LIVE_SUBMIT", "") in ("1", "true", "yes")
+
+    # The shim resolves the agent home (delegation + key) from HEARME_SKILL_ROOT_DIR.
+    # Reuse a real onboarded home if one was passed in (required for a live
+    # submit); otherwise make a throwaway one with a dummy token so the cron
+    # self-registration path still fires.
+    root = os.environ.get("HEARME_SKILL_ROOT_DIR")
+    if not root:
+        if live_submit:
+            print("FATAL: HEARME_E2E_LIVE_SUBMIT=1 needs HEARME_SKILL_ROOT_DIR "
+                  "pointing at an onboarded agent home.", file=sys.stderr)
+            return 1
+        root = str(Path(tempfile.mkdtemp()) / "hearme-agent")
+        Path(root).mkdir(parents=True)
+        (Path(root) / "delegation.token").write_text("{}")
+        os.environ["HEARME_SKILL_ROOT_DIR"] = root
 
     # Stub the gateway-provided `cron.jobs` API the shim imports lazily.
     created: list[dict] = []
@@ -94,12 +119,9 @@ def main(argv: list[str]) -> int:
         failures.append("answering cron job did not self-register")
     else:
         job = created[0]
-        if not job.get("name"):
-            failures.append("cron job registered without a name")
-        if not job.get("prompt"):
-            failures.append("cron job registered without a prompt")
-        if not job.get("schedule"):
-            failures.append("cron job registered without a schedule")
+        for field in ("name", "prompt", "schedule"):
+            if not job.get(field):
+                failures.append(f"cron job registered without a {field}")
 
     if failures:
         for f in failures:
@@ -109,6 +131,37 @@ def main(argv: list[str]) -> int:
     print("== plugin-load PASS: the gateway shim registers both tools "
           f"({', '.join(sorted(registered))}) and self-registers cron job "
           f"'{created[0].get('name')}' ({created[0].get('schedule')}) ==")
+
+    if not live_submit:
+        return 0
+
+    # --- Live: answer a question through the plugin's OWN registered handlers ---
+    # This is the continuous gateway path: registered tool handler -> hearme-skill
+    # binary (the shim shells out to it) -> live broker. The list handler finds a
+    # still-open question the agent hasn't answered; the submit handler signs and
+    # posts the envelope. No question id is hard-coded: we answer whatever the
+    # plugin's own list tool surfaces first.
+    list_handler = registered["hearme_list_open_questions"]["handler"]
+    listed = json.loads(list_handler({}))
+    questions = listed.get("questions", [])
+    if not questions:
+        print("FATAL: the plugin's list tool returned no answerable questions "
+              f"(error={listed.get('error')!r}).", file=sys.stderr)
+        return 1
+    qid = questions[0]["question_id"]
+    print(f"-- plugin list tool surfaced {len(questions)} question(s); answering {qid}")
+
+    submit_handler = registered["hearme_submit_answer"]["handler"]
+    out = json.loads(submit_handler(
+        {"question_id": qid, "answer": "Yes - answered via the Hermes plugin tool handler."}
+    ))
+    if not out.get("accepted"):
+        print(f"FATAL: the plugin's submit tool was not accepted by the broker: {out}",
+              file=sys.stderr)
+        return 1
+
+    print("== plugin-answer PASS: the hearme_submit_answer tool handler signed + "
+          f"submitted an answer the broker accepted (question {qid}) ==")
     return 0
 
 
