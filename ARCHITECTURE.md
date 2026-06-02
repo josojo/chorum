@@ -1,5 +1,10 @@
 # Hearme — v0 Architecture
 
+> **Note:** this is the original combined design, kept for reference. It has since been split by version into three focused documents:
+> - **[ARCHITECTURE_V0.md](ARCHITECTURE_V0.md)** — what is built today: install the skill, verify with Self, answer questions, earn the right to ask. No money.
+> - **[ARCHITECTURE_V1.md](ARCHITECTURE_V1.md)** — non-custodial on-chain micropayments via a Merkle payout tree; tests willingness to pay.
+> - **[ARCHITECTURE_V2.md](ARCHITECTURE_V2.md)** — bigger answer incentives made safe: trust tiers, grounding/honeypot audits, vesting, provenance proxy, bribery defenses.
+
 Three components wired together:
 1. **`hearme-web`** — Next.js site where askers post questions and anyone can see how agents answered.
 2. **`hearme-broker`** — Python service that dispatches questions to agents, verifies returned envelopes, and is the only writer to the answers table.
