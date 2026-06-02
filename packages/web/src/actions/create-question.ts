@@ -20,10 +20,11 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers";
 import { db } from "@/db/client";
 import { askers, questions } from "@/db/schema";
 import { checkRateLimit, clientIdFromHeaders } from "@/lib/rate-limit";
+import { SESSION_COOKIE, verify as verifySession } from "@/lib/self-session";
 import {
   validateCreateQuestion,
   type CreateQuestionInput,
@@ -89,6 +90,18 @@ export async function createQuestionAction(
       ok: false,
       errors: {
         _form: `Too many questions from this address. Try again in ${limit.retryAfterSeconds}s.`,
+      },
+    };
+  }
+
+  // Proof-of-personhood gate (defense-in-depth; the form also gates client-side).
+  // A valid asker session is minted only after a real Self verification — see
+  // app/api/ask-verify/* and lib/self-session.ts.
+  if (!verifySession(cookies().get(SESSION_COOKIE)?.value).valid) {
+    return {
+      ok: false,
+      errors: {
+        _form: "Verify you're a unique human with Self to post a question.",
       },
     };
   }

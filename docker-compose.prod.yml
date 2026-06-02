@@ -68,6 +68,8 @@ services:
   web:
     environment:
       DATABASE_URL: postgres://hearme_web:${HEARME_PROD_POSTGRES_WEB_PASSWORD:?set in prod .env}@postgres:5432/hearme
+      # Non-dev HMAC key for the asker session cookie (verify-to-ask flow).
+      HEARME_WEB_SESSION_SECRET: ${HEARME_PROD_WEB_SESSION_SECRET:?set in prod .env}
 
   classifier:
     environment:

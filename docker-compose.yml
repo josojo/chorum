@@ -165,6 +165,8 @@ services:
         condition: service_healthy
       migrator:
         condition: service_completed_successfully
+      self-bridge:
+        condition: service_started
     environment:
       # postgres-js DSN. scheme `postgres://` works for both Drizzle's
       # postgres driver and the Next.js runtime.
@@ -172,6 +174,13 @@ services:
       # /stats reads privacy-safe aggregate counts (agents, respondents) the
       # web role can't query directly from the broker.
       BROKER_URL: http://broker:8000
+      # The self-bridge, reached internally for the "verify to ask" QR flow
+      # (app/api/ask-verify/*). The browser never hits the bridge directly.
+      SELF_BRIDGE_URL: http://self-bridge:8787
+      # HMAC key for the asker session cookie. Dev default here; the staging/prod
+      # overlay overrides it with a secret (a stable key keeps sessions valid
+      # across web restarts).
+      HEARME_WEB_SESSION_SECRET: hearme_web_session_dev
       NODE_ENV: production
     # Loopback only — see the note on the postgres service. In prod/staging
     # Caddy serves the web app to the internet via `reverse_proxy web:3000`.

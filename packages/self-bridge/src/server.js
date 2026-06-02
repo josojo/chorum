@@ -11,8 +11,15 @@
 //       Builds one SelfApp per age threshold (scope hearme-v1, endpoint =
 //       this bridge's /callback, userDefinedData = agentKey). Returns the
 //       universal-link/QR urls; the skill renders each in turn.
+//   POST /web/requests   {} -> {requestId, url}
+//       Keyless variant for the website's "verify to ask" gate: one SelfApp
+//       (18+ personhood proof, no agentKey to bind). The web server calls this
+//       internally and renders `url` as a QR; on completion it reads the
+//       nullifier from GET /requests/:id and mints an asker session.
 //   POST /callback   (the SelfApp endpoint) — the Self app POSTs a proof here;
-//       the bridge verifies + stores it under the originating requestId.
+//       the bridge verifies + stores it under the originating requestId. Proofs
+//       for an agent request must bind the request's agentKey; web requests have
+//       no agent key, so that bind is skipped for them.
 //   GET  /requests/:id -> {status, verified, uniqueIdentifier, disclosed,
 //       boundAgentKey, bundles[]} once all expected proofs are in.
 //   POST /verify     {attestationId, proof, publicSignals, userContextData}
@@ -116,8 +123,9 @@ export function __seedPending({
   userId,
   threshold,
   agentKey = "test-agent-key",
+  web = false,
 }) {
-  pending.set(requestId, { agentKey, thresholds, results: new Map() });
+  pending.set(requestId, { agentKey, web, thresholds, results: new Map() });
   byUser.set(normUserId(userId), { requestId, threshold });
 }
 export function __resetState() {
@@ -296,6 +304,42 @@ app.post("/requests", async (req, res) => {
   }
 });
 
+// Keyless web verification: one 18+ personhood proof, no agentKey to bind. The
+// website's server calls this internally and renders the returned url as a QR.
+app.post("/web/requests", async (_req, res) => {
+  try {
+    const epErr = endpointProblem(ENDPOINT);
+    if (epErr) return res.status(500).json({ error: epErr });
+    const { SelfAppBuilder, getUniversalLink } = await import("@selfxyz/qrcode");
+    const threshold = 18;
+    const requestId = cryptoRandomId();
+    // userIdType "hex" needs a 0x-prefixed field element; mint a fresh one and
+    // remember how to route the proof back. userDefinedData is unused for web
+    // (no agent-key bind) but must be valid hex — reuse the requestId bytes.
+    const userId = "0x" + cryptoRandomId();
+    byUser.set(normUserId(userId), { requestId, threshold });
+    const selfApp = new SelfAppBuilder({
+      appName: "Hearme",
+      scope: SCOPE,
+      endpoint: ENDPOINT,
+      endpointType: ENDPOINT_TYPE,
+      userId,
+      userIdType: "hex",
+      userDefinedData: "0x" + requestId,
+      disclosures: disclosuresForThreshold(threshold),
+      version: 2,
+      devMode: DEV_MODE,
+      ...(CHAIN_ID ? { chainID: CHAIN_ID } : {}),
+    }).build();
+    const url = getUniversalLink(selfApp);
+    pending.set(requestId, { web: true, thresholds: [threshold], results: new Map() });
+    dbg(`/web/requests created requestId=${requestId} pending.size=${pending.size}`);
+    return res.json({ requestId, url });
+  } catch (e) {
+    return res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
 // The SelfApp `endpoint`: the Self app POSTs proofs here.
 app.post("/callback", async (req, res) => {
   try {
@@ -331,7 +375,10 @@ app.post("/callback", async (req, res) => {
       // bind the real nullifier to the wrong agent. Both values are base64
       // (decodeBoundAgentKey returns base64; /requests set userDefinedData =
       // b64ToHex(agentKey)), so a legitimate proof compares equal.
-      if (!out.boundAgentKey || out.boundAgentKey !== entry.agentKey) {
+      //
+      // Web requests (/web/requests) have no agent key — the website only needs
+      // the personhood nullifier, not an agent binding — so skip the bind there.
+      if (!entry.web && (!out.boundAgentKey || out.boundAgentKey !== entry.agentKey)) {
         console.warn(
           `[self-bridge] /callback agent-key bind FAILED for requestId=${routed.requestId} ` +
             `threshold=${routed.threshold} (bound=${out.boundAgentKey ? "present" : "null"}, ` +

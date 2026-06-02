@@ -215,6 +215,26 @@ test("a verify() that throws surfaces as a 500 error ack", async () => {
   assert.match(json.reason, /celo rpc unreachable/);
 });
 
+test("a web request stores a verified proof without an agent-key bind", async () => {
+  const userId = "0x55";
+  // web:true entry has no agentKey to bind against.
+  __seedPending({ requestId: "req-web", thresholds: [18], userId, threshold: 18, web: true });
+  // A proof whose bound key would NOT match any agent key — irrelevant for web.
+  __setVerifyImpl(async () =>
+    sdkResult({ isValid: true, userId, agentKeyHex: "cd".repeat(32) }),
+  );
+
+  const res = await post("/callback", GOOD_BODY);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { status: "success", result: true });
+
+  // Stored despite the (ignored) bind — the web flow only needs the nullifier.
+  const got = await (await fetch(base + "/requests/req-web")).json();
+  assert.equal(got.status, "complete");
+  assert.equal(got.verified, true);
+  assert.equal(got.uniqueIdentifier, "nullifier-xyz");
+});
+
 test("a multi-threshold request stays pending until every proof arrives", async () => {
   __seedPending({ requestId: "req-multi", thresholds: [18, 25], userId: "0x11", threshold: 18, agentKey: SEED_AGENT_KEY });
   // Register the second expected proof under the same request.

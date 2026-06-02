@@ -3,7 +3,9 @@
 // Renders a client form (ask-form.tsx) that invokes the createQuestionAction
 // server action. The action inserts and redirects to /q/[id].
 
+import { cookies } from "next/headers";
 import { AskForm } from "@/components/ask-form";
+import { SESSION_COOKIE, verify as verifySession } from "@/lib/self-session";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,7 @@ export default function AskPage({
   const scope = parseScope(searchParams?.scope);
   const country = (searchParams?.country ?? "").toUpperCase();
   const continent = (searchParams?.continent ?? "").toUpperCase();
+  const verified = verifySession(cookies().get(SESSION_COOKIE)?.value).valid;
 
   return (
     <section className="space-y-6 sm:space-y-8">
@@ -46,6 +49,7 @@ export default function AskPage({
         defaultScope={scope}
         defaultCountry={country}
         defaultContinent={continent}
+        verified={verified}
       />
     </section>
   );

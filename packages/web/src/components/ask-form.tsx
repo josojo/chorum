@@ -8,6 +8,7 @@ import {
 } from "@/actions/create-question";
 import { CONTINENT_NAMES, COUNTRY_NAMES, COUNTRY_TO_CONTINENT } from "@/lib/geo-data";
 import { countryFlag } from "@/lib/flags";
+import { SelfVerifyDialog } from "@/components/self-verify-dialog";
 
 const initialState: CreateQuestionResult | null = null;
 
@@ -28,6 +29,8 @@ type Props = {
   defaultScope?: Scope;
   defaultCountry?: string;
   defaultContinent?: string;
+  /** Whether this visitor already holds a valid Self asker session. */
+  verified?: boolean;
 };
 
 function toLocalDatetimeValue(d: Date): string {
@@ -60,7 +63,10 @@ export function AskForm({
   defaultScope = "worldwide",
   defaultCountry = "",
   defaultContinent = "",
+  verified = false,
 }: Props) {
+  const [isVerified, setIsVerified] = useState(verified);
+  const [verifyOpen, setVerifyOpen] = useState(false);
   const [state, formAction] = useFormState(
     createQuestionAction as unknown as (
       prev: CreateQuestionResult | null,
@@ -112,6 +118,7 @@ export function AskForm({
   }, []);
 
   return (
+    <>
     <form action={formAction} className="space-y-6">
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <Field
@@ -335,10 +342,34 @@ export function AskForm({
         </Field>
       </div>
 
-      <div className="flex justify-stretch sm:justify-end">
-        <SubmitButton />
-      </div>
+      {isVerified ? (
+        <div className="flex justify-stretch sm:justify-end">
+          <SubmitButton />
+        </div>
+      ) : (
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row-reverse sm:items-center sm:justify-start sm:gap-3">
+          <button
+            type="button"
+            onClick={() => setVerifyOpen(true)}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand-gradient px-6 py-3 text-sm font-semibold text-white shadow-glow transition hover:opacity-95 sm:w-auto sm:py-2.5"
+          >
+            <span aria-hidden>🛡️</span> Verify with Self to post
+          </button>
+          <p className="text-center text-xs text-slate-500 sm:text-left">
+            One-time proof of personhood. Your passport never leaves your phone.
+          </p>
+        </div>
+      )}
     </form>
+    <SelfVerifyDialog
+      open={verifyOpen}
+      onClose={() => setVerifyOpen(false)}
+      onVerified={() => {
+        setIsVerified(true);
+        setVerifyOpen(false);
+      }}
+    />
+    </>
   );
 }
 
