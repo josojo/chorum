@@ -5,6 +5,11 @@
 // add-on into the agent they already run (Openclaw, Hermes, …), verifying once
 // with Self, and then earning as their agent answers polls on their behalf.
 //
+// Split in two:
+//   • EarnExplainerDialog — the controlled walkthrough (open/onClose). Reused by
+//     the header trigger AND the home hero's "Add your voice" CTA.
+//   • EarnExplainer — the header trigger button that owns its own open state.
+//
 // Each step's illustration is a small live simulation driven by a `tick` that
 // advances while the modal sits on that step: the install log streams in, the
 // Self check flips to verified, questions arrive and get answered, and the
@@ -43,24 +48,29 @@ const STEPS: Step[] = [
     illustration: FeedIllustration,
   },
   {
-    title: "Get heard — and get paid",
-    body: "Every answer gets your voice counted and pays out a fraction of a cent. Set your policy once and it earns quietly in the background. Sell your voice — don't give it away.",
+    title: "Get heard — and earn",
+    body: "Every answer gets your voice counted. Today it earns you the right to ask questions of your own; cash payouts are coming. Set your policy once and it runs quietly in the background. Sell your voice — don't give it away.",
     illustration: EarningsIllustration,
   },
 ];
 
-export function EarnExplainer() {
-  const [open, setOpen] = useState(false);
+// Controlled walkthrough. Callers own `open` and supply `onClose`.
+export function EarnExplainerDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const [step, setStep] = useState(0);
   const [tick, setTick] = useState(0);
   const titleId = useId();
   const bodyId = useId();
 
-  const close = () => setOpen(false);
-  const start = () => {
-    setStep(0);
-    setOpen(true);
-  };
+  // Reset to the first step every time the dialog opens.
+  useEffect(() => {
+    if (open) setStep(0);
+  }, [open]);
 
   // Drive the per-step simulation. Resets whenever the step (or open) changes
   // so each illustration animates from the start.
@@ -75,64 +85,73 @@ export function EarnExplainer() {
   const current = STEPS[step];
 
   return (
+    <OnboardingDialog
+      open={open}
+      onClose={onClose}
+      labelledBy={titleId}
+      describedBy={bodyId}
+      illustration={current.illustration(tick)}
+    >
+      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
+        For agents · step {step + 1} of {STEPS.length}
+      </p>
+      <h2
+        id={titleId}
+        className="mt-1 text-xl font-semibold tracking-tight text-slate-900"
+      >
+        {current.title}
+      </h2>
+      <p id={bodyId} className="mt-2 text-sm leading-relaxed text-slate-600">
+        {current.body}
+      </p>
+
+      <StepNav
+        step={step}
+        count={STEPS.length}
+        onBack={() => setStep((s) => s - 1)}
+        onSkip={onClose}
+        primary={
+          isLast ? (
+            <a
+              href={SKILL_DOCS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={onClose}
+              className={primaryButtonClass}
+            >
+              Get the skill <span aria-hidden>↗</span>
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setStep((s) => s + 1)}
+              className={primaryButtonClass}
+            >
+              Next
+            </button>
+          )
+        }
+      />
+    </OnboardingDialog>
+  );
+}
+
+// Header trigger: the "Get heard" chip plus the dialog it opens.
+export function EarnExplainer() {
+  const [open, setOpen] = useState(false);
+
+  return (
     <>
       <button
         type="button"
-        onClick={start}
+        onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3 py-1.5 font-medium text-violet-700 transition hover:bg-violet-100"
       >
         <MicIcon />
         <span className="hidden sm:inline">Get heard</span>
       </button>
 
-      <OnboardingDialog
-        open={open}
-        onClose={close}
-        labelledBy={titleId}
-        describedBy={bodyId}
-        illustration={current.illustration(tick)}
-      >
-        <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">
-          For agents · step {step + 1} of {STEPS.length}
-        </p>
-        <h2
-          id={titleId}
-          className="mt-1 text-xl font-semibold tracking-tight text-slate-900"
-        >
-          {current.title}
-        </h2>
-        <p id={bodyId} className="mt-2 text-sm leading-relaxed text-slate-600">
-          {current.body}
-        </p>
-
-        <StepNav
-          step={step}
-          count={STEPS.length}
-          onBack={() => setStep((s) => s - 1)}
-          onSkip={close}
-          primary={
-            isLast ? (
-              <a
-                href={SKILL_DOCS_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={close}
-                className={primaryButtonClass}
-              >
-                Get the skill <span aria-hidden>↗</span>
-              </a>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setStep((s) => s + 1)}
-                className={primaryButtonClass}
-              >
-                Next
-              </button>
-            )
-          }
-        />
-      </OnboardingDialog>
+      <EarnExplainerDialog open={open} onClose={() => setOpen(false)} />
     </>
   );
 }
@@ -305,24 +324,23 @@ function FeedIllustration(tick: number) {
 
 function EarningsIllustration(tick: number) {
   const answered = 1284 + tick * 7;
-  const earned = 2.56 + tick * 0.014;
   return (
     <div className="w-64 rounded-2xl bg-white p-5 shadow-xl ring-1 ring-slate-200/70">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-900">Your earnings</span>
+        <span className="text-xs font-semibold text-slate-900">Your voice, counted</span>
         <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
           live
         </span>
       </div>
       <p className="mt-3 bg-brand-gradient bg-clip-text text-3xl font-bold tabular-nums text-transparent">
-        ${earned.toFixed(2)}
+        {answered.toLocaleString()}
       </p>
       <p className="mt-1 text-[11px] text-slate-500">
-        <span className="font-semibold tabular-nums text-slate-700">
-          {answered.toLocaleString()}
-        </span>{" "}
-        answers this month
+        answers this month · unlocks asking{" "}
+        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+          payouts coming
+        </span>
       </p>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
         <div

@@ -40,7 +40,7 @@ describe("EarnExplainer", () => {
     expect(screen.getByText("Your agent answers for you")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Get heard — and get paid")).toBeTruthy();
+    expect(screen.getByText("Get heard — and earn")).toBeTruthy();
 
     // Last step: Next is gone, the external CTA is present.
     expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
