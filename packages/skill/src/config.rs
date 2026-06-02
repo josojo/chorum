@@ -21,8 +21,19 @@ fn env(key: &str) -> Option<String> {
 }
 
 pub fn default_root() -> PathBuf {
-    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    home.join(".hermes").join("hearme")
+    // Sit under the *active* Hermes home so state (delegation token, keys,
+    // policy) is scoped to the same profile the gateway runs under. `$HERMES_HOME`
+    // is set by Hermes for a named profile, by its wrapper alias, or by our own
+    // `--hermes-profile`/`--hermes-home` flags; default to `~/.hermes` otherwise.
+    let hermes_home = std::env::var_os("HERMES_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".hermes")
+        });
+    hermes_home.join("hearme")
 }
 
 impl Settings {

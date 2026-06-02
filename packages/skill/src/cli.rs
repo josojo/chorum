@@ -16,6 +16,15 @@ use crate::{hermes, onboarding, openclaw, tools};
 #[derive(Parser)]
 #[command(name = "hearme-skill", version, about = "Hearme standalone skill CLI")]
 struct Cli {
+    /// Target a named Hermes profile (installs under ~/.hermes/profiles/<name>).
+    /// Without this, the active $HERMES_HOME is used, else the default ~/.hermes.
+    /// Note: distinct from `onboard --profile`, which selects the Self identity tier.
+    #[arg(long, global = true)]
+    hermes_profile: Option<String>,
+    /// Target an explicit Hermes home directory (overrides --hermes-profile and
+    /// any inherited $HERMES_HOME). Use when your profile lives off the beaten path.
+    #[arg(long, global = true)]
+    hermes_home: Option<PathBuf>,
     #[command(subcommand)]
     command: Command,
 }
@@ -161,6 +170,13 @@ enum Command {
 /// Parse argv and dispatch. Returns the process exit code.
 pub fn run() -> i32 {
     let cli = Cli::parse();
+    // Did the user explicitly point us at a profile/home? Computed BEFORE
+    // apply_hermes_home mutates the env, so the ambiguity guard can tell an
+    // inherited/flagged target apart from a bare default-profile install.
+    let explicit_target = cli.hermes_profile.is_some()
+        || cli.hermes_home.is_some()
+        || std::env::var_os("HERMES_HOME").is_some_and(|v| !v.is_empty());
+    apply_hermes_home(cli.hermes_profile.as_deref(), cli.hermes_home.as_deref());
     match cli.command {
         Command::Onboard {
             bridge_url,
@@ -169,20 +185,33 @@ pub fn run() -> i32 {
             timeout,
             no_wait,
             host,
-        } => cmd_onboard(bridge_url, broker_url, &profile, timeout, no_wait, host),
+        } => cmd_onboard(
+            bridge_url,
+            broker_url,
+            &profile,
+            timeout,
+            no_wait,
+            host,
+            explicit_target,
+        ),
         Command::AcceptMockDelegation { token_path } => cmd_accept_mock(&token_path),
         Command::Schedule { .. } => cmd_schedule(),
         Command::InstallPlugin {
             no_restart,
             broker_url,
             bridge_url,
-        } => cmd_install_plugin(no_restart, broker_url.as_deref(), bridge_url.as_deref()),
+        } => cmd_install_plugin(
+            no_restart,
+            broker_url.as_deref(),
+            bridge_url.as_deref(),
+            explicit_target,
+        ),
         Command::Install {
             host,
             no_restart,
             no_cron,
             schedule,
-        } => cmd_install(host, no_restart, no_cron, schedule.as_deref()),
+        } => cmd_install(host, no_restart, no_cron, schedule.as_deref(), explicit_target),
         Command::InstallOpenclaw {
             no_cron,
             schedule,
@@ -288,6 +317,44 @@ fn ensure_root(settings: &Settings) {
     let _ = std::fs::create_dir_all(&settings.root_dir);
 }
 
+/// Translate `--hermes-profile`/`--hermes-home` into `$HERMES_HOME` for this
+/// process, so every downstream path helper (plugin dir, env file, state root,
+/// and the generated shim) resolves to the same Hermes home. `--hermes-home`
+/// wins; a profile name resolves under the real `~/.hermes/profiles/<name>`
+/// (never under an inherited $HERMES_HOME). With neither flag, an inherited
+/// $HERMES_HOME is left untouched.
+fn apply_hermes_home(profile: Option<&str>, home: Option<&Path>) {
+    let target = home.map(PathBuf::from).or_else(|| {
+        profile.map(|name| hermes::default_hermes_root().join("profiles").join(name))
+    });
+    if let Some(path) = target {
+        // SAFETY: called once at startup, before any threads are spawned.
+        unsafe { std::env::set_var("HERMES_HOME", path) };
+    }
+}
+
+/// When about to install into the default profile while named profiles exist
+/// and the user named no target, warn — otherwise the plugin lands in a profile
+/// the active gateway may not be running.
+fn warn_if_ambiguous_profile(explicit_target: bool) {
+    if explicit_target {
+        return;
+    }
+    let profiles = hermes::list_profiles();
+    if profiles.is_empty() {
+        return;
+    }
+    eprintln!(
+        "Note: targeting the DEFAULT Hermes profile ({}), but other profiles exist: {}.",
+        hermes::hermes_home().display(),
+        profiles.join(", ")
+    );
+    eprintln!(
+        "      If your agent runs under one of those, re-run scoped to it, e.g.:\n        hearme-skill --hermes-profile {} <command>",
+        profiles[0]
+    );
+}
+
 fn resolve_hosts(host: &str) -> Vec<&'static str> {
     match host {
         "both" => vec!["hermes", "openclaw"],
@@ -295,10 +362,7 @@ fn resolve_hosts(host: &str) -> Vec<&'static str> {
         "openclaw" => vec!["openclaw"],
         _ => {
             let mut hosts = Vec::new();
-            if dirs::home_dir()
-                .map(|h| h.join(".hermes").exists())
-                .unwrap_or(false)
-            {
+            if hermes::hermes_home().exists() {
                 hosts.push("hermes");
             }
             if openclaw::openclaw_available() {
@@ -321,6 +385,7 @@ fn cmd_onboard(
     timeout: f64,
     no_wait: bool,
     host: HostArg,
+    explicit_target: bool,
 ) -> i32 {
     let settings = get_settings();
     ensure_root(&settings);
@@ -384,22 +449,24 @@ fn cmd_onboard(
         );
     }
 
-    post_onboard_setup(host, &broker_url, &bridge_url);
+    post_onboard_setup(host, &broker_url, &bridge_url, explicit_target);
     0
 }
 
-fn post_onboard_setup(host: HostArg, broker_url: &str, bridge_url: &str) {
+fn post_onboard_setup(host: HostArg, broker_url: &str, bridge_url: &str, explicit_target: bool) {
     let hosts = resolve_hosts(host.as_str());
     if hosts.contains(&"hermes") {
+        warn_if_ambiguous_profile(explicit_target);
         match hermes::install_plugin_dir(None, None) {
             Ok(target) => {
                 println!("Installed Hermes plugin drop-in at {}.", target.display());
                 let (ok, msg) = hermes::restart_gateway();
                 if ok {
-                    println!("Restarted hermes-gateway; the hearme tools are now loaded (the cron job self-registers).");
+                    println!("{msg}; the hearme tools are now loaded (the cron job self-registers).");
                 } else {
                     eprintln!(
-                        "Plugin written, but the gateway was not restarted ({msg}). Restart it to load the tools:\n  systemctl --user restart hermes-gateway"
+                        "Plugin written, but the gateway was not restarted ({msg}). Restart it to load the tools:\n  {}",
+                        hermes::gateway_restart_hint()
                     );
                 }
             }
@@ -492,7 +559,13 @@ fn persist_urls(broker_url: Option<&str>, bridge_url: Option<&str>, env_path: &P
     }
 }
 
-fn cmd_install_plugin(no_restart: bool, broker_url: Option<&str>, bridge_url: Option<&str>) -> i32 {
+fn cmd_install_plugin(
+    no_restart: bool,
+    broker_url: Option<&str>,
+    bridge_url: Option<&str>,
+    explicit_target: bool,
+) -> i32 {
+    warn_if_ambiguous_profile(explicit_target);
     let target = match hermes::install_plugin_dir(None, None) {
         Ok(t) => t,
         Err(e) => {
@@ -505,7 +578,7 @@ fn cmd_install_plugin(no_restart: bool, broker_url: Option<&str>, bridge_url: Op
 
     if no_restart {
         println!("Restart the Hermes gateway to load the plugin:");
-        println!("  systemctl --user restart hermes-gateway");
+        println!("  {}", hermes::gateway_restart_hint());
         return 0;
     }
     let (ok, msg) = hermes::restart_gateway();
@@ -516,7 +589,10 @@ fn cmd_install_plugin(no_restart: bool, broker_url: Option<&str>, bridge_url: Op
         }
         println!("{m}.");
     } else {
-        eprintln!("Could not auto-restart the gateway ({msg}). Restart it manually:\n  systemctl --user restart hermes-gateway");
+        eprintln!(
+            "Could not auto-restart the gateway ({msg}). Restart it manually:\n  {}",
+            hermes::gateway_restart_hint()
+        );
     }
     0
 }
@@ -543,20 +619,34 @@ fn report_openclaw_cron(result: &openclaw::CronResult) {
     }
 }
 
-fn cmd_install(host: HostArg, no_restart: bool, no_cron: bool, schedule: Option<&str>) -> i32 {
+fn cmd_install(
+    host: HostArg,
+    no_restart: bool,
+    no_cron: bool,
+    schedule: Option<&str>,
+    explicit_target: bool,
+) -> i32 {
     let hosts = resolve_hosts(host.as_str());
     let mut done = 0;
 
     if hosts.contains(&"hermes") {
+        warn_if_ambiguous_profile(explicit_target);
         match hermes::install_plugin_dir(None, None) {
             Ok(target) => {
                 println!("Installed Hermes plugin drop-in at {}.", target.display());
                 if !no_restart {
                     let (ok, msg) = hermes::restart_gateway();
                     if ok {
-                        println!("Restarted hermes-gateway.");
+                        let mut m = msg;
+                        if let Some(first) = m.get_mut(0..1) {
+                            first.make_ascii_uppercase();
+                        }
+                        println!("{m}.");
                     } else {
-                        eprintln!("Could not auto-restart the gateway ({msg}). Restart it manually:\n  systemctl --user restart hermes-gateway");
+                        eprintln!(
+                            "Could not auto-restart the gateway ({msg}). Restart it manually:\n  {}",
+                            hermes::gateway_restart_hint()
+                        );
                     }
                 }
                 done += 1;
