@@ -21,6 +21,9 @@ venv/
 .env.local
 *.env
 
+# On-box deploy state (last-known-good SHA for scripts/rollback.sh — §7)
+.deploy-state
+
 PROD.md
 
 # OS

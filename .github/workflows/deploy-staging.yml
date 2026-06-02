@@ -8,6 +8,11 @@ name: deploy-staging
 # compose up`. The SG rule is revoked in a cleanup step regardless of outcome
 # so the admin-only SSH posture is preserved between deploys.
 #
+# Deploy safety (docs/DEPLOYMENT.md §7): built images are pinned to the commit's
+# git SHA (HEARME_DEPLOY_SHA), a health gate fails the deploy if the new stack
+# doesn't answer, and the last-known-good SHA is recorded on the box only after
+# that gate passes — so `scripts/rollback.sh` can always return to a good build.
+#
 # Required repository secrets:
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  - hearme-staging IAM user (the
 #                                               same one already provisioning
@@ -144,11 +149,27 @@ jobs:
               hearme-postgres bash -s < db/init/02-roles.sh
           fi
 
+          # Pin the built images to this commit's SHA (docker-compose.yml reads
+          # HEARME_DEPLOY_SHA). The previous deploy's images stay on the box as
+          # immutable, named tags so scripts/rollback.sh can re-up them without
+          # a rebuild. See docs/DEPLOYMENT.md §7.
+          export HEARME_DEPLOY_SHA="\$(git rev-parse --short=12 HEAD)"
+          echo "pinning images to tag \$HEARME_DEPLOY_SHA"
+
           docker compose -f docker-compose.yml -f docker-compose.staging.yml config --quiet
           docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build --remove-orphans
 
           echo "--- container state ---"
           docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'hearme-|NAMES'
+
+          # Health-gate the new stack. If it never answers this exits non-zero
+          # (set -e) and the deploy FAILS — deploy-finalize below does not run,
+          # so .deploy-state still points at the last good SHA and an operator
+          # can run scripts/rollback.sh to recover.
+          bash scripts/healthgate.sh
+
+          # Healthy: record this SHA as last-known-good and prune stale images.
+          bash scripts/deploy-finalize.sh staging
           EOF
 
       - name: Revoke runner IP from the staging SG (always)

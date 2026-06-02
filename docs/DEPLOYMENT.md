@@ -94,13 +94,19 @@ creds). Rotating a staging secret = change it in SSM, then push to `main` (or
 re-run the workflow).
 
 **Prod deploy is manual** — render the `.env` onto the box yourself, then bring
-the stack up:
+the stack up. Pin the images to the commit's SHA and record last-known-good
+(the same deploy-safety machinery staging uses — §7) so prod is also rollable:
 
 ```sh
 scripts/render-secrets-env.sh prod \
   | ssh -i ~/.ssh/hearme-prod.pem ubuntu@<prod-ip> 'umask 077; cat > ~/hearme/.env'
-ssh -i ~/.ssh/hearme-prod.pem ubuntu@<prod-ip> \
-  'cd ~/hearme && git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans'
+ssh -i ~/.ssh/hearme-prod.pem ubuntu@<prod-ip> bash -se <<'EOF'
+  cd ~/hearme && git pull
+  export HEARME_DEPLOY_SHA="$(git rev-parse --short=12 HEAD)"
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
+  scripts/healthgate.sh                 # fail here = do NOT finalize; rollback stays valid
+  scripts/deploy-finalize.sh prod       # records .deploy-state, prunes stale images
+EOF
 ```
 
 **IAM** — the principal that renders secrets needs, scoped to its env's path:
@@ -242,9 +248,108 @@ Run through this before flipping the public DNS:
       (rate limit cannot otherwise distinguish clients).
 - [ ] `scripts/backup-db.sh` is scheduled, and a restore has been tested
       against a throwaway DB.
-- [ ] `GET /healthz` is monitored.
+- [ ] Broker `GET /healthz` and web `GET /api/healthz` are monitored.
+- [ ] A rollback has been rehearsed once: `scripts/rollback.sh` returns the box
+      to the previous good SHA and the health gate passes (§7).
 - [ ] One full end-to-end run on real passports: enrol with a real Self
       proof; ask a question via `/ask`; an onboarded skill answers it;
       verify the answer appears in the aggregate.
 
 If any row is unchecked, you are not in production posture yet.
+
+---
+
+## 7. Rollback & deploy safety
+
+The v0 deploy is build-on-box: the workflow (staging) or an operator (prod)
+SSHes in, `git reset --hard`s to a commit, and runs `docker compose up`. There
+is no image registry. Deploy safety is therefore built from three pieces that
+all live in the repo:
+
+**1. Images are pinned to an immutable git-SHA tag — never `:latest`.**
+`docker-compose.yml` tags every built service as `hearme-<svc>:${HEARME_DEPLOY_SHA}`
+(`broker`, `self-bridge`, `web`, `migrator`, `classifier`). The deploy exports
+`HEARME_DEPLOY_SHA=$(git rev-parse --short=12 HEAD)` before `up`, so each deploy
+leaves a **named, immutable image for that commit** on the box. Local `docker
+compose up` (no `HEARME_DEPLOY_SHA`) falls back to the `dev` tag — unchanged dev
+ergonomics.
+
+**2. The last-known-good SHA is recorded — but only after a health gate.**
+After `up`, the deploy runs `scripts/healthgate.sh`, which polls the broker's
+`/healthz` and the web's `/api/healthz` (both on loopback) until they answer or
+it times out. A failed gate fails the deploy and `scripts/deploy-finalize.sh`
+**does not run** — so `.deploy-state` (on the box, next to `.env`) still records
+the *previous* good SHA. Only a healthy deploy advances it:
+
+```
+LAST_GOOD_SHA=<running, verified>
+PREVIOUS_GOOD_SHA=<the SHA it replaced — rollback's default target>
+ENV=staging|prod
+DEPLOYED_AT=<UTC>
+```
+
+`deploy-finalize` also prunes old `hearme-*` image tags, keeping the current and
+previous good SHAs (so a rollback need not rebuild) plus `dev`.
+
+**3. One-command rollback.** On the box:
+
+```sh
+scripts/rollback.sh            # back to PREVIOUS_GOOD_SHA from .deploy-state
+scripts/rollback.sh <git-sha>  # back to a specific commit
+```
+
+It checks out the target SHA and `docker compose up -d`s pinned to that SHA's
+images. If the previous build's images are still present (the common case — see
+piece 2) it does **not** rebuild, so recovery is seconds and does not depend on
+the target source even compiling; if they were pruned it falls back to `--build`.
+A health gate then confirms the rolled-back stack answers before it declares
+success. The script reads its whole body into memory before touching git and
+inlines its health check, so it is safe even rolling back to a commit that
+predates these scripts.
+
+For staging, the fastest path is usually just to **revert the bad commit on
+`main`** — that re-runs `deploy-staging.yml` and ships a new good SHA forward.
+`rollback.sh` is for when you need the box healthy *now*, before a revert lands.
+
+### Migrations are forward-only — code rollback ≠ schema rollback
+
+`scripts/migrate.mjs` only ever rolls **forward**: it applies `*.sql` files in
+`packages/web/drizzle/migrations/` that aren't yet in `_schema_migrations` and
+never generates or runs a down-migration (Drizzle's `generate` is
+forward-only). Rolling back code does **not** undo a migration. So when a bad
+deploy included a schema change, decide by migration shape:
+
+- **Additive / backward-compatible** (new table, new nullable column, new
+  index): safe to roll back under. The old code simply ignores what it doesn't
+  know about; the extra schema is inert. This is the great majority of
+  migrations and the reason additive-only is the house style.
+- **Destructive / rewriting** (dropped or renamed column, narrowed type,
+  backfill that drops data): a code rollback alone leaves old code running
+  against a schema it can't satisfy, *and* the data may already be gone. There
+  is no forward-only un-migrate. Recover the **database** from the most recent
+  backup (§4) — `pg_restore` into a fresh DB, point the stack at it — then roll
+  the code back to match. Plan for this before shipping a destructive migration:
+  take a fresh backup immediately before the deploy.
+
+Practically: keep migrations additive and ship the schema change one deploy
+*ahead* of the code that requires it (expand, then contract). Then a code
+rollback is always a clean `scripts/rollback.sh` with no DB involvement.
+
+### Downtime
+
+The single-host, single-replica v0 shape (§1, top) cannot do true zero-downtime
+deploys: each service has a fixed `container_name`, so `up` recreates it in
+place and there is a brief gap while the new container boots. Two things keep
+that gap small and safe rather than eliminating it:
+
+- **Dependency ordering already gates the risky steps.** `web`, `broker`, and
+  `classifier` declare `depends_on: { migrator: service_completed_successfully,
+  postgres: service_healthy }`, so the app containers are not recreated until
+  migrations have applied and Postgres is healthy. A failed migration aborts
+  the deploy *before* the app is touched.
+- **The health gate bounds the blast radius.** If the new container doesn't come
+  healthy, the deploy is marked failed and the last-good marker isn't advanced,
+  so the recovery target is unambiguous.
+
+True zero-downtime (rolling/blue-green, a second replica behind Caddy) is a
+v0.2 concern and also interacts with the in-memory rate limiters (§2).
