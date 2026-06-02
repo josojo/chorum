@@ -17,6 +17,7 @@ import {
   ASKER_SESSION_TTL_MS,
   issueAskerSession,
 } from "../src/verify/askerSession";
+import { voterTagFor } from "../src/voterTag";
 import { startPg, truncateAll, type PgHandle } from "./pg";
 import { agentKeyB64, makeEnvelope, makeRevocation, makeEnrollment, makeToken, mockVerifyProof } from "./helpers";
 import * as q from "../src/queries";
@@ -117,6 +118,32 @@ async function totalAnswers(questionId: string): Promise<number | null> {
   return rows[0] ? Number(rows[0].total_answers) : null;
 }
 
+// Give `uid` a live registration plus `total` answers (`signal` of them opinion-
+// bearing) by registering once and submitting real envelopes through the broker.
+// Going through the route is what moves the §14.2 answer counters on the
+// registration — the gate's source of truth now that the envelopes table stores
+// only per-question voter tags (§1.4), so a raw INSERT would no longer be counted.
+async function seedAnswers(uid: string, opts: { total: number; signal: number }): Promise<void> {
+  const tok = await devToken({ uid });
+  for (let i = 0; i < opts.total; i++) {
+    const ques = await insertQuestion({});
+    const isSignal = i < opts.signal;
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/envelopes",
+      payload: makeEnvelope(tok, {
+        questionId: ques.id,
+        answer: isSignal ? "yes" : "",
+        nonce: ques.nonce,
+        noSignal: !isSignal,
+      }),
+    });
+    if (res.json().accepted !== true) {
+      throw new Error(`seedAnswers: envelope rejected: ${res.body}`);
+    }
+  }
+}
+
 describe("POST /v1/register (verify-once)", () => {
   it("registers a verified enrollment and binds the nullifier", async (ctx) => {
     if (!pg) return ctx.skip();
@@ -205,19 +232,48 @@ describe("POST /v1/envelopes (uniqueness + aggregate)", () => {
     expect(await totalAnswers(question.id)).toBe(1);
   });
 
+  it("stores a per-question voter tag, never the raw nullifier (§1.4)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:privacy-1";
+    const tok = await devToken({ uid });
+    const qa = await insertQuestion({});
+    const qb = await insertQuestion({});
+    for (const ques of [qa, qb]) {
+      await app.inject({
+        method: "POST",
+        url: "/v1/envelopes",
+        payload: makeEnvelope(tok, { questionId: ques.id, answer: "yes", nonce: ques.nonce }),
+      });
+    }
+    const rows = (await db.execute(sql`
+      SELECT question_id, unique_identifier FROM envelopes
+      WHERE question_id IN (${qa.id}, ${qb.id})
+    `)) as unknown as Array<{ question_id: string; unique_identifier: string }>;
+    const byQ = new Map(rows.map((r) => [r.question_id, r.unique_identifier]));
+    // The raw nullifier appears nowhere in the answers table…
+    expect([...byQ.values()]).not.toContain(uid);
+    // …and the SAME person's two answers carry UNRELATED tags, so the table
+    // cannot be grouped back into one person's answer history.
+    expect(byQ.get(qa.id)).not.toBe(byQ.get(qb.id));
+    // The tag is the per-question HMAC, reproducible only with the linkage secret.
+    expect(byQ.get(qa.id)).toBe(voterTagFor(qa.id, uid));
+  });
+
   it("stores no_signal and it does not count as signal (§1.14 / §15.4)", async (ctx) => {
     if (!pg) return ctx.skip();
     const tok = await devToken({ uid: "self:e-ns", nationality: "DE", thresholds: [18, 25, 35] });
     const question = await insertQuestion({});
     // no_signal is unsigned metadata; the agent_signature is unchanged, so we
     // just set the flag on an otherwise-valid envelope (empty answer per §1.14).
-    const env = { ...makeEnvelope(tok, { questionId: question.id, answer: "", nonce: question.nonce }), no_signal: true };
+    const env = makeEnvelope(tok, { questionId: question.id, answer: "", nonce: question.nonce, noSignal: true });
     expect((await app.inject({ method: "POST", url: "/v1/envelopes", payload: env })).json()).toEqual({
       accepted: true,
       reason: null,
     });
+    // The row is keyed by a per-question voter tag now (§1.4), never the raw
+    // nullifier 'self:e-ns' — so look it up by question_id.
     const rows = (await db.execute(
-      sql`SELECT no_signal FROM envelopes WHERE unique_identifier = 'self:e-ns'`,
+      sql`SELECT no_signal FROM envelopes WHERE question_id = ${question.id}`,
     )) as unknown as Array<{ no_signal: boolean }>;
     expect(rows[0].no_signal).toBe(true);
     // And it counts toward total but not signal in the asker gate.
@@ -337,6 +393,26 @@ describe("POST /v1/envelopes/revoke (override is sacred)", () => {
     const second = await app.inject({ method: "POST", url: "/v1/envelopes/revoke", payload: rev });
     expect(second.json()).toMatchObject({ accepted: true, found: false });
   });
+
+  it("rolls back the asker answer counters on revoke (§14.2 stays exact)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:r-count";
+    const tok = await devToken({ uid });
+    const question = await insertQuestion({});
+    await app.inject({
+      method: "POST",
+      url: "/v1/envelopes",
+      payload: makeEnvelope(tok, { questionId: question.id, answer: "yes", nonce: question.nonce }),
+    });
+    expect(await q.askerAnswerCounts(db, uid)).toEqual({ total: 1, signal: 1 });
+
+    await app.inject({
+      method: "POST",
+      url: "/v1/envelopes/revoke",
+      payload: makeRevocation(tok, { questionId: question.id }),
+    });
+    expect(await q.askerAnswerCounts(db, uid)).toEqual({ total: 0, signal: 0 });
+  });
 });
 
 describe("GET /v1/stats", () => {
@@ -363,23 +439,6 @@ describe("GET /v1/stats", () => {
 });
 
 describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §14.2)", () => {
-  // Seed one envelope (one answer) for `uid` against a fresh question. An empty
-  // answer marks a no-signal envelope (no_signal=true, §1.14); a non-empty
-  // answer is signal-bearing (no_signal=false).
-  async function seedAnswer(uid: string, answer: string): Promise<void> {
-    const q = await insertQuestion({});
-    const noSignal = answer.trim() === "";
-    await db.execute(sql`
-      INSERT INTO envelopes (
-        question_id, unique_identifier, answer, no_signal,
-        disclosed_predicates, agent_signature, delegation_hash
-      ) VALUES (
-        ${q.id}, ${uid}, ${answer}, ${noSignal},
-        '{}'::jsonb, 'sig', 'hash'
-      )
-    `);
-  }
-
   // Authenticate as `uid` by minting a real broker-signed token (dev register)
   // and posting it — the same credential an onboarded asker would present.
   async function eligibilityFor(uid: string) {
@@ -441,8 +500,7 @@ describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §14.2)", 
     if (!pg) return ctx.skip();
     const uid = "self:asker-ok";
     // 50 answers, exactly 10 of them signal-bearing — the §14.2 boundary.
-    for (let i = 0; i < 10; i++) await seedAnswer(uid, "yes");
-    for (let i = 0; i < 40; i++) await seedAnswer(uid, ""); // no_signal proxy
+    await seedAnswers(uid, { total: 50, signal: 10 });
     expect(await eligibilityFor(uid)).toMatchObject({
       authorized: true,
       can_ask: true,
@@ -457,8 +515,7 @@ describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §14.2)", 
   it("enough total but too little signal is blocked (anti-farming, §15.4)", async (ctx) => {
     if (!pg) return ctx.skip();
     const uid = "self:asker-farm";
-    for (let i = 0; i < 3; i++) await seedAnswer(uid, "yes");
-    for (let i = 0; i < 55; i++) await seedAnswer(uid, "");
+    await seedAnswers(uid, { total: 58, signal: 3 });
     expect(await eligibilityFor(uid)).toMatchObject({
       authorized: true,
       can_ask: false,
@@ -472,8 +529,8 @@ describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §14.2)", 
 
   it("counts are scoped to the authenticated identity (no cross-talk)", async (ctx) => {
     if (!pg) return ctx.skip();
-    await seedAnswer("self:a", "yes");
-    await seedAnswer("self:b", "yes");
+    await seedAnswers("self:a", { total: 1, signal: 1 });
+    await seedAnswers("self:b", { total: 1, signal: 1 });
     expect((await eligibilityFor("self:a")).total_answers).toBe(1);
   });
 
@@ -512,21 +569,6 @@ describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §14.2)", 
 });
 
 describe("asker Sign in with Self (login + session, §14.2)", () => {
-  // Seed one (signal-bearing) answer for `uid` against a fresh question.
-  async function seedAnswer(uid: string, answer: string): Promise<void> {
-    const q = await insertQuestion({});
-    const noSignal = answer.trim() === "";
-    await db.execute(sql`
-      INSERT INTO envelopes (
-        question_id, unique_identifier, answer, no_signal,
-        disclosed_predicates, agent_signature, delegation_hash
-      ) VALUES (
-        ${q.id}, ${uid}, ${answer}, ${noSignal},
-        '{}'::jsonb, 'sig', 'hash'
-      )
-    `);
-  }
-
   it("login/start returns the bridge's requestId + qr urls", async (ctx) => {
     if (!pg) return ctx.skip();
     selfRequestImpl = async ({ agentKey, profile }) => {
@@ -593,8 +635,7 @@ describe("asker Sign in with Self (login + session, §14.2)", () => {
     if (!pg) return ctx.skip();
     const uid = "self:login-ok";
     // 50 answers, 10 signal-bearing — clears the unlock threshold.
-    for (let i = 0; i < 10; i++) await seedAnswer(uid, "yes");
-    for (let i = 0; i < 40; i++) await seedAnswer(uid, "");
+    await seedAnswers(uid, { total: 50, signal: 10 });
     selfStatusImpl = async () => ({
       found: true,
       status: "complete",

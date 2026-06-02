@@ -24,6 +24,7 @@ import {
 } from "../src/verify/askerSession";
 import { RejectionReason } from "../src/models";
 import { extractNullifierFromLog, nullifierCandidates } from "../src/selfRevocations";
+import { computeVoterTag } from "../src/voterTag";
 import { makeToken } from "./helpers";
 
 describe("rate limiter (sliding window)", () => {
@@ -52,12 +53,53 @@ describe("rate limiter (sliding window)", () => {
   });
 });
 
+describe("voter tag — per-question pseudonym (§1.4)", () => {
+  const SECRET = Buffer.alloc(32, 3).toString("base64");
+  const NULL_A = "self:nullifier-A";
+  const NULL_B = "self:nullifier-B";
+  const Q1 = "11111111-1111-1111-1111-111111111111";
+  const Q2 = "22222222-2222-2222-2222-222222222222";
+
+  it("is deterministic for the same (question, identity, secret)", () => {
+    // Determinism is what lets the composite PK reject a second answer from the
+    // same human to the same question, and lets the broker reproduce the tag to
+    // revoke one answer.
+    expect(computeVoterTag(SECRET, Q1, NULL_A)).toBe(computeVoterTag(SECRET, Q1, NULL_A));
+  });
+
+  it("never equals the raw nullifier (the table is not a join key to identity)", () => {
+    expect(computeVoterTag(SECRET, Q1, NULL_A)).not.toBe(NULL_A);
+  });
+
+  it("differs across questions for the SAME identity (unlinkable across questions)", () => {
+    // The whole point of §1.4: a dump of envelopes cannot cluster one person's
+    // answers, because each question yields an unrelated tag.
+    expect(computeVoterTag(SECRET, Q1, NULL_A)).not.toBe(computeVoterTag(SECRET, Q2, NULL_A));
+  });
+
+  it("differs across identities for the SAME question", () => {
+    expect(computeVoterTag(SECRET, Q1, NULL_A)).not.toBe(computeVoterTag(SECRET, Q1, NULL_B));
+  });
+
+  it("depends on the secret (rotating it orphans old tags — the v2 unlink lever)", () => {
+    const other = Buffer.alloc(32, 9).toString("base64");
+    expect(computeVoterTag(SECRET, Q1, NULL_A)).not.toBe(computeVoterTag(other, Q1, NULL_A));
+  });
+
+  it("has no field-boundary collision (separator is load-bearing)", () => {
+    // tag(q="a", null="bc") must not equal tag(q="ab", null="c").
+    expect(computeVoterTag(SECRET, "a", "bc")).not.toBe(computeVoterTag(SECRET, "ab", "c"));
+  });
+});
+
 describe("production startup checks", () => {
   it("flags every dev default as an error", () => {
     const report = validateProductionConfig(getSettings()); // all dev defaults
-    // Dev defaults trip: signing key, dev DB password, expose-rejection-reasons.
-    expect(report.errors.length).toBeGreaterThanOrEqual(3);
+    // Dev defaults trip: signing key, voter-tag secret, dev DB password,
+    // expose-rejection-reasons.
+    expect(report.errors.length).toBeGreaterThanOrEqual(4);
     expect(report.errors.some((e) => e.includes("HEARME_BROKER_SIGNING_KEY"))).toBe(true);
+    expect(report.errors.some((e) => e.includes("HEARME_BROKER_VOTER_TAG_SECRET"))).toBe(true);
     expect(() => enforceProductionConfig(getSettings(), { warn() {}, info() {} })).toThrow(
       ProductionConfigError,
     );
@@ -66,6 +108,7 @@ describe("production startup checks", () => {
   it("accepts a properly secured config", () => {
     const safe = getSettings({
       brokerSigningKey: Buffer.alloc(32, 9).toString("base64"),
+      voterTagSecret: Buffer.alloc(32, 5).toString("base64"),
       databaseUrl: "postgres://hearme_broker:s3cret@db:5432/hearme",
       devInsecureRegister: false,
       requireRegistryConfirmation: true,

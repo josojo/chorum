@@ -16,6 +16,7 @@ import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import type { Db } from "./db";
 import type * as schema from "./schema";
 import { classifyAnswer, computeByPredicate, computeNoSignal } from "./aggregates";
+import { voterTagFor } from "./voterTag";
 
 export type Tx = PgTransaction<
   PostgresJsQueryResultHKT,
@@ -245,18 +246,35 @@ export async function invalidateRegistrationAndVotes(
       RETURNING 1 AS recorded
     `)) as unknown as Rows<unknown>;
 
+    // Revoke the binding AND zero its answer counters — the envelopes that backed
+    // them are about to be deleted, so the §14.2 tallies must reset (a later
+    // re-registration with the same key resumes from 0).
     const revokedRows = (await tx.execute(sql`
       UPDATE registrations
-      SET revoked_at = COALESCE(revoked_at, now())
+      SET revoked_at = COALESCE(revoked_at, now()),
+          answer_count = 0,
+          signal_count = 0
       WHERE unique_identifier = ${args.uniqueIdentifier}
       RETURNING 1 AS revoked
     `)) as unknown as Rows<unknown>;
 
-    const affectedRows = (await tx.execute(sql`
-      DELETE FROM envelopes
-      WHERE unique_identifier = ${args.uniqueIdentifier}
-      RETURNING question_id
+    // This identity's envelopes are stored under per-question voter tags (§1.4),
+    // not the raw nullifier — so we can't match them with a single equality.
+    // Recompute the tag for every question that has any envelope and delete the
+    // matches (the linkage secret lives only in the broker process). Question
+    // count bounds the work; invalidation is rare.
+    const answered = (await tx.execute(sql`
+      SELECT DISTINCT question_id FROM envelopes
     `)) as unknown as Rows<{ question_id: string }>;
+    const tags = answered.map((r) => voterTagFor(r.question_id, args.uniqueIdentifier));
+    const affectedRows =
+      tags.length === 0
+        ? []
+        : ((await tx.execute(sql`
+            DELETE FROM envelopes
+            WHERE unique_identifier = ANY(${tags}::text[])
+            RETURNING question_id
+          `)) as unknown as Rows<{ question_id: string }>);
     const affectedQuestionIds = [...new Set(affectedRows.map((r) => r.question_id))].sort();
 
     for (const questionId of affectedQuestionIds) {
@@ -347,12 +365,15 @@ export async function upsertSelfChainCursor(
 // ----- envelopes ---------------------------------------------------------
 
 // INSERT one envelope; return false if PK collision (duplicate). The composite PK
-// (question_id, unique_identifier) is the hard Sybil-resistance gate.
+// (question_id, unique_identifier) is the hard Sybil-resistance gate. The
+// `voterTag` written into unique_identifier is the per-question pseudonym
+// (voterTag.ts) — NOT the raw nullifier — so the table is unlinkable across
+// questions; callers MUST pass the tag, never the nullifier.
 export async function insertEnvelope(
   db: Executor,
   args: {
     questionId: string;
-    uniqueIdentifier: string;
+    voterTag: string;
     answer: string;
     noSignal: boolean;
     disclosedPredicates: Record<string, string>;
@@ -365,7 +386,7 @@ export async function insertEnvelope(
       question_id, unique_identifier, answer, no_signal, disclosed_predicates,
       agent_signature, delegation_hash
     ) VALUES (
-      ${args.questionId}, ${args.uniqueIdentifier}, ${args.answer}, ${args.noSignal},
+      ${args.questionId}, ${args.voterTag}, ${args.answer}, ${args.noSignal},
       ${JSON.stringify(args.disclosedPredicates)}::jsonb,
       ${args.agentSignature}, ${args.delegationHashHex}
     )
@@ -375,25 +396,45 @@ export async function insertEnvelope(
   return rows.length === 1;
 }
 
+// Move an identity's answer tallies on the registration as envelopes are accepted
+// or removed. `delta` is +1 on insert, -1 on revoke; `signalDelta` likewise for
+// the opinion-bearing subset. Counts can never go negative (GREATEST). The
+// registration row is keyed by the raw nullifier (the broker has it from the
+// verified token); this is where per-person totals live now that the envelopes
+// table carries only per-question pseudonyms (§1.4, §14.2). MUST run in the same
+// transaction as the matching envelope INSERT/DELETE.
+export async function adjustAnswerCounters(
+  db: Executor,
+  args: { uniqueIdentifier: string; delta: number; signalDelta: number },
+): Promise<void> {
+  await db.execute(sql`
+    UPDATE registrations
+    SET answer_count = GREATEST(answer_count + ${args.delta}, 0),
+        signal_count = GREATEST(signal_count + ${args.signalDelta}, 0)
+    WHERE unique_identifier = ${args.uniqueIdentifier}
+  `);
+}
+
 // ----- asker gating (answer-credit economy, §15) -------------------------
 
-// Count one identity's submitted answers, split into total and signal-bearing.
-// Backs the v0 asker unlock threshold (§14.2) — only the broker can read
-// envelopes, so this count must live here.
+// One identity's submitted-answer tallies, split into total and signal-bearing.
+// Backs the v0 asker unlock threshold (§14.2). Read from the registration's
+// maintained counters rather than by scanning envelopes: the envelopes table no
+// longer carries a stable per-person key (it stores per-question voter tags,
+// §1.4), so a person's total cannot be derived from answers — it is accumulated
+// on the registration as envelopes are inserted/revoked/invalidated.
 //
 // "Signal-bearing" is `no_signal = false` (§1.14): the agent had relevant memory
 // and expressed an opinion, rather than skipping generation. The §15.4 anti-
 // farming clause counts on this split so grinding cheap no-signal envelopes
-// can't buy ask-rights.
+// can't buy ask-rights. Returns {0,0} for an unknown identity.
 export async function askerAnswerCounts(
   db: Executor,
   uniqueIdentifier: string,
 ): Promise<{ total: number; signal: number }> {
   const rows = (await db.execute(sql`
-    SELECT
-      COUNT(*)                                       AS total,
-      COUNT(*) FILTER (WHERE no_signal = false)      AS signal
-    FROM envelopes
+    SELECT answer_count AS total, signal_count AS signal
+    FROM registrations
     WHERE unique_identifier = ${uniqueIdentifier}
   `)) as unknown as Rows<{ total: string | number; signal: string | number }>;
   const row = rows[0];
@@ -675,9 +716,13 @@ async function recomputeAggregate(db: Executor, questionId: string): Promise<voi
 
 // Atomically delete one envelope and rebuild its question's aggregate. Returns
 // true if an envelope was actually deleted, false if none matched (idempotent).
+// `voterTag` is the per-question pseudonym stored in the row (the caller derives
+// it from the question_id + nullifier, voterTag.ts); `uniqueIdentifier` is the
+// raw nullifier, used only to roll back the registration's answer counters so
+// the §14.2 gate stays exact after a retraction.
 export async function deleteOneEnvelopeAndRecompute(
   db: Db,
-  args: { questionId: string; uniqueIdentifier: string },
+  args: { questionId: string; voterTag: string; uniqueIdentifier: string },
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
     await tx.execute(
@@ -685,10 +730,16 @@ export async function deleteOneEnvelopeAndRecompute(
     );
     const deleted = (await tx.execute(sql`
       DELETE FROM envelopes
-      WHERE question_id = ${args.questionId} AND unique_identifier = ${args.uniqueIdentifier}
-      RETURNING 1 AS deleted
-    `)) as unknown as Rows<unknown>;
+      WHERE question_id = ${args.questionId} AND unique_identifier = ${args.voterTag}
+      RETURNING no_signal
+    `)) as unknown as Rows<{ no_signal: boolean }>;
     if (deleted.length === 0) return false;
+    const wasSignal = deleted[0].no_signal !== true;
+    await adjustAnswerCounters(tx, {
+      uniqueIdentifier: args.uniqueIdentifier,
+      delta: -1,
+      signalDelta: wasSignal ? -1 : 0,
+    });
     await recomputeAggregate(tx, args.questionId);
     return true;
   });
@@ -712,7 +763,11 @@ export async function platformStats(db: Db): Promise<PlatformStatsRow> {
       (SELECT COUNT(*) FROM registrations WHERE revoked_at IS NULL) AS registered_agents,
       (SELECT COUNT(*) FROM questions)                              AS questions,
       (SELECT COUNT(*) FROM envelopes)                              AS total_answers,
-      (SELECT COUNT(DISTINCT unique_identifier) FROM envelopes)     AS respondents,
+      -- Distinct people who have answered. Can't be COUNT(DISTINCT unique_identifier)
+      -- on envelopes anymore: that column is now a per-question pseudonym (§1.4), so
+      -- DISTINCT would count answer-instances, not people. The registration counter
+      -- is the source of truth for per-person tallies.
+      (SELECT COUNT(*) FROM registrations WHERE answer_count > 0)   AS respondents,
       (SELECT COUNT(DISTINCT question_id) FROM envelopes)           AS answered_questions
   `)) as unknown as Rows<Record<string, string | number>>;
   const row = rows[0];

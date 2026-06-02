@@ -85,6 +85,8 @@ services:
       HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "0"
       # Dev signing key for the broker-issued DelegationToken. OVERRIDE in prod.
       HEARME_BROKER_SIGNING_KEY: QlJPS0VSLVNJR05JTkctS0VZLUhFQVJNRS1ERVYzMkI=
+      # Dev linkage secret for the per-question voter tag (§1.4). OVERRIDE in prod.
+      HEARME_BROKER_VOTER_TAG_SECRET: SEVBUk1FLVZPVEVSLVRBRy1TRUNSRVQtREVWLTMyQiE=
       # Optional production hook: poll Self on-chain identity invalidation/update
       # events and revoke matching Hearme registrations + accepted votes.
       HEARME_BROKER_SELF_REVOCATION_LISTENER_ENABLED: "0"

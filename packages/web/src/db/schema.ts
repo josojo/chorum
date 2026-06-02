@@ -98,6 +98,19 @@ export const envelopes = pgTable(
     questionId: uuid("question_id")
       .notNull()
       .references(() => questions.id),
+    // PER-QUESTION VOTER PSEUDONYM — NOT the raw Self nullifier (ARCHITECTURE_V0.md
+    // §1.4). The broker derives it as voter_tag = HMAC(linkage_secret,
+    // "hearme-voter-tag-v1" | question_id | nullifier) (broker/src/voterTag.ts).
+    // It is deterministic per (question, person) — so the composite PK below still
+    // enforces one-answer-per-human-per-question — but UNLINKABLE across questions:
+    // the same person answering two questions yields two unrelated tags, so this
+    // table alone (a backup, a read replica, an analytics export) is no longer a
+    // cross-question join key for a person's answer history. Re-linkage requires
+    // BOTH the linkage_secret (broker config / SSM, never in this DB) AND the
+    // registrations nullifier list — the minimal trusted core. v2 makes the secret
+    // per-epoch; destroying an old epoch's secret makes that history unlinkable
+    // even to the broker. The column name is retained for migration stability;
+    // NEVER write the raw nullifier here.
     uniqueIdentifier: text("unique_identifier").notNull(),
     answer: text("answer").notNull(),
     // §1.14: the agent had no relevant memory and skipped generation, so this
@@ -161,6 +174,16 @@ export const registrations = pgTable(
       .defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    // Answer tallies for this identity, maintained by the broker as envelopes are
+    // inserted / revoked / invalidated. They live HERE (one row per person, keyed
+    // by the raw nullifier) rather than being computed from envelopes, because the
+    // envelopes table no longer carries a stable per-person key (see the
+    // uniqueIdentifier comment above) — so a person's total cannot be derived by
+    // scanning answers. `answerCount` is the grand total; `signalCount` is the
+    // opinion-bearing subset (no_signal = false). These back the §14.2 asker
+    // unlock gate and the platform "respondents" stat.
+    answerCount: integer("answer_count").notNull().default(0),
+    signalCount: integer("signal_count").notNull().default(0),
   },
   (t) => ({
     agentKeyIdx: index("registrations_agent_key_idx").on(t.agentKey),

@@ -22,6 +22,7 @@ import * as q from "../queries";
 import { type RevocationAck, RejectionReason, envelopeRevocationSchema } from "../models";
 import { VerifyDelegationError, verifyDelegation } from "../verify/delegation";
 import { VerifyEnvelopeError, verifyRevocationSignature } from "../verify/envelope";
+import { voterTagFor } from "../voterTag";
 
 function ack(
   accepted: boolean,
@@ -89,9 +90,13 @@ export function registerRevocationsRoutes(app: FastifyInstance): void {
       throw exc;
     }
 
-    // Step 4: delete the envelope and rebuild this question's aggregate.
+    // Step 4: delete the envelope and rebuild this question's aggregate. The row
+    // is keyed by the per-question voter tag (§1.4); we re-derive it from the
+    // verified nullifier + question_id, and also pass the nullifier so the
+    // registration's answer counters roll back.
     const found = await q.deleteOneEnvelopeAndRecompute(db, {
       questionId: revocation.question_id,
+      voterTag: voterTagFor(revocation.question_id, verified.uniqueIdentifier),
       uniqueIdentifier: verified.uniqueIdentifier,
     });
 
