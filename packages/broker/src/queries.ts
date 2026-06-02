@@ -48,18 +48,27 @@ export interface OpenQuestion {
 }
 
 // Open + not-yet-closed questions, optionally filtered by created_at >= since.
+//
+// `topic IS NOT NULL` is load-bearing, not cosmetic: the classifier service
+// assigns topic asynchronously after insert (create-question.ts inserts with a
+// NULL topic). Until it has run, a question must NOT be visible to polling
+// agents — otherwise a sensitive question, fetched in the pre-classification
+// window, reaches the skill with an empty topic, where auto_answer matches
+// before any topic check and a responder's topic_blocklist can't fire (§1.1
+// "consent is the product"; skill policy.rs). Filtering unclassified rows out
+// here is the gate create-question.ts's comment promises.
 export async function listOpenQuestions(db: Db, since: Date | null): Promise<OpenQuestion[]> {
   const query =
     since === null
       ? sql`
           SELECT id, text, topic, options, created_at, closes_at, nonce
           FROM questions
-          WHERE status = 'open' AND closes_at > now()
+          WHERE status = 'open' AND closes_at > now() AND topic IS NOT NULL
           ORDER BY created_at ASC`
       : sql`
           SELECT id, text, topic, options, created_at, closes_at, nonce
           FROM questions
-          WHERE status = 'open' AND closes_at > now() AND created_at >= ${since.toISOString()}::timestamptz
+          WHERE status = 'open' AND closes_at > now() AND topic IS NOT NULL AND created_at >= ${since.toISOString()}::timestamptz
           ORDER BY created_at ASC`;
   const rows = (await db.execute(query)) as unknown as Rows<{
     id: string;

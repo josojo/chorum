@@ -72,9 +72,14 @@ async function insertQuestion(opts: {
   continent?: string | null;
   closesInMinutes?: number;
   status?: string;
+  topic?: string | null;
 } = {}): Promise<{ id: string; nonce: string }> {
+  // Default topic to a classified value: the broker only exposes classified
+  // rows (listOpenQuestions filters topic IS NOT NULL), and most tests want the
+  // question to behave like one the classifier has already processed. Pass
+  // `topic: null` to simulate the pre-classification window.
   const rows = (await db.execute(sql`
-    INSERT INTO questions (text, options, scope, country, continent, closes_at, status)
+    INSERT INTO questions (text, options, scope, country, continent, closes_at, status, topic)
     VALUES (
       ${opts.text ?? "Do you?"},
       ${JSON.stringify(opts.options ?? ["yes", "no"])}::jsonb,
@@ -82,7 +87,8 @@ async function insertQuestion(opts: {
       ${opts.country ?? null},
       ${opts.continent ?? null},
       now() + make_interval(mins => ${opts.closesInMinutes ?? 60}),
-      ${opts.status ?? "open"}
+      ${opts.status ?? "open"},
+      ${opts.topic === undefined ? "general" : opts.topic}
     )
     RETURNING id, nonce
   `)) as unknown as Array<{ id: string; nonce: string }>;
@@ -678,6 +684,41 @@ describe("asker Sign in with Self (login + session, §14.2)", () => {
         payload: { asker_session: { ...session, unique_identifier: "self:evil" } },
       })).json(),
     ).toMatchObject({ authorized: false, auth_reason: "broker_signature_invalid" });
+  });
+});
+
+describe("GET /v1/questions/open (consent gate: only classified rows, §1.1)", () => {
+  it("hides unclassified (NULL topic) questions until the classifier runs", async (ctx) => {
+    if (!pg) return ctx.skip();
+    // The pre-classification window: a freshly inserted question whose topic the
+    // classifier has not yet assigned MUST NOT be pollable, or a sensitive ask
+    // would reach the skill with an empty topic and bypass the topic/consent gate.
+    const pending = await insertQuestion({ text: "Sensitive, unclassified?", topic: null });
+    const classified = await insertQuestion({ text: "Classified?", topic: "general" });
+
+    const ids = (await q.listOpenQuestions(db, null)).map((r) => r.id);
+    expect(ids).toContain(classified.id);
+    expect(ids).not.toContain(pending.id);
+
+    // Same gate over the HTTP route agents actually poll.
+    const out = (await app.inject({ method: "GET", url: "/v1/questions/open" })).json() as Array<{
+      question_id: string;
+    }>;
+    const httpIds = out.map((r) => r.question_id);
+    expect(httpIds).toContain(classified.id);
+    expect(httpIds).not.toContain(pending.id);
+  });
+
+  it("surfaces a question once the classifier assigns its topic", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const pending = await insertQuestion({ text: "Later classified?", topic: null });
+    expect((await q.listOpenQuestions(db, null)).map((r) => r.id)).not.toContain(pending.id);
+
+    // Simulate the classifier's async UPDATE.
+    await db.execute(sql`UPDATE questions SET topic = 'politics' WHERE id = ${pending.id}`);
+    const rows = await q.listOpenQuestions(db, null);
+    expect(rows.map((r) => r.id)).toContain(pending.id);
+    expect(rows.find((r) => r.id === pending.id)?.topic).toBe("politics");
   });
 });
 
