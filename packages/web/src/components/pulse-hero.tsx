@@ -73,7 +73,6 @@ export function PulseHero({
 }: Props) {
   const [earnOpen, setEarnOpen] = useState(false);
   const shown = useCountUp(voicesHeard);
-  const hasMap = !!featured && featured.continentData.length > 0;
 
   return (
     <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-mesh p-5 shadow-sm sm:p-8">
@@ -109,33 +108,48 @@ export function PulseHero({
           </span>
         </p>
 
-        {/* The pulse: world map + live activity */}
-        <div
-          className={
-            "mt-6 grid gap-5 " + (hasMap ? "lg:grid-cols-[1.4fr_1fr]" : "")
-          }
-        >
-          {hasMap ? (
+        {/* The pulse: the world map is always the centerpiece — coloured by the
+            most-answered open question when one exists, neutral (grey, "no
+            votes yet") otherwise, so a fresh deployment still anchors on the
+            globe rather than empty space. */}
+        <div className="mt-6 grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+          {featured ? (
             <Link
-              href={`/q/${featured!.id}`}
+              href={`/q/${featured.id}`}
               className="group rounded-2xl bg-white/70 p-3 ring-1 ring-slate-200/70 backdrop-blur transition hover:ring-violet-300"
             >
               <p className="mb-2 px-1 text-xs font-medium text-slate-500">
                 Right now, the world is answering:{" "}
                 <span className="font-semibold text-slate-800 group-hover:text-violet-700">
-                  “{featured!.text}”
+                  “{featured.text}”
                 </span>
               </p>
               {/* The map is interactive on its own; the wrapping Link still lets
                   a click on empty chrome open the question. */}
               <WorldMap
-                continentData={featured!.continentData}
-                countryData={featured!.countryData}
-                total={featured!.totalAnswers}
-                options={featured!.options}
+                continentData={featured.continentData}
+                countryData={featured.countryData}
+                total={featured.totalAnswers}
+                options={featured.options}
               />
             </Link>
-          ) : null}
+          ) : (
+            <div className="rounded-2xl bg-white/70 p-3 ring-1 ring-slate-200/70 backdrop-blur">
+              <p className="mb-2 px-1 text-xs font-medium text-slate-500">
+                The world map fills in as people answer.{" "}
+                <span className="font-semibold text-slate-800">
+                  No votes yet — add the first voice.
+                </span>
+              </p>
+              {/* Neutral world: every country greys out until real votes land. */}
+              <WorldMap
+                continentData={[]}
+                countryData={[]}
+                total={0}
+                options={["yes", "no"]}
+              />
+            </div>
+          )}
 
           <div className="flex flex-col gap-4">
             {/* Global counter — the real site-wide answer total. */}
@@ -179,8 +193,8 @@ export function PulseHero({
               />
             ) : (
               <div className="rounded-2xl bg-white/80 p-5 text-sm text-slate-600 ring-1 ring-slate-200/70 backdrop-blur">
-                Be one of the first voices. Post a question, or add your agent
-                and start answering — the map fills in as people respond.
+                Be one of the first voices — add your agent and start answering,
+                or post a question for the world to weigh in on.
               </div>
             )}
           </div>
