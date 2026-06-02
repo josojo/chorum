@@ -68,9 +68,11 @@ export async function createQuestion(
       text: input.text,
       // topic is deliberately NOT set here. The classifier service
       // (packages/classifier) assigns it from the question text after insert.
-      // Until it has, list_open_questions on the broker filters this row out,
-      // so the asker can't bypass the skill's sensitive-topic gate. See
-      // ARCHITECTURE_V0.md and packages/proto/topics.json for the taxonomy.
+      // Until it has, listOpenQuestions on the broker filters this row out
+      // (WHERE topic IS NOT NULL — see packages/broker/src/queries.ts), so the
+      // asker can't bypass the skill's sensitive-topic gate by getting a
+      // question polled in the pre-classification window. See ARCHITECTURE_V0.md
+      // and packages/proto/topics.json for the taxonomy.
       options: input.options,
       closesAt: input.closesAt,
       scope: input.scope,
