@@ -414,7 +414,10 @@ mod tests {
     #[test]
     fn gateway_service_maps_home_to_unit() {
         let root = PathBuf::from("/home/u/.hermes");
-        assert_eq!(service_for_home(&root, &root), Some("hermes-gateway".into()));
+        assert_eq!(
+            service_for_home(&root, &root),
+            Some("hermes-gateway".into())
+        );
         assert_eq!(
             service_for_home(&root.join("profiles").join("coder"), &root),
             Some("hermes-gateway-coder".into())

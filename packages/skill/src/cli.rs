@@ -211,7 +211,13 @@ pub fn run() -> i32 {
             no_restart,
             no_cron,
             schedule,
-        } => cmd_install(host, no_restart, no_cron, schedule.as_deref(), explicit_target),
+        } => cmd_install(
+            host,
+            no_restart,
+            no_cron,
+            schedule.as_deref(),
+            explicit_target,
+        ),
         Command::InstallOpenclaw {
             no_cron,
             schedule,
@@ -324,9 +330,9 @@ fn ensure_root(settings: &Settings) {
 /// (never under an inherited $HERMES_HOME). With neither flag, an inherited
 /// $HERMES_HOME is left untouched.
 fn apply_hermes_home(profile: Option<&str>, home: Option<&Path>) {
-    let target = home.map(PathBuf::from).or_else(|| {
-        profile.map(|name| hermes::default_hermes_root().join("profiles").join(name))
-    });
+    let target = home
+        .map(PathBuf::from)
+        .or_else(|| profile.map(|name| hermes::default_hermes_root().join("profiles").join(name)));
     if let Some(path) = target {
         // SAFETY: called once at startup, before any threads are spawned.
         unsafe { std::env::set_var("HERMES_HOME", path) };
