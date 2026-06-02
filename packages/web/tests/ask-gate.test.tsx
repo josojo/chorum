@@ -55,7 +55,7 @@ describe("AskGate", () => {
     // "Verify with Self" button — scope to the dialog).
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: /verify with self/i }));
-    expect(screen.getByText(/Scan with the Self app/i)).toBeTruthy();
+    expect(screen.getByText(/Scan the code with the Self app/i)).toBeTruthy();
     expect(screen.getByText(/step 2 of 3/i)).toBeTruthy();
   });
 
