@@ -64,9 +64,15 @@ pub fn begin_onboarding(
 
 /// Render a Self request URL as an ASCII/unicode QR. Falls back to the raw URL
 /// if the payload can't be encoded.
+///
+/// Uses the lowest error-correction level (`L`, 7%) so the QR has as few
+/// modules as possible — on a clean terminal screen the redundancy of higher
+/// levels isn't needed, and a smaller QR is far easier to fit on screen and
+/// scan without horizontal scrolling.
 pub fn render_qr_ascii(payload: &str) -> String {
     use qrcode::render::unicode;
-    match qrcode::QrCode::new(payload.as_bytes()) {
+    use qrcode::{EcLevel, QrCode};
+    match QrCode::with_error_correction_level(payload.as_bytes(), EcLevel::L) {
         Ok(code) => code.render::<unicode::Dense1x2>().quiet_zone(true).build(),
         Err(_) => format!("[QR encode failed; open this link instead]\n{payload}\n"),
     }
@@ -131,4 +137,37 @@ pub fn accept_identity_bundle(
     validate_token(&token, None)?;
     store_delegation(delegation_path, &token)?;
     Ok(token)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A representative Self deep-link payload (long, like the real ones).
+    const SAMPLE_URL: &str = "https://redirect.self.xyz/?sessionId=01234567-89ab-cdef-0123-456789abcdef&selfApp=eyJhcHBOYW1lIjoiaGVhcm1lIiwic2NvcGUiOiJoZWFybWUtYWdlIn0";
+
+    #[test]
+    fn renders_a_scannable_qr() {
+        let out = render_qr_ascii(SAMPLE_URL);
+        assert!(!out.is_empty());
+        assert!(!out.contains("QR encode failed"));
+    }
+
+    #[test]
+    fn low_ec_is_not_larger_than_medium() {
+        use qrcode::render::unicode;
+        use qrcode::{EcLevel, QrCode};
+        let lines = |ec| {
+            QrCode::with_error_correction_level(SAMPLE_URL.as_bytes(), ec)
+                .unwrap()
+                .render::<unicode::Dense1x2>()
+                .quiet_zone(true)
+                .build()
+                .lines()
+                .count()
+        };
+        // Lower error correction must never produce a taller QR than the old
+        // default (medium); for typical long payloads it is strictly smaller.
+        assert!(lines(EcLevel::L) <= lines(EcLevel::M));
+    }
 }
