@@ -21,10 +21,46 @@ const PLUGIN_DIRNAME: &str = "hearme";
 /// Embedded Hermes manifest. Kept in step with packages/skill/plugin.yaml.
 pub const PLUGIN_MANIFEST: &str = "name: hearme\nversion: 0.0.1\ndescription: >-\n  Answer public yes/no questions on the user's behalf, using the host agent's\n  own model and memory. Inference needs no extra API key; a cron job drives the\n  answering cycle.\nauthor: Hearme\nkind: standalone\nprovides_tools:\n  - hearme_list_open_questions\n  - hearme_submit_answer\n  - hearme_submit_no_signal\n";
 
-fn hermes_home() -> PathBuf {
+/// The default Hermes root (`~/.hermes`), ignoring `$HERMES_HOME`. Named
+/// profiles always live under `<this>/profiles/<name>`, regardless of which
+/// home is currently active.
+pub fn default_hermes_root() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".hermes")
+}
+
+/// The *active* Hermes home. Honors `$HERMES_HOME` (set by Hermes itself for a
+/// named profile, by its per-profile wrapper alias, or by our own
+/// `--hermes-profile`/`--hermes-home` flags), falling back to `~/.hermes`.
+/// Every install path is derived from this so the plugin lands in the same
+/// profile the gateway runs under.
+pub fn hermes_home() -> PathBuf {
+    std::env::var_os("HERMES_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(default_hermes_root)
+}
+
+/// Names of the profiles present under `~/.hermes/profiles`, sorted. Empty if
+/// there are none (the common single-profile case).
+pub fn list_profiles() -> Vec<String> {
+    profiles_in(&default_hermes_root())
+}
+
+fn profiles_in(root: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(root.join("profiles")) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                if let Some(name) = entry.file_name().to_str() {
+                    out.push(name.to_string());
+                }
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 pub fn plugin_dir() -> PathBuf {
@@ -99,9 +135,19 @@ def _handle_submit_no_signal(args, **_kwargs):
     return _run(["submit-no-signal", "--question-id", question_id])
 
 
+def _hearme_root():
+    # Mirror the binary's config::default_root resolution so the shim (running
+    # inside the gateway) looks in the SAME profile the gateway runs under.
+    explicit = os.environ.get("HEARME_SKILL_ROOT_DIR")
+    if explicit:
+        return Path(explicit)
+    hermes_home = os.environ.get("HERMES_HOME")
+    base = Path(hermes_home) if hermes_home else (Path.home() / ".hermes")
+    return base / "hearme"
+
+
 def _delegation_exists():
-    root = os.environ.get("HEARME_SKILL_ROOT_DIR") or str(Path.home() / ".hermes" / "hearme")
-    return (Path(root) / "delegation.token").exists()
+    return (_hearme_root() / "delegation.token").exists()
 
 
 def _ensure_cron():
@@ -256,13 +302,54 @@ pub fn persist_broker_urls(
     Ok(Some(keys))
 }
 
-/// Best-effort `systemctl --user restart hermes-gateway`. Returns (ok, message).
+/// The systemd `--user` gateway service for the active Hermes home. The default
+/// profile uses the legacy `hermes-gateway`; a named profile under
+/// `~/.hermes/profiles/<name>` uses `hermes-gateway-<name>`. Returns `None` for a
+/// custom home off the standard layout, where the service name is unknowable.
+pub fn gateway_service() -> Option<String> {
+    service_for_home(&hermes_home(), &default_hermes_root())
+}
+
+fn service_for_home(home: &Path, default_root: &Path) -> Option<String> {
+    if home == default_root {
+        return Some("hermes-gateway".to_string());
+    }
+    if let Ok(rest) = home.strip_prefix(default_root.join("profiles")) {
+        let mut comps = rest.components();
+        if let (Some(std::path::Component::Normal(name)), None) = (comps.next(), comps.next()) {
+            if let Some(name) = name.to_str() {
+                return Some(format!("hermes-gateway-{name}"));
+            }
+        }
+    }
+    None
+}
+
+/// Shell command to restart the active profile's gateway, for manual-fallback hints.
+pub fn gateway_restart_hint() -> String {
+    match gateway_service() {
+        Some(svc) => format!("systemctl --user restart {svc}"),
+        None => "systemctl --user restart <your-hermes-gateway-service>".to_string(),
+    }
+}
+
+/// Best-effort `systemctl --user restart <gateway service>` for the active
+/// profile. Returns (ok, message).
 pub fn restart_gateway() -> (bool, String) {
+    let service = match gateway_service() {
+        Some(s) => s,
+        None => {
+            return (
+                false,
+                "could not determine the gateway service for this Hermes home".to_string(),
+            )
+        }
+    };
     match Command::new("systemctl")
-        .args(["--user", "restart", "hermes-gateway"])
+        .args(["--user", "restart", &service])
         .output()
     {
-        Ok(out) if out.status.success() => (true, "restarted hermes-gateway".to_string()),
+        Ok(out) if out.status.success() => (true, format!("restarted {service}")),
         Ok(out) => {
             let detail = String::from_utf8_lossy(&out.stderr);
             let detail = detail.trim();
@@ -296,6 +383,52 @@ mod tests {
         assert!(shim.contains("submit-no-signal"));
         assert!(shim.contains("hearme_submit_no_signal"));
         assert!(shim.contains("def register(ctx):"));
+    }
+
+    #[test]
+    fn shim_resolves_root_from_hermes_home() {
+        // The in-gateway shim must look under $HERMES_HOME so the cron self-check
+        // finds the delegation token in the active profile, not the default one.
+        let shim = build_subprocess_shim("/opt/hearme/bin/hearme-skill");
+        assert!(shim.contains("os.environ.get(\"HERMES_HOME\")"));
+        assert!(shim.contains("def _hearme_root():"));
+    }
+
+    #[test]
+    fn profiles_in_lists_sorted_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let profiles = dir.path().join("profiles");
+        std::fs::create_dir_all(profiles.join("coder")).unwrap();
+        std::fs::create_dir_all(profiles.join("assistant")).unwrap();
+        // A stray file under profiles/ must be ignored (only dirs are profiles).
+        std::fs::write(profiles.join("notes.txt"), "x").unwrap();
+        assert_eq!(profiles_in(dir.path()), vec!["assistant", "coder"]);
+    }
+
+    #[test]
+    fn profiles_in_empty_when_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(profiles_in(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn gateway_service_maps_home_to_unit() {
+        let root = PathBuf::from("/home/u/.hermes");
+        assert_eq!(
+            service_for_home(&root, &root),
+            Some("hermes-gateway".into())
+        );
+        assert_eq!(
+            service_for_home(&root.join("profiles").join("coder"), &root),
+            Some("hermes-gateway-coder".into())
+        );
+        // Nested deeper than a single profile name → not a recognizable profile.
+        assert_eq!(
+            service_for_home(&root.join("profiles").join("coder").join("sub"), &root),
+            None
+        );
+        // A custom home off the standard layout → unknown service.
+        assert_eq!(service_for_home(&PathBuf::from("/opt/agent"), &root), None);
     }
 
     #[test]
