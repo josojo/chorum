@@ -11,6 +11,17 @@
 // b"BROKER-SIGNING-KEY-HEARME-DEV32B"
 export const DEV_BROKER_SIGNING_KEY = "QlJPS0VSLVNJR05JTkctS0VZLUhFQVJNRS1ERVYzMkI=";
 
+// Dev-only HMAC key (base64 of 32 bytes) for the per-question voter tag that
+// pseudonymizes the envelopes table (ARCHITECTURE_V0.md §1.4, src/voterTag.ts).
+// Production MUST override HEARME_BROKER_VOTER_TAG_SECRET with a secret-managed
+// key. It is the linkage secret: anyone holding it (plus the registrations
+// nullifier list) can re-link a person's answers, so it must NEVER live in the
+// shared DB. A stable value is required so the broker can reproduce a person's
+// tags for revoke / invalidation; rotating it orphans all existing tags (the v2
+// epoch-rotation mechanism that makes old history unlinkable even to the broker).
+// b"HEARME-VOTER-TAG-SECRET-DEV-32B!"
+export const DEV_VOTER_TAG_SECRET = "SEVBUk1FLVZPVEVSLVRBRy1TRUNSRVQtREVWLTMyQiE=";
+
 export interface Settings {
   databaseUrl: string;
   dbPoolMinSize: number;
@@ -46,6 +57,11 @@ export interface Settings {
   // Ed25519 signing key (base64 of a 32-byte seed) the broker uses to sign the
   // DelegationToken it issues at registration. MUST be overridden in production.
   brokerSigningKey: string;
+
+  // HMAC key (base64) for the per-question voter tag (§1.4, src/voterTag.ts).
+  // MUST be overridden in production; it is the linkage secret and must never be
+  // stored in the shared DB.
+  voterTagSecret: string;
 
   // DANGER — testing only. When true, mounts POST /v1/dev/register, which mints
   // a DelegationToken for a SYNTHETIC identity WITHOUT any Self proof or bridge
@@ -127,6 +143,7 @@ export function getSettings(overrides: Partial<Settings> = {}): Settings {
     selfRevocationCursorName: envStr(`${P}SELF_REVOCATION_CURSOR_NAME`, "self-revocations-v1"),
 
     brokerSigningKey: envStr(`${P}SIGNING_KEY`, DEV_BROKER_SIGNING_KEY),
+    voterTagSecret: envStr(`${P}VOTER_TAG_SECRET`, DEV_VOTER_TAG_SECRET),
 
     devInsecureRegister: envBool(`${P}DEV_INSECURE_REGISTER`, false),
     productionMode: envBool(`${P}PRODUCTION_MODE`, false),

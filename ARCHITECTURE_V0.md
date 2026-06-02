@@ -47,8 +47,20 @@ This sidewheel is **not** app scraping. It must not read private ChatGPT macOS a
 ### 1.3 Predicate disclosure, fixed at install
 Demographic disclosure is decided **once**, at install, when the user picks a disclosure level on the phone (e.g. age band, region). The chosen predicates are proven via Self, verified once by the broker at registration, and baked into the broker-issued DelegationToken. Every answer reuses the same predicate set; askers do **not** negotiate predicates per question. If an asker needs finer slicing, they slice post-hoc on the aggregate, not by demanding new disclosures from the user.
 
-### 1.4 Sybil resistance via stable scoped uniqueness; linkability is bounded and named
-The DelegationToken's `uniqueIdentifier` is the **Self nullifier** under the single scope `"hearme-v1"` (the nullifier is unique-per-user-per-scope) — so the same passport produces the same identifier across every Hearme answer. The broker uses this for one-answer-per-`(question_id, uniqueIdentifier)` enforcement and for per-user honeypot scoring. This means **the broker can link a user's answers to each other** within Hearme. This is a deliberate v0 tradeoff: it buys "zero time cost per question" (no phone round-trip), and the broker is contractually bound to publish only aggregates. Epoch-rotated scopes (so identifiers rotate weekly/monthly) are a v2 privacy upgrade.
+### 1.4 Sybil resistance via stable scoped uniqueness; the answers table is unlinkable at rest
+The DelegationToken's `uniqueIdentifier` is the **Self nullifier** under the single scope `"hearme-v1"` (the nullifier is unique-per-user-per-scope) — so the same passport produces the same identifier across every Hearme answer. The broker uses it for Sybil enforcement and per-user honeypot scoring.
+
+But the raw nullifier is **never written to the `envelopes` table.** If it were, the answers table would be a permanent re-identification honeypot: a single `GROUP BY unique_identifier` (or any backup, read replica, or analytics export of it) would reconstruct everything a given human ever answered. Instead, each envelope is stored under a **per-question voter tag** — a pseudonym derived by the broker:
+
+```
+voter_tag = base64( HMAC-SHA256( linkage_secret, "hearme-voter-tag-v1" | question_id | nullifier ) )
+```
+
+This is the best of both: it is **deterministic** per `(question_id, nullifier)`, so the composite primary key `(question_id, voter_tag)` still enforces one-answer-per-human-per-question at the DB layer and the broker can reproduce a person's tag to revoke a single answer; and it is **unlinkable across questions**, so the same human answering two questions yields two unrelated tags. The `envelopes` table on its own is therefore no longer a join key for a person's answer history.
+
+**Where linkage now lives.** Re-linking the answers table to individuals requires *both* the `linkage_secret` (held in broker config / SSM, **never** in the shared DB) *and* the `registrations` nullifier list — the minimal trusted core. Per-person tallies the broker genuinely needs (the §14.2 ask-credit count, the "respondents" stat) are kept as explicit counters on the `registrations` row, not derived by scanning answers. The broker can still link when it must (revoke, on-chain invalidation, gating), but the bulk data — the thing most likely to be queried, exported, or leaked — carries only per-question pseudonyms.
+
+**Forward path.** The `linkage_secret` is the v0 down-payment on the v2 privacy upgrade: make it **per-epoch** and rotating/destroying an old epoch's secret renders that historical data unlinkable *even to the broker* — something a stable raw-nullifier column could never offer retroactively. (Epoch-rotated Self *scopes* — so even the nullifier rotates — remain the deeper v2 change.) This is a deliberate v0 tradeoff that buys "zero time cost per question" (no phone round-trip); the broker is additionally contractually bound to publish only aggregates.
 
 ### 1.5 Verify all, trust none (broker side)
 The broker treats every envelope as potentially malicious. Verification is split in two:
@@ -165,27 +177,30 @@ CREATE TABLE questions (
 
 CREATE TABLE envelopes (
   question_id          UUID NOT NULL REFERENCES questions(id),
-  unique_identifier    TEXT NOT NULL,              -- from DelegationToken, stable per user
+  unique_identifier    TEXT NOT NULL,              -- §1.4: PER-QUESTION voter tag = HMAC(linkage_secret,
+                                                   --   "hearme-voter-tag-v1"|question_id|nullifier). NOT the raw
+                                                   --   nullifier — unlinkable across questions. NEVER write the nullifier here.
   answer               TEXT NOT NULL,              -- LLM-generated answer text (empty string when no_signal=true)
   no_signal            BOOLEAN NOT NULL DEFAULT FALSE, -- §1.14: agent had no relevant memory; skipped generation
-  relevance_score      REAL NOT NULL,              -- §7.3: confidence the user has a view, in [0, 1]
-  disclosed_predicates JSONB NOT NULL,             -- {age_band, region, ...}
+  disclosed_predicates JSONB NOT NULL,             -- bucketed {age_band, region, ...} — coarse, shared by many users
   agent_signature      TEXT NOT NULL,              -- base64 Ed25519 (agent_key over the per-question payload)
   delegation_hash      TEXT NOT NULL,              -- hash of the broker-issued DelegationToken used
   submitted_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (question_id, unique_identifier)     -- 1 answer per human per question
+  PRIMARY KEY (question_id, unique_identifier)     -- voter_tag is deterministic per (question, human) → 1 answer per human per question
 );
 
 -- Nullifier registry: written once per identity at POST /v1/register (§8.1).
 -- Enforces one agent_key per Self nullifier (atomic Sybil bind) and backs
 -- the broker-issued session credential (DelegationToken).
 CREATE TABLE registrations (
-  unique_identifier    TEXT PRIMARY KEY,           -- Self nullifier (scope "hearme-v1")
+  unique_identifier    TEXT PRIMARY KEY,           -- Self nullifier (scope "hearme-v1") — the ONLY raw-nullifier-keyed table
   agent_key            TEXT NOT NULL,              -- base64 Ed25519 pubkey bound to this nullifier
   disclosed_predicates JSONB NOT NULL,             -- bucketed {age_band, region} re-derived at registration
   issued_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at           TIMESTAMPTZ NOT NULL,       -- credential TTL (default issued_at + 90 days)
-  revoked_at           TIMESTAMPTZ                 -- NULL unless revoked
+  revoked_at           TIMESTAMPTZ,                -- NULL unless revoked
+  answer_count         INTEGER NOT NULL DEFAULT 0, -- §1.4/§14.2: per-person answer tally (envelopes can't be grouped per-person)
+  signal_count         INTEGER NOT NULL DEFAULT 0  -- of which opinion-bearing (no_signal=false); backs the ask-credit gate
 );
 
 CREATE TABLE aggregates (
@@ -206,7 +221,7 @@ CREATE INDEX ON envelopes(question_id);
 CREATE INDEX ON envelopes(submitted_at);
 ```
 
-The composite primary key on `envelopes(question_id, unique_identifier)` is the hard enforcement of Sybil resistance at the database layer. The broker can crash, restart, double-submit — the DB still rejects duplicates.
+The composite primary key on `envelopes(question_id, unique_identifier)` is the hard enforcement of Sybil resistance at the database layer. Because `unique_identifier` holds the deterministic per-question voter tag (§1.4), a repeat answer from the same human to the same question collides on the PK and is rejected — the broker can crash, restart, double-submit and the DB still rejects duplicates — while two answers by the same human to *different* questions store unrelated tags, so the table cannot be grouped back into one person's history. The `linkage_secret` that derives the tag lives in broker config / SSM, never in this database; per-person tallies are kept on `registrations.{answer_count,signal_count}` rather than by scanning `envelopes`.
 
 > **Reserved for later versions.** [v1](ARCHITECTURE_V1.md) adds payout/credential columns + tables; [v2](ARCHITECTURE_V2.md) adds the answer-integrity tables (`memory_commitments`, `fidelity_scores`, `audit_flags`) and a `grounding_commitment` column on `envelopes`. None of these exist or are enforced in v0.
 
@@ -288,9 +303,12 @@ parse (pydantic)
   → verify agent_signature over H(question_id, answer, nonce, delegation_hash) using token.agent_key.public
   → check question_id exists, status='open', closes_at > now()
   → check signed predicates are eligible for the question scope
-  → INSERT envelope (UNIQUE constraint rejects duplicates)
+  → derive voter_tag = HMAC(linkage_secret, "hearme-voter-tag-v1"|question_id|unique_identifier)  (§1.4)
+  → INSERT envelope under voter_tag (composite PK rejects duplicates; raw nullifier never stored)
   → increment aggregates row for question_id
+  → bump registrations.{answer_count, signal_count} for the nullifier  (per-person tally; §14.2)
 ```
+All of the last three writes share one transaction, so aggregates, the per-person counters, and the envelope can never drift apart.
 
 If any step fails, the request is rejected with a reason code; nothing is written. Reasons are logged but **not** returned in detail in production (avoid an oracle); v0 returns detailed reasons for debugging.
 
@@ -501,6 +519,7 @@ Anything stubbed appears in code with `# STUB:` and in each package's README. **
 - **Real Self proof verification, verify-once.** `POST /v1/register` runs `SelfBackendVerifier.verify()` through the self-bridge, enforces bindings, derives `region`/`age_band`, atomically binds `nullifier ↔ agent_key`, and issues a broker-signed DelegationToken. Per envelope, only the token signature + registry/revocation are checked — no Self proof at answer time. Plus the one-time on-chain Celo Identity-Registry root read (§5). Mock-passport proofs verify only with `SELF_MOCK_PASSPORT=1` (staging / Celo Sepolia).
 - **`no_signal` end to end.** The agent emits `no_signal` (`hearme_submit_no_signal`) instead of guessing; the broker keeps dedicated `aggregates.no_signal_total` + `no_signal_by_predicate` (no-signal envelopes never pollute per-option tallies); the result page renders a "No formed view" breakdown.
 - **Asker unlock threshold (§15.3).** Possession-of-DelegationToken auth + the ≥50 answers / ≥10 signal-bearing gate, with admin override.
+- **Unlinkable answers at rest (§1.4).** Envelopes are stored under a per-question voter tag (`HMAC(linkage_secret, …|question_id|nullifier)`), never the raw nullifier, so the answers table cannot be grouped into one person's history. Per-person tallies live as counters on `registrations`; the `linkage_secret` lives outside the DB and refuses the dev default in production (startup check). Verified end to end (the answers table holds no raw nullifier; one person's two answers carry unrelated tags; revoke/invalidation roll the counters back).
 
 **Residual caveats (carried into IDENTITY.md):** (a) a Celo-side revocation made *after* registration is not re-checked per answer (Hearme's own `registrations` registry governs revocation thereafter); (b) one human holding multiple legal passports yields multiple nullifiers.
 
@@ -531,6 +550,7 @@ Each package has its own suite; one cross-cutting end-to-end suite at the repo r
 
 - **Question dispatch transport.** Polling every 30s means ~30s latency; move to SSE/WebSocket later.
 - **Broker signing-key management.** The DelegationToken is only as trustworthy as `broker_key`. Where it lives (KMS/HSM/env) and how it rotates (overlap window or forced re-registration) is open. v0: single key in config.
+- **Linkage-secret management (§1.4).** The voter-tag `linkage_secret` must live outside the DB (config/SSM) and stay stable so the broker can reproduce a person's tags for revoke/invalidation/counting. Rotating it orphans all existing tags — which is exactly the v2 epoch-unlink lever, but in v0 means a single-answer revoke issued after a rotation won't find the pre-rotation row (aggregates already counted it; the per-person counters are unaffected). KMS/HSM custody and the epoch schedule are open.
 - **Credential-vs-registry revocation latency.** Revocation flips `registrations.revoked_at`, checked per envelope — immediate, but a stolen token works until then (or until `expires_at`). Shortening TTL trades refresh friction for a tighter window.
 - **DelegationToken storage at rest.** OS keychain, passphrase-encrypted file, or Hermes-identity-derived key?
 - **Aggregate semantics for free-form answers.** v0 aggregates by predicate only; semantic clustering of answer text is a later design and must not leak identifying patterns.

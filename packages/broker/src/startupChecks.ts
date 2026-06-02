@@ -8,7 +8,7 @@
 // (failing closed). The check is structural only — no DB/bridge/chain contact.
 // Mirrors startup_checks.py.
 
-import { DEV_BROKER_SIGNING_KEY, type Settings } from "./config";
+import { DEV_BROKER_SIGNING_KEY, DEV_VOTER_TAG_SECRET, type Settings } from "./config";
 
 export class ProductionConfigError extends Error {
   constructor(message: string) {
@@ -35,6 +35,16 @@ export function validateProductionConfig(settings: Settings): ValidationReport {
       "HEARME_BROKER_SIGNING_KEY is the documented dev default. Anyone with the " +
         "source can forge a DelegationToken — generate a fresh Ed25519 seed and " +
         "store it in your secret manager.",
+    );
+  }
+
+  if (settings.voterTagSecret === DEV_VOTER_TAG_SECRET) {
+    report.errors.push(
+      "HEARME_BROKER_VOTER_TAG_SECRET is the documented dev default. It is the " +
+        "linkage secret for the per-question voter tag (ARCHITECTURE_V0.md §1.4); " +
+        "with the dev value, anyone with the source can re-link the envelopes table " +
+        "to individuals. Generate a fresh 32-byte secret and store it in your secret " +
+        "manager (never in the shared DB).",
     );
   }
 

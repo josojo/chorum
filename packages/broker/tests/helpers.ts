@@ -104,15 +104,17 @@ export function makeToken(opts: {
 
 export function makeEnvelope(
   token: DelegationToken,
-  args: { questionId: string; answer: string; nonce: string },
+  args: { questionId: string; answer: string; nonce: string; noSignal?: boolean },
 ): Envelope {
   const dhash = delegationHash(token);
+  // no_signal is unsigned metadata (§1.14) — the digest is unchanged whether or
+  // not the flag is set, so a no_signal envelope is just answer="" + the flag.
   const digest = envelopeSigningInput(args.questionId, args.answer, args.nonce, dhash);
   const sig = nacl.sign.detached(digest, agentKeyPair.secretKey);
   return {
     question_id: args.questionId,
     answer: args.answer,
-    no_signal: false,
+    no_signal: args.noSignal ?? false,
     nonce: args.nonce,
     delegation_token: token,
     agent_signature: Buffer.from(sig).toString("base64"),

@@ -19,6 +19,7 @@ import { isScopeEligible } from "../eligibility";
 import { type EnvelopeAck, RejectionReason, envelopeSchema } from "../models";
 import { VerifyDelegationError, verifyDelegation } from "../verify/delegation";
 import { VerifyEnvelopeError, verifyAgentSignature } from "../verify/envelope";
+import { voterTagFor } from "../voterTag";
 
 function ack(accepted: boolean, reason?: RejectionReason): EnvelopeAck {
   const settings = getSettings();
@@ -94,12 +95,19 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
       throw exc;
     }
 
-    // Steps 7-8 in a transaction so aggregates can't drift from envelopes.
+    // The envelope is stored under a per-question pseudonym, not the raw nullifier
+    // (§1.4): voter_tag = HMAC(secret, question_id | nullifier). Deterministic, so
+    // the composite PK still rejects a second answer from the same human to the
+    // same question; unlinkable, so the answers table is no cross-question join key.
+    const voterTag = voterTagFor(envelope.question_id, verified.uniqueIdentifier);
+
+    // Steps 7-8 in a transaction so aggregates + per-person counters can't drift
+    // from envelopes.
     let duplicate = false;
     await db.transaction(async (tx) => {
       const inserted = await q.insertEnvelope(tx, {
         questionId: envelope.question_id,
-        uniqueIdentifier: verified.uniqueIdentifier,
+        voterTag,
         answer: envelope.answer,
         noSignal: envelope.no_signal,
         disclosedPredicates: token.disclosed_predicates,
@@ -117,6 +125,13 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
         disclosedPredicates: token.disclosed_predicates,
         options: question.options,
         noSignal: envelope.no_signal,
+      });
+      // Per-person tally on the registration (the answers table no longer holds a
+      // stable per-person key, §1.4 / §14.2). Keyed by the raw nullifier.
+      await q.adjustAnswerCounters(tx, {
+        uniqueIdentifier: verified.uniqueIdentifier,
+        delta: 1,
+        signalDelta: envelope.no_signal ? 0 : 1,
       });
     });
     if (duplicate) return ack(false, RejectionReason.DUPLICATE);
