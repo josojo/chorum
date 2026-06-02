@@ -1,4 +1,4 @@
-// Tests for the asker-auth broker client (the web side of the §15.3 gate).
+// Tests for the asker-auth broker client (the web side of the §14.2 gate).
 //
 // We stub global.fetch so no broker is needed. The contract under test:
 //   - malformed JSON never hits the network

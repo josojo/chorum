@@ -53,7 +53,7 @@ the skill to poll.
 
 Render each `url` as a QR in turn. The `standard` profile emits one request per
 age threshold `[18, 25, 35, 50, 65]`, all under the same `scope` so they share
-one nullifier (§8.3 of ARCHITECTURE.md). `minimal` emits only the `18+` request.
+one nullifier (§8.3 of ARCHITECTURE_V0.md). `minimal` emits only the `18+` request.
 `agentKey` is set as `userDefinedData` (the in-proof agent-key bind).
 
 ### `GET /requests/:id`

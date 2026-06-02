@@ -1,6 +1,6 @@
 // Agent signature verification + request linkage.
 //
-// ARCHITECTURE.md §8.5:
+// ARCHITECTURE_V0.md §8.5:
 //   agent_signature = Sign(agent_key, H(question_id || answer || nonce || delegation_hash))
 //
 // The byte-level wire format: the four components joined with a single ASCII `|`

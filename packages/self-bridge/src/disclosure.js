@@ -5,7 +5,7 @@
 // Self has no native 5-year-band or "region" predicate. We disclose:
 //   - nationality (ISO-3166 country) -> the broker maps to a continent/region
 //   - minimumAge (one threshold per proof) -> the broker reconstructs an age
-//     band from the multi-threshold ladder (ARCHITECTURE.md §8.3).
+//     band from the multi-threshold ladder (ARCHITECTURE_V0.md §8.3).
 //
 // Pure module: no SDK, no network — unit-tested directly.
 

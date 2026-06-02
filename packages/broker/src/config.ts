@@ -16,7 +16,7 @@ export interface Settings {
   dbPoolMinSize: number;
   dbPoolMaxSize: number;
   // v0 returns detailed rejection reasons to help integration. Production
-  // should set this false (avoid being an oracle — see ARCHITECTURE.md §5).
+  // should set this false (avoid being an oracle — see ARCHITECTURE_V0.md §5).
   exposeRejectionReasons: boolean;
 
   // self-bridge: the Node sidecar that runs @selfxyz/core's SelfBackendVerifier
@@ -25,7 +25,7 @@ export interface Settings {
   selfBridgeUrl: string;
   selfVerifyTimeoutSeconds: number;
 
-  // Sybil hardening (ARCHITECTURE.md §5): require the bridge's one-time on-chain
+  // Sybil hardening (ARCHITECTURE_V0.md §5): require the bridge's one-time on-chain
   // registry/Merkle-root confirmation at registration. Default true (prod).
   requireRegistryConfirmation: boolean;
 
@@ -65,11 +65,11 @@ export interface Settings {
   ratelimitTrustProxyHeaders: boolean;
 
   // Asker gating — the v0 unlock threshold of the answer-credit economy
-  // (ARCHITECTURE.md §15.3). An identity may open questions only once it has
+  // (ARCHITECTURE_V0.md §14.2). An identity may open questions only once it has
   // submitted at least `askerUnlockTotalAnswers` answers, of which at least
   // `askerUnlockSignalAnswers` are opinion-bearing (signal). `askerAdmin
   // Identifiers` is a comma/space-separated allowlist of unique_identifiers that
-  // bypass the threshold (the bootstrap valve, §15.3).
+  // bypass the threshold (the bootstrap valve, §14.2).
   askerUnlockTotalAnswers: number;
   askerUnlockSignalAnswers: number;
   askerAdminIdentifiers: string;

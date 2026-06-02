@@ -1,6 +1,6 @@
 # hearme-web
 
-The Next.js App Router frontend for Hearme. See `/ARCHITECTURE.md` §4 for the
+The Next.js App Router frontend for Hearme. See `/ARCHITECTURE_V0.md` §4 for the
 authoritative spec; this README only covers operational concerns.
 
 This package is **the only writer of `questions` and `askers`**, and reads
@@ -124,7 +124,7 @@ a `// STUB:` comment in the source.
 
 ## What this package must never do
 
-(Repeated from `ARCHITECTURE.md` §4 because it's easy to forget during a
+(Repeated from `ARCHITECTURE_V0.md` §4 because it's easy to forget during a
 feature sprint.)
 
 - It must not write to `envelopes` or `aggregates`. Those are the broker's

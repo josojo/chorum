@@ -56,7 +56,7 @@ export function validateProductionConfig(settings: Settings): ValidationReport {
     report.errors.push(
       "HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION=0 skips the one-time on-chain Celo " +
         "registry/root check. That is the only anchor between Self's off-chain SNARK and " +
-        "one-passport→one-identity (ARCHITECTURE.md §5). Re-enable it.",
+        "one-passport→one-identity (ARCHITECTURE_V0.md §5). Re-enable it.",
     );
   }
 

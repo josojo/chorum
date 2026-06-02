@@ -30,7 +30,7 @@ import {
   type CreateQuestionInput,
 } from "./validate-question";
 
-// Asker auth gate (ARCHITECTURE.md §15.3): require a verified participant
+// Asker auth gate (ARCHITECTURE_V0.md §14.2): require a verified participant
 // credential to open a question. On by default; set ASKER_AUTH_REQUIRED=false
 // for local demos with no broker / onboarding, in which case asks are anonymous
 // (unique_identifier stays NULL) exactly as in pre-gate v0.
@@ -53,7 +53,7 @@ export async function createQuestion(
 ): Promise<{ questionId: string }> {
   // v0 display names are not identity. Create one display row per question
   // so two humans choosing the same name are not collapsed together. When the
-  // asker authenticated (§15.3), stamp their verified Self nullifier on the row;
+  // asker authenticated (§14.2), stamp their verified Self nullifier on the row;
   // it comes from the broker, never from user input.
   const askerRows = await dbi
     .insert(askers)
@@ -70,7 +70,7 @@ export async function createQuestion(
       // (packages/classifier) assigns it from the question text after insert.
       // Until it has, list_open_questions on the broker filters this row out,
       // so the asker can't bypass the skill's sensitive-topic gate. See
-      // ARCHITECTURE.md and packages/proto/topics.json for the taxonomy.
+      // ARCHITECTURE_V0.md and packages/proto/topics.json for the taxonomy.
       options: input.options,
       closesAt: input.closesAt,
       scope: input.scope,
@@ -139,7 +139,7 @@ export async function createQuestionAction(
     return { ok: false, errors: parsed.errors };
   }
 
-  // Asker gate (§15.3). Runs AFTER form validation (cheap, local) so a malformed
+  // Asker gate (§14.2). Runs AFTER form validation (cheap, local) so a malformed
   // form never burns a broker round-trip. The broker re-verifies the credential
   // and reports the asker's identity + whether they've earned the right to ask.
   // Two credential types, both re-checked server-side here (the browser cannot

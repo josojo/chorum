@@ -1,4 +1,4 @@
-//! Policy gate (ARCHITECTURE.md §7.2).
+//! Policy gate (ARCHITECTURE_V0.md §7.2).
 //!
 //! Pure decision function over the user's declared topic policy + ledger stats.
 //! Per §1.7 it MUST NOT branch on whether a question is a honeypot — it only

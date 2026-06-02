@@ -378,7 +378,7 @@ export async function insertEnvelope(
 // ----- asker gating (answer-credit economy, §15) -------------------------
 
 // Count one identity's submitted answers, split into total and signal-bearing.
-// Backs the v0 asker unlock threshold (§15.3) — only the broker can read
+// Backs the v0 asker unlock threshold (§14.2) — only the broker can read
 // envelopes, so this count must live here.
 //
 // "Signal-bearing" is `no_signal = false` (§1.14): the agent had relevant memory
@@ -403,7 +403,7 @@ export async function askerAnswerCounts(
   };
 }
 
-// ----- asker admins (DB-backed bootstrap valve, §15.3) -------------------
+// ----- asker admins (DB-backed bootstrap valve, §14.2) -------------------
 
 // Is this identity a DB-listed admin? Admins bypass the unlock threshold
 // (evaluateAskerEligibility). Read on every eligibility check, so it's a single

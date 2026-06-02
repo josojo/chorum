@@ -1,4 +1,4 @@
-// POST /v1/envelopes — verify and persist (ARCHITECTURE.md §5).
+// POST /v1/envelopes — verify and persist (ARCHITECTURE_V0.md §5).
 //
 // Per-envelope pipeline. NO Self proof, NO bridge call at answer time.
 //   2. Verify the broker's OWN signature on the token + expiry.

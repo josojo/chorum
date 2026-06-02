@@ -362,7 +362,7 @@ describe("GET /v1/stats", () => {
   });
 });
 
-describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §15.3)", () => {
+describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §14.2)", () => {
   // Seed one envelope (one answer) for `uid` against a fresh question. An empty
   // answer marks a no-signal envelope (no_signal=true, §1.14); a non-empty
   // answer is signal-bearing (no_signal=false).
@@ -440,7 +440,7 @@ describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §15.3)", 
   it("counts total vs signal and unlocks at the threshold", async (ctx) => {
     if (!pg) return ctx.skip();
     const uid = "self:asker-ok";
-    // 50 answers, exactly 10 of them signal-bearing — the §15.3 boundary.
+    // 50 answers, exactly 10 of them signal-bearing — the §14.2 boundary.
     for (let i = 0; i < 10; i++) await seedAnswer(uid, "yes");
     for (let i = 0; i < 40; i++) await seedAnswer(uid, ""); // no_signal proxy
     expect(await eligibilityFor(uid)).toMatchObject({
@@ -477,7 +477,7 @@ describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §15.3)", 
     expect((await eligibilityFor("self:a")).total_answers).toBe(1);
   });
 
-  it("a DB-listed admin bypasses the threshold with zero answers (§15.3)", async (ctx) => {
+  it("a DB-listed admin bypasses the threshold with zero answers (§14.2)", async (ctx) => {
     if (!pg) return ctx.skip();
     const uid = "self:db-admin";
     await db.execute(sql`
@@ -496,7 +496,7 @@ describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §15.3)", 
     });
   });
 
-  it("grant/revoke round-trips and flips ask-rights live (§15.3)", async (ctx) => {
+  it("grant/revoke round-trips and flips ask-rights live (§14.2)", async (ctx) => {
     if (!pg) return ctx.skip();
     const uid = "self:toggle-admin";
     // Not an admin and no answers ⇒ blocked.
@@ -511,7 +511,7 @@ describe("POST /v1/askers/eligibility (asker auth + unlock threshold, §15.3)", 
   });
 });
 
-describe("asker Sign in with Self (login + session, §15.3)", () => {
+describe("asker Sign in with Self (login + session, §14.2)", () => {
   // Seed one (signal-bearing) answer for `uid` against a fresh question.
   async function seedAnswer(uid: string, answer: string): Promise<void> {
     const q = await insertQuestion({});

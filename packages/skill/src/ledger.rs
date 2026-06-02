@@ -1,4 +1,4 @@
-//! Local ledger (ARCHITECTURE.md §7.6) — SQLite via rusqlite.
+//! Local ledger (ARCHITECTURE_V0.md §7.6) — SQLite via rusqlite.
 //!
 //! Schema: `questions`, `answers`, `submissions`, `revocations`,
 //! `question_spend`, `meta`. Primary key on `question_id` everywhere.

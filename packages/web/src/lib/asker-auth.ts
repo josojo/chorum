@@ -1,4 +1,4 @@
-// Asker auth — the web side of the answer-credit gate (ARCHITECTURE.md §15.3).
+// Asker auth — the web side of the answer-credit gate (ARCHITECTURE_V0.md §14.2).
 //
 // Only the broker can read envelopes + registrations (db/init/02-roles.sh), so
 // the asker's identity and eligibility are decided there. This module forwards
@@ -6,7 +6,7 @@
 // the broker's verdict into a friendly result the /ask action can act on.
 //
 // v0 asker auth is possession of a broker-signed, live credential — not yet
-// proof-of-private-key (see the broker route + §15.3). The token is not a secret
+// proof-of-private-key (see the broker route + §14.2). The token is not a secret
 // the way a password is; it is a signed, expiring, revocable capability.
 
 export const BROKER_URL = process.env.BROKER_URL ?? "http://localhost:8000";
@@ -57,7 +57,7 @@ function authMessage(reason: string | null): string {
 }
 
 // "You've answered enough in total but too few with a real opinion" vs "answer
-// more questions" — guide the asker to whichever floor they're short on (§15.3).
+// more questions" — guide the asker to whichever floor they're short on (§14.2).
 function gateMessage(j: BrokerEligibility): string {
   if (j.reason === "not_enough_signal") {
     return `Almost there — you need ${j.remaining_signal} more answer${

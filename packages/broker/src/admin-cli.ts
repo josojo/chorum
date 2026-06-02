@@ -1,4 +1,4 @@
-// Asker-admin CLI — manage the DB-backed bootstrap valve (ARCHITECTURE.md §15.3).
+// Asker-admin CLI — manage the DB-backed bootstrap valve (ARCHITECTURE_V0.md §14.2).
 //
 // Admins bypass the answer-credit unlock threshold and may always ask. The list
 // lives in the `asker_admins` table (broker-owned) and the broker reads it live,
@@ -50,7 +50,7 @@ function parseArgs(argv: string[]): Args {
 
 class UsageError extends Error {}
 
-const USAGE = `asker-admin — manage DB-backed asker admins (§15.3)
+const USAGE = `asker-admin — manage DB-backed asker admins (§14.2)
 
 Usage:
   npm run admin -- list

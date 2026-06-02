@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hearme.network/proto/envelope.json",
   "title": "Envelope",
-  "description": "Body of POST /v1/envelopes. See ARCHITECTURE.md §8.5. The end-to-end test asserts the body contains exactly these five fields and no others (boundary-leakage check, §12).",
+  "description": "Body of POST /v1/envelopes. See ARCHITECTURE_V0.md §8.5. The end-to-end test asserts the body contains exactly these five fields and no others (boundary-leakage check, §12).",
   "type": "object",
   "additionalProperties": false,
   "required": [

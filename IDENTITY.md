@@ -2,7 +2,7 @@
 
 > Identity is the foundation of Hearme. Without a credible "one human, one voice" guarantee, every aggregate signal the platform produces is worthless.
 
-> **Decision (2026-05):** Hearme's proof-of-personhood is built on **Self ([self.xyz](https://self.xyz))**, the single identity provider. An earlier design used **zkPassport**; we switched after weighing adoption and longevity (Self: 8–15M users, Google Cloud / Opera / Celo backing; zkPassport: niche, "not production-ready for critical apps" per Safe research) *and* confirming Self's SDK preserves Hearme's three non-negotiables — off-chain verification at answer time (the only chain read is a one-time registry check at registration), in-proof agent-key binding, and a stable per-scope nullifier. zkPassport is retained below only as **alternatives-considered** context. The concrete wire format and flow live in `ARCHITECTURE.md` §8.
+> **Decision (2026-05):** Hearme's proof-of-personhood is built on **Self ([self.xyz](https://self.xyz))**, the single identity provider. An earlier design used **zkPassport**; we switched after weighing adoption and longevity (Self: 8–15M users, Google Cloud / Opera / Celo backing; zkPassport: niche, "not production-ready for critical apps" per Safe research) *and* confirming Self's SDK preserves Hearme's three non-negotiables — off-chain verification at answer time (the only chain read is a one-time registry check at registration), in-proof agent-key binding, and a stable per-scope nullifier. zkPassport is retained below only as **alternatives-considered** context. The concrete wire format and flow live in `ARCHITECTURE_V0.md` §8.
 
 ## The Problem
 

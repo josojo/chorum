@@ -1,6 +1,6 @@
 // Rendering test for the question detail view.
 //
-// Covers the load-bearing claim from ARCHITECTURE.md §4: the detail page
+// Covers the load-bearing claim from ARCHITECTURE_V0.md §4: the detail page
 // surfaces the per-predicate breakdown from `aggregates.by_predicate`.
 // We render <QuestionDetail/> with seeded data and assert that the
 // dimensions, values, and counts all appear in the DOM.

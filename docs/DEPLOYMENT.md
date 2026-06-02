@@ -2,7 +2,7 @@
 
 > Operational runbook for shipping the v0 stack. Covers what to set, what to
 > rotate, how to back up, and how to verify the loop end-to-end on real Self
-> proofs. Pairs with the architectural rationale in `ARCHITECTURE.md` and the
+> proofs. Pairs with the architectural rationale in `ARCHITECTURE_V0.md` and the
 > "what v0 skips" list in §11 — that is the *design* boundary; this doc is the
 > *operational* boundary.
 

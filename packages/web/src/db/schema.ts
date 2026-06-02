@@ -27,7 +27,7 @@ export const askers = pgTable("askers", {
   id: uuid("id").primaryKey().defaultRandom(),
   displayName: text("display_name").notNull(),
   // The verified Self nullifier of the asker, when they authenticated with a
-  // DelegationToken (asker auth, ARCHITECTURE.md §15.3). NULL for legacy /
+  // DelegationToken (asker auth, ARCHITECTURE_V0.md §14.2). NULL for legacy /
   // unauthenticated display-only rows. The broker verifies the credential and
   // returns this identifier; the web app never derives it from user input.
   uniqueIdentifier: text("unique_identifier"),
@@ -103,7 +103,7 @@ export const envelopes = pgTable(
     // §1.14: the agent had no relevant memory and skipped generation, so this
     // envelope carries no opinion (answer is conventionally empty). A first-class
     // aggregate bucket ("had no formed view"), and the signal/non-signal split
-    // the asker-credit gate counts on (§15.3). Unsigned metadata — NOT covered by
+    // the asker-credit gate counts on (§14.2). Unsigned metadata — NOT covered by
     // agent_signature (which signs question_id||answer||nonce||delegation_hash);
     // it only affects the answerer's own credit count, so the surface is bounded.
     noSignal: boolean("no_signal").notNull().default(false),
@@ -168,7 +168,7 @@ export const registrations = pgTable(
 );
 
 // Asker admins — the DB-backed bootstrap valve of the answer-credit economy
-// (ARCHITECTURE.md §15.3). An identity listed here bypasses the asker unlock
+// (ARCHITECTURE_V0.md §14.2). An identity listed here bypasses the asker unlock
 // threshold entirely (it may open questions with zero earned credit), so the
 // network can be seeded with questions before there's a body of answerers to
 // earn against. Keyed by the Self nullifier (`unique_identifier`) — the same key

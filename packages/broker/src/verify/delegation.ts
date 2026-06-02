@@ -1,4 +1,4 @@
-// Per-envelope DelegationToken verification (ARCHITECTURE.md §5).
+// Per-envelope DelegationToken verification (ARCHITECTURE_V0.md §5).
 //
 // The answer-time path. It does NOT touch a Self proof or the bridge — the proof
 // was verified once at registration. Steps:

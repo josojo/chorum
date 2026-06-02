@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Register a captured self-bridge result with the broker and print the token.
 
-Verify-once (ARCHITECTURE.md §5/§8): a DelegationToken is now ISSUED BY THE
+Verify-once (ARCHITECTURE_V0.md §5/§8): a DelegationToken is now ISSUED BY THE
 BROKER after it verifies the Self proofs. So this script no longer fabricates a
 token — it replays a captured set of proofs through ``POST /v1/register`` and
 prints the broker-signed token the broker returns.

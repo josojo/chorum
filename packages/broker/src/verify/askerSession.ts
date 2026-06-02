@@ -1,7 +1,7 @@
 // Asker login session — the browser-side counterpart of the DelegationToken.
 //
 // A DelegationToken is minted for an AGENT at POST /v1/register and binds an
-// agent_key the browser never holds. But the asker gate (ARCHITECTURE.md §15.3)
+// agent_key the browser never holds. But the asker gate (ARCHITECTURE_V0.md §14.2)
 // keys purely on the Self nullifier (unique_identifier): a person's answer
 // score lives under their nullifier, not their token. So a human can prove that
 // nullifier directly with a fresh "Sign in with Self" scan — the nullifier is
