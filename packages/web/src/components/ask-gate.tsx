@@ -219,12 +219,10 @@ function ScanBody({ titleId, bodyId }: { titleId: string; bodyId: string }) {
         id={titleId}
         className="mt-1 text-xl font-semibold tracking-tight text-slate-900"
       >
-        Scan with the Self app
+        Scan the code with the Self app
       </h2>
       <p id={bodyId} className="mt-2 text-sm leading-relaxed text-slate-600">
-        Open Self on your phone and scan the code. It recreates your verification
-        for this app, so we can read your current score — a zero-knowledge proof,
-        nothing about who you are is revealed.
+        A zero-knowledge proof — nothing about who you are is revealed.
       </p>
       <p className="mt-3 text-xs text-slate-400">
         Trouble scanning? Email{" "}
@@ -513,39 +511,31 @@ function ScanStage({ onVerified }: { onVerified: (s: StatusResponse) => void }) 
   }, []);
 
   return (
-    <div className="flex w-64 flex-col items-center">
-      <div className="w-44 rounded-[1.75rem] bg-slate-900 p-2 shadow-xl ring-1 ring-slate-700/60">
-        <div className="rounded-[1.4rem] bg-white px-4 py-3">
-          <div className="mb-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-slate-700">
-            <span className="grid h-4 w-4 place-items-center rounded-md bg-gradient-to-br from-violet-600 to-fuchsia-600 text-[8px] font-bold text-white">
-              S
-            </span>
-            Self
+    // Fill the dialog's illustration stage with the QR so it's big enough to
+    // scan without zooming (the old phone-mock framing shrank it to ~132px). The
+    // white card padding doubles as the QR's quiet zone.
+    <div className="flex items-center justify-center">
+      <div className="rounded-2xl bg-white p-4 shadow-xl ring-1 ring-slate-200">
+        {error ? (
+          <p className="grid h-[180px] w-[180px] place-items-center px-3 text-center text-xs font-medium text-rose-600">
+            {error}
+          </p>
+        ) : qrUrl ? (
+          // level "L" keeps the module count low, so each module is as large as
+          // possible for the (long) Self universal link.
+          <QRCodeSVG
+            value={qrUrl}
+            size={180}
+            level="L"
+            marginSize={1}
+            className="h-[180px] w-[180px]"
+          />
+        ) : (
+          <div className="grid h-[180px] w-[180px] place-items-center">
+            <span className="h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-violet-600" />
           </div>
-          <div className="grid place-items-center py-1">
-            {error ? (
-              <p className="px-1 py-6 text-center text-[11px] font-medium text-rose-600">
-                {error}
-              </p>
-            ) : qrUrl ? (
-              <QRCodeSVG
-                value={qrUrl}
-                size={132}
-                level="M"
-                marginSize={0}
-                className="rounded-md"
-              />
-            ) : (
-              <div className="grid h-[132px] w-[132px] place-items-center">
-                <span className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-violet-600" />
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
-      <p className="mt-2 text-center text-[11px] font-medium text-slate-500">
-        Passport stays on your phone · zero-knowledge
-      </p>
     </div>
   );
 }
