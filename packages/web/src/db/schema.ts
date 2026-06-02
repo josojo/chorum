@@ -103,7 +103,7 @@ export const envelopes = pgTable(
     // §1.14: the agent had no relevant memory and skipped generation, so this
     // envelope carries no opinion (answer is conventionally empty). A first-class
     // aggregate bucket ("had no formed view"), and the signal/non-signal split
-    // the asker-credit gate counts on (§15.3). Unsigned metadata — NOT covered by
+    // the asker-credit gate counts on (§14.2). Unsigned metadata — NOT covered by
     // agent_signature (which signs question_id||answer||nonce||delegation_hash);
     // it only affects the answerer's own credit count, so the surface is bounded.
     noSignal: boolean("no_signal").notNull().default(false),
@@ -166,6 +166,25 @@ export const registrations = pgTable(
     agentKeyIdx: index("registrations_agent_key_idx").on(t.agentKey),
   }),
 );
+
+// Asker admins — the DB-backed bootstrap valve of the answer-credit economy
+// (ARCHITECTURE_V0.md §14.2). An identity listed here bypasses the asker unlock
+// threshold entirely (it may open questions with zero earned credit), so the
+// network can be seeded with questions before there's a body of answerers to
+// earn against. Keyed by the Self nullifier (`unique_identifier`) — the same key
+// the gate decides on — so a row can exist before the identity has ever asked or
+// even onboarded an agent. Broker-owned and read live (no restart), the DB
+// complement to the static HEARME_BROKER_ASKER_ADMIN_IDENTIFIERS env allowlist;
+// the broker treats effective-admin as the union of the two. `label` is an
+// operator-set human note (the nullifier is opaque, so it's the only readable
+// handle) — e.g. the display name they ask under, or "founder seed".
+export const askerAdmins = pgTable("asker_admins", {
+  uniqueIdentifier: text("unique_identifier").primaryKey(),
+  label: text("label"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
 
 export const selfNullifierInvalidations = pgTable("self_nullifier_invalidations", {
   uniqueIdentifier: text("unique_identifier").primaryKey(),

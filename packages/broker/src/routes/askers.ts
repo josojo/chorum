@@ -93,10 +93,15 @@ export function registerAskersRoutes(
   ): Promise<AskerEligibilityResponse> {
     const db = getDb();
     const counts = await q.askerAnswerCounts(db, uniqueIdentifier);
+    // Effective admin = static env allowlist ∪ the live DB list (asker_admins,
+    // §14.2). The env set is the in-memory break-glass; the DB list is the
+    // operator-managed one the admin CLI writes, picked up without a restart.
+    const isAdmin =
+      admins.has(uniqueIdentifier) || (await q.isAskerAdmin(db, uniqueIdentifier));
     const result = evaluateAskerEligibility({
       counts,
       thresholds: { requiredTotal, requiredSignal },
-      isAdmin: admins.has(uniqueIdentifier),
+      isAdmin,
     });
     return {
       authorized: true,

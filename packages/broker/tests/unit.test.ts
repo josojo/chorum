@@ -101,7 +101,7 @@ describe("scope eligibility", () => {
   });
 });
 
-describe("asker gating (unlock threshold, §15.3)", () => {
+describe("asker gating (unlock threshold, §14.2)", () => {
   const thresholds = { requiredTotal: 50, requiredSignal: 10 };
   const evalCounts = (total: number, signal: number, isAdmin = false) =>
     evaluateAskerEligibility({ counts: { total, signal }, thresholds, isAdmin });

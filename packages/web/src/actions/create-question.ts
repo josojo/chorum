@@ -53,7 +53,7 @@ export async function createQuestion(
 ): Promise<{ questionId: string }> {
   // v0 display names are not identity. Create one display row per question
   // so two humans choosing the same name are not collapsed together. When the
-  // asker authenticated (§15.3), stamp their verified Self nullifier on the row;
+  // asker authenticated (§14.2), stamp their verified Self nullifier on the row;
   // it comes from the broker, never from user input.
   const askerRows = await dbi
     .insert(askers)
@@ -139,7 +139,7 @@ export async function createQuestionAction(
     return { ok: false, errors: parsed.errors };
   }
 
-  // Asker gate (§15.3). Runs AFTER form validation (cheap, local) so a malformed
+  // Asker gate (§14.2). Runs AFTER form validation (cheap, local) so a malformed
   // form never burns a broker round-trip. The broker re-verifies the credential
   // and reports the asker's identity + whether they've earned the right to ask.
   // Two credential types, both re-checked server-side here (the browser cannot

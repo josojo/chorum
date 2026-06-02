@@ -23,9 +23,9 @@ export interface AskerAnswerCounts {
 }
 
 export interface AskerGatingThresholds {
-  // Minimum total answers required to unlock asking (default 50, §15.3).
+  // Minimum total answers required to unlock asking (default 50, §14.2).
   requiredTotal: number;
-  // Minimum signal-bearing answers required (default 10, §15.3). This is the
+  // Minimum signal-bearing answers required (default 10, §14.2). This is the
   // anti-farming clause: it stops an identity from grinding cheap no-signal
   // envelopes just to buy ask-rights (§15.4).
   requiredSignal: number;
@@ -57,7 +57,7 @@ export interface AskerEligibility {
 // Decide whether an identity may open a new question.
 //
 // Admins (and designated seed accounts) bypass the threshold entirely — the
-// bootstrap valve of §15.3: the network needs questions in circulation before
+// bootstrap valve of §14.2: the network needs questions in circulation before
 // there is a body of answerers to earn against. Otherwise both thresholds must
 // be met. The total floor is reported first when both fail, since it is the
 // larger requirement and the more informative nudge.

@@ -338,7 +338,7 @@ describe("createQuestion", () => {
     expect(askerInsert.uniqueIdentifier).toBeNull();
   });
 
-  it("stamps the verified unique_identifier on the asker row (§15.3)", async () => {
+  it("stamps the verified unique_identifier on the asker row (§14.2)", async () => {
     const { fake, calls } = buildFakeDb({});
     await createQuestion(input, fake, "self:verified-asker");
     const askerInsert = calls.find((c) => c.kind === "insert-asker")!

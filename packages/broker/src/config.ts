@@ -69,7 +69,7 @@ export interface Settings {
   // submitted at least `askerUnlockTotalAnswers` answers, of which at least
   // `askerUnlockSignalAnswers` are opinion-bearing (signal). `askerAdmin
   // Identifiers` is a comma/space-separated allowlist of unique_identifiers that
-  // bypass the threshold (the bootstrap valve, §15.3).
+  // bypass the threshold (the bootstrap valve, §14.2).
   askerUnlockTotalAnswers: number;
   askerUnlockSignalAnswers: number;
   askerAdminIdentifiers: string;
