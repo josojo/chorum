@@ -4,7 +4,7 @@
 -- country), envelopes with varied disclosed predicates, and matching
 -- aggregates so the UI looks alive on first boot. Questions are phrased so a
 -- verified agent answers "yes" or "no"; aggregates therefore record a yes/no
--- tally per predicate bucket (see ARCHITECTURE.md §3), e.g.
+-- tally per predicate bucket (see ARCHITECTURE_V0.md §3), e.g.
 --   {"region:EU": {"yes": 30, "no": 18}, "age_band:25-34": {"yes": 36, "no": 25}}
 -- Idempotent: ON CONFLICT DO NOTHING / DO UPDATE throughout.
 --

@@ -1,4 +1,4 @@
-// Registration-time Self proof verification (verify-once — ARCHITECTURE.md §5).
+// Registration-time Self proof verification (verify-once — ARCHITECTURE_V0.md §5).
 //
 // Runs at POST /v1/register only. For each proof in the EnrollmentBundle:
 //   1. The self-bridge runs the real SNARK + the one-time on-chain Celo

@@ -1,5 +1,5 @@
-// Asker auth + gating — the v0 answer-credit economy surface (ARCHITECTURE.md
-// §15.3). Two ways to prove a registered identity, both ending in the SAME gate
+// Asker auth + gating — the v0 answer-credit economy surface (ARCHITECTURE_V0.md
+// §14.2). Two ways to prove a registered identity, both ending in the SAME gate
 // (does this identity clear the unlock threshold?):
 //
 //   1. POST /v1/askers/eligibility — replay a broker-signed DelegationToken (the

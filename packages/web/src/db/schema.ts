@@ -27,7 +27,7 @@ export const askers = pgTable("askers", {
   id: uuid("id").primaryKey().defaultRandom(),
   displayName: text("display_name").notNull(),
   // The verified Self nullifier of the asker, when they authenticated with a
-  // DelegationToken (asker auth, ARCHITECTURE.md §15.3). NULL for legacy /
+  // DelegationToken (asker auth, ARCHITECTURE_V0.md §14.2). NULL for legacy /
   // unauthenticated display-only rows. The broker verifies the credential and
   // returns this identifier; the web app never derives it from user input.
   uniqueIdentifier: text("unique_identifier"),

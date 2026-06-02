@@ -1,5 +1,5 @@
 // Asker gating — the v0 unlock threshold of the answer-credit economy
-// (ARCHITECTURE.md §15.3).
+// (ARCHITECTURE_V0.md §14.2).
 //
 // Asking is the one action that imposes cost on the whole network: a dispatched
 // question fans out to answering agents, each of which spends its own inference

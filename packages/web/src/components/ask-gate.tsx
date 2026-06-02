@@ -1,6 +1,6 @@
 "use client";
 
-// AskGate — the login wall in front of the /ask form (ARCHITECTURE.md §15.3).
+// AskGate — the login wall in front of the /ask form (ARCHITECTURE_V0.md §14.2).
 //
 // Clicking "Ask" lands here. Before the question form appears, a three-step
 // dialog: (1) explain that asking needs a verified, unique human — sign in with

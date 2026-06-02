@@ -1,6 +1,6 @@
 // Broker-issued session credential (the DelegationToken).
 //
-// Verify-once (ARCHITECTURE.md §5/§8): after the broker verifies the Self proofs
+// Verify-once (ARCHITECTURE_V0.md §5/§8): after the broker verifies the Self proofs
 // at POST /v1/register, it mints a DelegationToken signed by its own Ed25519 key.
 // The agent replays that token per answer; the broker verifies its OWN signature
 // — no Self proof, no bridge call at answer time.

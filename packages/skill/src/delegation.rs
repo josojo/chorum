@@ -1,4 +1,4 @@
-//! Delegation token storage + usability checks (ARCHITECTURE.md §7.5).
+//! Delegation token storage + usability checks (ARCHITECTURE_V0.md §7.5).
 //!
 //! Loads the cached `DelegationToken` from disk. v0 stores it as plaintext JSON
 //! with 0600 perms (same at-rest tradeoff as the agent key). If the token is

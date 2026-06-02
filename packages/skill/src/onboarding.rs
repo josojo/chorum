@@ -1,4 +1,4 @@
-//! Onboarding (ARCHITECTURE.md §8) — verify-once with Self.
+//! Onboarding (ARCHITECTURE_V0.md §8) — verify-once with Self.
 //!
 //! The one moment the phone produces cryptographic material for the agent:
 //! generate the agent key, ask the self-bridge to create one Self request per

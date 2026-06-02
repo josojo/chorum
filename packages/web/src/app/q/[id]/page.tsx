@@ -5,7 +5,7 @@
 //   - its aggregates row (total + by_predicate)
 // Raw envelopes remain broker-private; the public page shows aggregates only.
 //
-// Per ARCHITECTURE.md §4, we use Next.js `revalidate` (10s) instead of
+// Per ARCHITECTURE_V0.md §4, we use Next.js `revalidate` (10s) instead of
 // websockets / SSE — that's a v0.2 upgrade documented in §11.
 
 import type { Metadata } from "next";

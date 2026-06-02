@@ -6,7 +6,7 @@
 //!
 //! STUB (carried over from the Python v0): the 32-byte seed is written to disk
 //! with 0600 permissions but NOT encrypted. Anyone with read access to the
-//! user's home directory can currently impersonate the agent (ARCHITECTURE.md
+//! user's home directory can currently impersonate the agent (ARCHITECTURE_V0.md
 //! §13).
 
 use std::fs;

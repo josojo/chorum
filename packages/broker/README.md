@@ -1,7 +1,7 @@
 # hearme-broker
 
 The dispatcher + envelope verifier for Hearme v0. Specified by
-[ARCHITECTURE.md §5](../../ARCHITECTURE.md). One TypeScript service
+[ARCHITECTURE_V0.md §5](../../ARCHITECTURE_V0.md). One TypeScript service
 ([Fastify](https://fastify.dev/) + [Drizzle](https://orm.drizzle.team/) on
 [postgres-js](https://github.com/porsager/postgres) + Ed25519 via
 [tweetnacl](https://github.com/dchest/tweetnacl-js)), two responsibilities:
@@ -65,7 +65,7 @@ All settings are read from environment variables prefixed `HEARME_BROKER_`
 
 ## Registration pipeline (`POST /v1/register`)
 
-The only path that touches a Self proof — verify-once (ARCHITECTURE.md §5/§8):
+The only path that touches a Self proof — verify-once (ARCHITECTURE_V0.md §5/§8):
 
 1. Parse the `EnrollmentBundle` (`self_proofs[]`, `agent_key`) with zod (`.strict()`).
 2. For each proof: real SNARK verify via the self-bridge (`verify/selfIdentity.ts`

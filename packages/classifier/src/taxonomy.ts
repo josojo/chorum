@@ -6,7 +6,7 @@
 //     volume mount. A flat TS constant is simpler and is checked against the
 //     proto file by tests/taxonomy.test.ts so they cannot drift.
 //   - The proto file is the human-facing source of truth (referenced from
-//     ARCHITECTURE.md and the broker/skill docs).
+//     ARCHITECTURE_V0.md and the broker/skill docs).
 //
 // Cross-cuts:
 //   - SAFE_TOPICS must be a subset (by word-token match) of

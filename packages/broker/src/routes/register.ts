@@ -1,4 +1,4 @@
-// POST /v1/register — verify-once enrollment (ARCHITECTURE.md §5/§8).
+// POST /v1/register — verify-once enrollment (ARCHITECTURE_V0.md §5/§8).
 //
 //   1. Parse the EnrollmentBundle (zod, strict).
 //   2. Verify every Self proof via the self-bridge + derive bucketed predicates.

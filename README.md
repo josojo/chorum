@@ -1,6 +1,6 @@
 # hearme
 
-v0 implementation of the system described in [ARCHITECTURE.md](./ARCHITECTURE.md).
+v0 implementation of the system described in [ARCHITECTURE_V0.md](./ARCHITECTURE_V0.md).
 
 **Identity:** proof-of-personhood is built on **Self** ([self.xyz](https://self.xyz)) — see [IDENTITY.md](./IDENTITY.md) for the why.
 
@@ -18,15 +18,17 @@ the `self-bridge` sidecar.
 - [x] `packages/skill` — answering skill for Hermes **and** OpenClaw (shared core: cron answering, policy gate, envelope signing, onboarding)
 - [x] `packages/self-bridge` — Node sidecar running `@selfxyz/core` (Self proof verification + QR onboarding)
 
-Intentionally deferred (see [ARCHITECTURE.md §11](./ARCHITECTURE.md)): payments
-(v0.3), the answer-integrity mechanism (§14), live revocation, encryption-at-rest,
+Intentionally deferred (see [ARCHITECTURE_V0.md §11](./ARCHITECTURE_V0.md)): payments
+(v0.3), the answer-integrity mechanism ([ARCHITECTURE_V2.md](./ARCHITECTURE_V2.md)), live revocation, encryption-at-rest,
 multi-channel UI, and asker auth.
 
 ## Repo layout
 
 ```
 hearme/
-├── ARCHITECTURE.md
+├── ARCHITECTURE_V0.md           # v0 (built): identity, answering, ask-gating
+├── ARCHITECTURE_V1.md           # v1: non-custodial Merkle-tree micropayments
+├── ARCHITECTURE_V2.md           # v2: trust tiers, integrity audits, bribery defenses
 ├── docker-compose.yml           # shared postgres for local dev
 ├── docker-compose.staging.yml   # public staging hardening overlay
 ├── db/
@@ -54,7 +56,7 @@ hearme/
 
 ## Shared database
 
-One Postgres instance, two writer roles (ARCHITECTURE.md §2, §4):
+One Postgres instance, two writer roles (ARCHITECTURE_V0.md §2, §4):
 
 | role            | writes                                | reads     |
 |-----------------|---------------------------------------|-----------|

@@ -1,4 +1,4 @@
-// Asker auth — the web side of the answer-credit gate (ARCHITECTURE.md §15.3).
+// Asker auth — the web side of the answer-credit gate (ARCHITECTURE_V0.md §14.2).
 //
 // Only the broker can read envelopes + registrations (db/init/02-roles.sh), so
 // the asker's identity and eligibility are decided there. This module forwards

@@ -1,6 +1,6 @@
 // Tiny horizontal bar list rendering aggregates.by_predicate.
 //
-// Schema (ARCHITECTURE.md §3): `by_predicate JSONB`, one tally per
+// Schema (ARCHITECTURE_V0.md §3): `by_predicate JSONB`, one tally per
 // (predicate, value) pair. Each tally is a per-option count map; yes/no is
 // the 2-option case, e.g.
 //   { "region:EU": {"yes": 30, "no": 12}, "age_band:25-34": {"yes": 20, "no": 10} }

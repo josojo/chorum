@@ -3,7 +3,7 @@
 // IMPORTANT: this connection should be configured to use the `hearme_web`
 // Postgres role in production — that role can INSERT only `questions` and
 // `askers`, and can read public aggregate data but not raw envelopes (see
-// db/init/02-roles.sh and ARCHITECTURE.md §4). Envelope/aggregate writes
+// db/init/02-roles.sh and ARCHITECTURE_V0.md §4). Envelope/aggregate writes
 // belong to the broker.
 
 import { drizzle } from "drizzle-orm/postgres-js";

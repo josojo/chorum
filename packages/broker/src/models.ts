@@ -102,7 +102,7 @@ export interface PlatformStats {
 }
 
 // POST /v1/askers/eligibility body. The asker proves a registered identity by
-// presenting their broker-signed DelegationToken (ARCHITECTURE.md §15.3 asker
+// presenting their broker-signed DelegationToken (ARCHITECTURE_V0.md §14.2 asker
 // auth). Exactly one field — same `.strict()` boundary discipline as envelopes.
 export const askerEligibilityRequestSchema = z
   .object({
@@ -168,7 +168,7 @@ export const askerSessionVerifyRequestSchema = z
 export type AskerSessionVerifyRequest = z.infer<typeof askerSessionVerifyRequestSchema>;
 
 // POST /v1/askers/eligibility response — authenticated asker gating decision
-// (ARCHITECTURE.md §15.3). snake_case to match the other broker wire shapes.
+// (ARCHITECTURE_V0.md §14.2). snake_case to match the other broker wire shapes.
 //
 // `authorized` is the AUTH result (did the token verify against a live, non-
 // revoked registration). `can_ask` is the GATE result (does the identity clear

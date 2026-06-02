@@ -30,7 +30,7 @@ import {
   type CreateQuestionInput,
 } from "./validate-question";
 
-// Asker auth gate (ARCHITECTURE.md §15.3): require a verified participant
+// Asker auth gate (ARCHITECTURE_V0.md §14.2): require a verified participant
 // credential to open a question. On by default; set ASKER_AUTH_REQUIRED=false
 // for local demos with no broker / onboarding, in which case asks are anonymous
 // (unique_identifier stays NULL) exactly as in pre-gate v0.
@@ -70,7 +70,7 @@ export async function createQuestion(
       // (packages/classifier) assigns it from the question text after insert.
       // Until it has, list_open_questions on the broker filters this row out,
       // so the asker can't bypass the skill's sensitive-topic gate. See
-      // ARCHITECTURE.md and packages/proto/topics.json for the taxonomy.
+      // ARCHITECTURE_V0.md and packages/proto/topics.json for the taxonomy.
       options: input.options,
       closesAt: input.closesAt,
       scope: input.scope,

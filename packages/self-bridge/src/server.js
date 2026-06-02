@@ -2,7 +2,7 @@
 // and verified. The Python broker and skill talk to it over HTTP because
 // @selfxyz/core (verify) and @selfxyz/qrcode (request creation) are Node-only.
 //
-// Verify-once model (ARCHITECTURE.md §5/§8): the bridge verifies proofs at
+// Verify-once model (ARCHITECTURE_V0.md §5/§8): the bridge verifies proofs at
 // REGISTRATION time only. Per answer the broker checks its own credential — the
 // bridge is not in the path.
 //
@@ -202,7 +202,7 @@ async function verifyOne({ attestationId, proof, publicSignals, userContextData 
   // `root` is publicSignals[merkleRootIndex]. If the proof's Merkle root is not
   // live on-chain it throws (InvalidRoot / "Registry contract not found"). So a
   // verify() that returns has already confirmed the root against Self's real
-  // registry — that IS the Sybil-hardening anchor (ARCHITECTURE.md §5); the
+  // registry — that IS the Sybil-hardening anchor (ARCHITECTURE_V0.md §5); the
   // bridge needs no extra eth_call. (Requires outbound access to the Celo RPC.)
   const result = _verifyImpl
     ? await _verifyImpl(attestationId, proof, publicSignals, userContextData)

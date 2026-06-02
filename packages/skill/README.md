@@ -8,7 +8,7 @@ This package is a **single self-contained Rust binary** (`hearme-skill`). There
 is no Python or Node toolchain to install and no second codebase: the binary is
 the implementation, and each host gets a thin adapter that shells out to it.
 
-See [ARCHITECTURE.md §6-8](../../ARCHITECTURE.md) for the canonical spec. This
+See [ARCHITECTURE_V0.md §6-8](../../ARCHITECTURE_V0.md) for the canonical spec. This
 README covers install, the CLI, how it wires into each host, configuration, and
 building from source.
 

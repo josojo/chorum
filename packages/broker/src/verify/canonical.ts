@@ -1,6 +1,6 @@
 // Deterministic canonical JSON for hashing.
 //
-// ARCHITECTURE.md §8.5:  delegation_hash = SHA-256(canonical_json(delegation_token))
+// ARCHITECTURE_V0.md §8.5:  delegation_hash = SHA-256(canonical_json(delegation_token))
 //
 // Properties required (match the Python verify/canonical.py and, crucially, the
 // hearme-skill which independently computes delegation_hash and signs over it):

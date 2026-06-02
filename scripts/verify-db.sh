@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verifies the shared postgres came up correctly:
-#   - all five tables present (ARCHITECTURE.md §3)
+#   - all five tables present (ARCHITECTURE_V0.md §3)
 #   - both writer roles created (§4)
 #   - grant boundaries enforced (web cannot read/write envelopes, broker cannot write questions)
 #   - composite PK on envelopes rejects duplicate (question_id, unique_identifier) — §3 Sybil claim
@@ -20,7 +20,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "PASS: $*"; }
 
 # 1. Schema applied. (Includes the Self revocation-listener tables
-#    self_chain_cursors + self_nullifier_invalidations — ARCHITECTURE.md §5.)
+#    self_chain_cursors + self_nullifier_invalidations — ARCHITECTURE_V0.md §5.)
 expected="aggregates askers envelopes questions registrations revocations self_chain_cursors self_nullifier_invalidations"
 actual=$(admin "SELECT string_agg(tablename, ' ' ORDER BY tablename) FROM pg_tables WHERE schemaname='public';")
 [ "$actual" = "$expected" ] || fail "tables mismatch: got '$actual', want '$expected'"

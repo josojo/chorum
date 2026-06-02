@@ -1,4 +1,4 @@
-//! Wire-format models (ARCHITECTURE.md §8.5, packages/proto/*).
+//! Wire-format models (ARCHITECTURE_V0.md §8.5, packages/proto/*).
 //!
 //! The delegation token is kept as a raw [`serde_json::Value`] rather than a
 //! typed struct: its canonical-JSON bytes (and therefore `delegation_hash`) must

@@ -1,6 +1,6 @@
 // Pure predicate derivation: Self disclosures -> Hearme bucketed predicates.
 //
-// The broker is authoritative for disclosed_predicates (ARCHITECTURE.md §5): it
+// The broker is authoritative for disclosed_predicates (ARCHITECTURE_V0.md §5): it
 // derives them from the verified Self outputs, never trusting a client copy.
 //   - region   <- nationality (ISO-3166 alpha-2) mapped to a continent code
 //                  (AF/AN/AS/EU/NA/OC/SA). Europe collapses to "EU".
@@ -92,7 +92,7 @@ const ALPHA3_TO_ALPHA2: Record<string, string> = {
   XKX: "XK",
 };
 
-// The standard age ladder (ARCHITECTURE.md §8.3). Keep in sync with the
+// The standard age ladder (ARCHITECTURE_V0.md §8.3). Keep in sync with the
 // self-bridge SELF_AGE_THRESHOLDS default.
 export const AGE_LADDER: readonly number[] = [18, 25, 35, 50, 65];
 

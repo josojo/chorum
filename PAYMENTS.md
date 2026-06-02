@@ -1,12 +1,12 @@
 # Hearme — Payments concept (v0.3, Base Sepolia)
 
-> **Status: concept / design.** No money flows in v0 (ARCHITECTURE.md §11).
+> **Status: concept / design.** No money flows in v0 (ARCHITECTURE_V0.md §11).
 > This document specifies the first real payment path: an asker funds a
 > question **on-chain**, the broker reserves the funds for the agents who
 > answered, and each agent withdraws its own share with its own transaction.
 > Target chain is the **Base testnet (Base Sepolia, chainId 84532)**. It builds
-> directly on the already-designed payout model in **ARCHITECTURE.md §1.15 and
-> §14** and the `payout_entitlements` ledger that already exists "to record the
+> directly on the already-designed payout model in **ARCHITECTURE_V1.md §3 and
+> ARCHITECTURE_V2.md §2** and the `payout_entitlements` ledger that already exists "to record the
 > rule before money flows."
 
 ---
@@ -36,7 +36,7 @@ disappears forever (§12.1). Funds can never be stuck.
 
 ## 1. Design principles (how this fits the existing ones)
 
-These extend ARCHITECTURE.md §1; where they touch an existing principle it is
+These extend ARCHITECTURE_V0.md §1; where they touch an existing principle it is
 cited.
 
 1. **The broker coordinates; it never *directly* custodies.** The escrow contract
@@ -56,8 +56,8 @@ cited.
    *leak onto a public ledger*. Reservation therefore uses a **per-epoch Merkle
    claim**: the chain shows only "address X claimed amount Y," never which
    question X answered, never X's demographics, never the Self nullifier.
-4. **Keep the per-answer reward minimal until §14.8 lands.** ARCHITECTURE.md
-   §14.8 / §11 are explicit: until tiered vesting + external-verification trust
+4. **Keep the per-answer reward minimal until ARCHITECTURE_V2.md §8 lands.** ARCHITECTURE_V2.md
+   §8 / ARCHITECTURE_V0.md §11 are explicit: until tiered vesting + external-verification trust
    unlocks exist, the defense against fake-persona farming is to **keep the
    reward at or near inference-cost with little or no bonus `β`.** This concept
    does not change that; it gives the small reward a place to actually flow.
@@ -129,7 +129,7 @@ agent needs a **payout address** in addition to its `agent_key`.
   only the agent can withdraw its reserved funds. The broker never sees the
   private key.
 - **Bound at registration, Sybil-safe.** `POST /v1/register` already atomically
-  binds `nullifier ↔ agent_key` in `registrations` (ARCHITECTURE.md §5/§8). The
+  binds `nullifier ↔ agent_key` in `registrations` (ARCHITECTURE_V0.md §5/§8). The
   `EnrollmentBundle` (proto `enrollment.json`) gains a `payout_address` field;
   the broker stores it on the `registrations` row. Rebind rules mirror
   `agent_key`: re-registering the **same** address is idempotent; binding a
@@ -143,7 +143,7 @@ agent needs a **payout address** in addition to its `agent_key`.
 - **Rotation (lost key)** is a sensitive operation and is **out of scope for
   this concept** — listed in §16. v0.3 treats the payout address as fixed at
   registration; recovery is re-enrollment from a fresh install (mirrors
-  ARCHITECTURE.md §11 "lost-phone recovery").
+  ARCHITECTURE_V0.md §11 "lost-phone recovery").
 
 `payout_address` is **not** added to the `DelegationToken` — the per-answer
 path (envelopes) does not need it, and keeping it out of the token keeps the
@@ -297,7 +297,7 @@ beyond the contract's token balance simply reverts on `transfer`.
 
 ## 5. Mapping the §14 entitlement state machine onto reservations
 
-The off-chain `payout_entitlements` ledger (ARCHITECTURE.md §3, §14.2) stays the
+The off-chain `payout_entitlements` ledger (ARCHITECTURE_V1.md §4, ARCHITECTURE_V2.md §2) stays the
 **source of truth for who earned what**. The chain is a downstream settlement of
 *released* entitlements only. No new economic decisions are made on-chain.
 
@@ -337,7 +337,7 @@ that flows — exactly the §14.2 payoff table.
 
 ## 6. End-to-end lifecycle with funding
 
-This extends ARCHITECTURE.md §10. New steps are **bold**.
+This extends ARCHITECTURE_V0.md §10. New steps are **bold**.
 
 ```
 asker browser → /ask form → server action → INSERT questions (funding_state='unfunded')
@@ -385,7 +385,7 @@ Two gates are new and important:
   never spend inference on a question nobody has paid for. This is the on-chain
   analog of VISION's "your question is funded and live."
 - **The answer hot path is untouched.** Envelope submission, verification, and
-  the boundary-leakage guarantees (ARCHITECTURE.md §12) are exactly as today. Payments are a
+  the boundary-leakage guarantees (ARCHITECTURE_V0.md §12) are exactly as today. Payments are a
   separate, asynchronous settlement loop. There is **still no chain access at
   answer time** (§1.5) — the chain is touched only by the asker (funding), the
   broker's background watcher/settler, and the agent (claim).
@@ -394,7 +394,7 @@ Two gates are new and important:
 
 ## 7. Schema additions
 
-Owned by `hearme-web`'s Drizzle migration (the schema is web's, ARCHITECTURE.md
+Owned by `hearme-web`'s Drizzle migration (the schema is web's, ARCHITECTURE_V0.md
 §3), even where only the broker writes the column, to keep one canonical source.
 
 **`questions` — funding state (orthogonal to `status`):**
@@ -1143,7 +1143,7 @@ the remaining `Rg` residual after that.
 
 ---
 
-## 13. Testing posture (extends ARCHITECTURE.md §12)
+## 13. Testing posture (extends ARCHITECTURE_V0.md §12)
 
 - **Contract (Foundry/Hardhat):** fund→settle→claim→refund happy path; double
   claim reverts; over-settle reverts; non-broker `settle`/`closeQuestion`
@@ -1179,7 +1179,7 @@ the remaining `Rg` residual after that.
   dark" run**: kill the broker after a settle and assert the agent still claims
   and the asker still refunds the rest after the grace. Assert balances and that
   **no `Settled`/leaf reveals which agent answered which question** (privacy
-  assertion, mirroring ARCHITECTURE.md §12's boundary-leakage assertion).
+  assertion, mirroring ARCHITECTURE_V0.md §12's boundary-leakage assertion).
 
 ---
 
@@ -1231,8 +1231,8 @@ and per-user-contract burden — not merely to bound theft risk.
    **§12.5 permissionless pooled claims** for answerer-privacy (required so users
    can still hide which questions they answered). The operator now has *no*
    discretion over compensation (§12.3). Flip token to real USDC, chain to Base
-   mainnet, operator key to KMS/HSM. Only with §12.6 + L3 + §14.8 (tiered
-   vesting) in place can value and `β` rise safely (ARCHITECTURE.md §14.8 is
+   mainnet, operator key to KMS/HSM. Only with §12.6 + L3 + ARCHITECTURE_V2.md §8 (tiered
+   vesting) in place can value and `β` rise safely (ARCHITECTURE_V2.md §8 is
    explicit that raising `β` earlier re-opens the farming hole).
 
 ---
@@ -1246,7 +1246,7 @@ and per-user-contract burden — not merely to bound theft risk.
   is required, and whether any L0/L1 real-value window is permissible at all.
   Needs counsel; jurisdiction-specific.
 - **Operator-key custody & rotation** — same unresolved question as the broker
-  signing key (ARCHITECTURE.md §13); KMS vs HSM, rotation with an overlap window.
+  signing key (ARCHITECTURE_V0.md §13); KMS vs HSM, rotation with an overlap window.
 - **Payout-address rotation / lost key** — out of scope here; needs a signed
   rotation (old key authorizes new) without opening a hijack vector.
 - **`SETTLEMENT_GRACE` sizing** — must dominate the §14 audit/override window so

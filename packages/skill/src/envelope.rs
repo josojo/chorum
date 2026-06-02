@@ -1,4 +1,4 @@
-//! Envelope + revocation construction (ARCHITECTURE.md §7.5/§8.5).
+//! Envelope + revocation construction (ARCHITECTURE_V0.md §7.5/§8.5).
 //!
 //! Builds the five-field envelope POST body and signs it with the agent key.
 //! The signature covers `H(question_id | answer | nonce | delegation_hash_hex)`
@@ -40,7 +40,7 @@ pub fn build_envelope(
     })
 }
 
-/// Construct + sign a NO-SIGNAL envelope (ARCHITECTURE.md §1.14).
+/// Construct + sign a NO-SIGNAL envelope (ARCHITECTURE_V0.md §1.14).
 ///
 /// Emitted when the agent has no formed view for the user on this question: a
 /// first-class "no opinion" data point, not silence. The answer is empty and

@@ -3,7 +3,7 @@ name = "hearme-skill"
 version = "0.0.1"
 edition = "2021"
 rust-version = "1.74"
-description = "Hearme standalone skill — local agent that answers public questions on the user's behalf, wired into Hermes and OpenClaw (ARCHITECTURE.md §6-8)."
+description = "Hearme standalone skill — local agent that answers public questions on the user's behalf, wired into Hermes and OpenClaw (ARCHITECTURE_V0.md §6-8)."
 license = "Proprietary"
 publish = false
 

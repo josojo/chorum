@@ -1,4 +1,4 @@
-//! Broker channel (ARCHITECTURE.md §7.1) — dumb pipes over HTTP.
+//! Broker channel (ARCHITECTURE_V0.md §7.1) — dumb pipes over HTTP.
 //!
 //! Synchronous (`ureq` + rustls). The agentic CLI fetches *every* currently-open
 //! question each cycle (no cursor); idempotence comes from the ledger, not from
