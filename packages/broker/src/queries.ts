@@ -403,6 +403,119 @@ export async function askerAnswerCounts(
   };
 }
 
+// ----- asker admins (DB-backed bootstrap valve, §15.3) -------------------
+
+// Is this identity a DB-listed admin? Admins bypass the unlock threshold
+// (evaluateAskerEligibility). Read on every eligibility check, so it's a single
+// indexed PK lookup. The broker also unions this with the static env allowlist
+// (HEARME_BROKER_ASKER_ADMIN_IDENTIFIERS) — see routes/askers.ts.
+export async function isAskerAdmin(
+  db: Executor,
+  uniqueIdentifier: string,
+): Promise<boolean> {
+  const rows = (await db.execute(sql`
+    SELECT 1 AS one
+    FROM asker_admins
+    WHERE unique_identifier = ${uniqueIdentifier}
+  `)) as unknown as Rows<unknown>;
+  return rows.length > 0;
+}
+
+export interface AskerAdminRow {
+  uniqueIdentifier: string;
+  label: string | null;
+  createdAt: Date;
+  // Most recent display name this identity has asked under, if any. NULL for an
+  // admin that has never opened a question (e.g. a freshly seeded one).
+  displayName: string | null;
+}
+
+// List every DB admin, newest first, joined to the latest display name the
+// identity has asked under (askers is web-written; the broker has SELECT on it,
+// db/init/02-roles.sh). For the admin CLI's `list`.
+export async function listAskerAdmins(db: Executor): Promise<AskerAdminRow[]> {
+  const rows = (await db.execute(sql`
+    SELECT a.unique_identifier, a.label, a.created_at,
+           (SELECT k.display_name
+              FROM askers k
+             WHERE k.unique_identifier = a.unique_identifier
+             ORDER BY k.created_at DESC
+             LIMIT 1) AS display_name
+    FROM asker_admins a
+    ORDER BY a.created_at DESC
+  `)) as unknown as Rows<{
+    unique_identifier: string;
+    label: string | null;
+    created_at: string | Date;
+    display_name: string | null;
+  }>;
+  return rows.map((r) => ({
+    uniqueIdentifier: r.unique_identifier,
+    label: r.label,
+    createdAt: new Date(r.created_at),
+    displayName: r.display_name,
+  }));
+}
+
+// Promote an identity to admin (idempotent). Re-granting refreshes the label.
+export async function grantAskerAdmin(
+  db: Executor,
+  args: { uniqueIdentifier: string; label: string | null },
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO asker_admins (unique_identifier, label)
+    VALUES (${args.uniqueIdentifier}, ${args.label})
+    ON CONFLICT (unique_identifier) DO UPDATE
+    SET label = EXCLUDED.label
+  `);
+}
+
+// Demote an identity. Returns false if it wasn't an admin to begin with.
+export async function revokeAskerAdmin(
+  db: Executor,
+  uniqueIdentifier: string,
+): Promise<boolean> {
+  const rows = (await db.execute(sql`
+    DELETE FROM asker_admins
+    WHERE unique_identifier = ${uniqueIdentifier}
+    RETURNING 1 AS deleted
+  `)) as unknown as Rows<unknown>;
+  return rows.length === 1;
+}
+
+export interface AskerIdentityByName {
+  uniqueIdentifier: string;
+  displayName: string;
+  createdAt: Date;
+}
+
+// Find verified identities that have asked under a given display name (case-
+// insensitive, exact). Backs the CLI's `grant --name` lookup. Display names are
+// NOT unique and only exist once an identity has asked, so this can return zero
+// or many rows — the caller resolves the ambiguity.
+export async function findAskerIdentitiesByName(
+  db: Executor,
+  displayName: string,
+): Promise<AskerIdentityByName[]> {
+  const rows = (await db.execute(sql`
+    SELECT DISTINCT ON (unique_identifier)
+           unique_identifier, display_name, created_at
+    FROM askers
+    WHERE unique_identifier IS NOT NULL
+      AND display_name ILIKE ${displayName}
+    ORDER BY unique_identifier, created_at DESC
+  `)) as unknown as Rows<{
+    unique_identifier: string;
+    display_name: string;
+    created_at: string | Date;
+  }>;
+  return rows.map((r) => ({
+    uniqueIdentifier: r.unique_identifier,
+    displayName: r.display_name,
+    createdAt: new Date(r.created_at),
+  }));
+}
+
 // ----- aggregates --------------------------------------------------------
 
 // Increment the aggregate row for one newly accepted envelope. The advisory

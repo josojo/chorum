@@ -13,7 +13,8 @@
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "admin": "tsx src/admin-cli.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.36.0",
