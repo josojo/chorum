@@ -75,7 +75,8 @@ SSM Parameter Store** under a per-env path:
 The leaf of each path is the **exact** env var name the compose overlays
 reference (`docker-compose.staging.yml` / `docker-compose.prod.yml`), so the
 on-box `.env` is just a projection of `/hearme/<env>/*`. The full key list per
-env is in `staging.env.example` / `prod.env.example`.
+env is in `staging.env.example` / `prod.env.example`. For the exact workflow to
+add a new parameter and wire it into compose, see `docs/ADDING_SSM_SECRET.md`.
 
 **Seed / rotate** — fill a local copy of the example file, push it, delete it:
 
