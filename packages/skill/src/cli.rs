@@ -466,6 +466,7 @@ fn post_onboard_setup(host: HostArg, broker_url: &str, bridge_url: &str, explici
         match hermes::install_plugin_dir(None, None) {
             Ok(target) => {
                 println!("Installed Hermes plugin drop-in at {}.", target.display());
+                enable_hermes_plugin();
                 let (ok, msg) = hermes::restart_gateway();
                 if ok {
                     println!("{msg}; the hearme tools are now loaded (the cron job self-registers).");
@@ -497,6 +498,22 @@ fn post_onboard_setup(host: HostArg, broker_url: &str, bridge_url: &str, explici
             }
             Err(e) => eprintln!("Note: could not write the OpenClaw skill ({e}). Run `hearme-skill install-openclaw` to retry."),
         }
+    }
+}
+
+/// Register `hearme` in the active profile's plugin allow-list so the gateway
+/// actually loads the drop-in. Standalone plugins are opt-in; without this the
+/// gateway discovers the plugin but skips it, and the cron never self-registers.
+/// Best-effort — a parse failure prints the manual fallback rather than aborting.
+fn enable_hermes_plugin() {
+    let path = hermes::config_path();
+    match hermes::enable_plugin_in_config(&path) {
+        Ok(true) => println!("Enabled the hearme plugin in {}.", path.display()),
+        Ok(false) => {} // already in plugins.enabled — nothing to do
+        Err(e) => eprintln!(
+            "Note: could not enable the hearme plugin in {} ({e}). Standalone plugins are opt-in; enable it by hand, then restart the gateway:\n  hermes plugins enable hearme",
+            path.display()
+        ),
     }
 }
 
@@ -580,6 +597,7 @@ fn cmd_install_plugin(
         }
     };
     println!("Wrote Hermes plugin drop-in to {}", target.display());
+    enable_hermes_plugin();
     persist_urls(broker_url, bridge_url, &hermes::hermes_env_path());
 
     if no_restart {
@@ -640,6 +658,7 @@ fn cmd_install(
         match hermes::install_plugin_dir(None, None) {
             Ok(target) => {
                 println!("Installed Hermes plugin drop-in at {}.", target.display());
+                enable_hermes_plugin();
                 if !no_restart {
                     let (ok, msg) = hermes::restart_gateway();
                     if ok {

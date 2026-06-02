@@ -71,6 +71,12 @@ pub fn hermes_env_path() -> PathBuf {
     hermes_home().join(".env")
 }
 
+/// The active profile's Hermes `config.yaml` (honors `$HERMES_HOME`, same as
+/// Hermes' own `get_config_path()`). This is where the plugin allow-list lives.
+pub fn config_path() -> PathBuf {
+    hermes_home().join("config.yaml")
+}
+
 /// Build the self-contained Hermes plugin shim that shells out to `binary_path`.
 /// The source imports only the stdlib (the `cron` import is lazy), so it loads
 /// inside a gateway with no `hearme_skill` package.
@@ -232,6 +238,86 @@ pub fn install_plugin_dir(
         build_subprocess_shim(&resolved_bin),
     )?;
     Ok(target)
+}
+
+/// Add `hearme` to the plugin allow-list in Hermes' `config.yaml`.
+///
+/// Hermes loads `standalone` plugins opt-in: a plugin only loads if its name is
+/// in `plugins.enabled`. Dropping the plugin dir is not enough — on a fresh
+/// (named) profile the gateway discovers the drop-in but skips it, so the
+/// shim's `register()` (and with it the cron self-registration) never runs.
+/// Mirror `hermes plugins enable hearme`: add `hearme` to `plugins.enabled`
+/// (sorted + deduped, matching Hermes' `sorted(set(...))` write) and drop it
+/// from `plugins.disabled`, preserving every other key. The default profile
+/// only escaped this because `migrate_config` grandfathered its already-present
+/// plugin into the list.
+///
+/// Returns `true` if the file was changed. A `config.yaml` that exists but does
+/// not parse as a YAML mapping is left untouched (returns an error) so the
+/// caller can fall back to the manual `hermes plugins enable hearme` hint
+/// rather than clobber a config we don't understand.
+pub fn enable_plugin_in_config(config_path: &Path) -> Result<bool, Error> {
+    use serde_yaml::{Mapping, Value};
+
+    let existing = std::fs::read_to_string(config_path).unwrap_or_default();
+    let mut root: Value = if existing.trim().is_empty() {
+        Value::Mapping(Mapping::new())
+    } else {
+        serde_yaml::from_str(&existing)?
+    };
+
+    let map = root
+        .as_mapping_mut()
+        .ok_or("config.yaml is not a YAML mapping")?;
+    let plugins = map
+        .entry(Value::from("plugins"))
+        .or_insert_with(|| Value::Mapping(Mapping::new()))
+        .as_mapping_mut()
+        .ok_or("config.yaml `plugins` is not a mapping")?;
+
+    let added = list_add_sorted(plugins, "enabled", PLUGIN_DIRNAME);
+    let removed = list_discard(plugins, "disabled", PLUGIN_DIRNAME);
+    if !added && !removed {
+        return Ok(false);
+    }
+
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(config_path, serde_yaml::to_string(&root)?)?;
+    Ok(true)
+}
+
+/// Ensure `key`'s sequence under `m` contains `value`, kept sorted + deduped to
+/// match Hermes' own `sorted(set(...))` write. Returns `true` if it was added.
+/// A non-sequence value under `key` is left alone (we don't clobber it).
+fn list_add_sorted(m: &mut serde_yaml::Mapping, key: &str, value: &str) -> bool {
+    use serde_yaml::Value;
+    let items = match m
+        .entry(Value::from(key))
+        .or_insert_with(|| Value::Sequence(Vec::new()))
+        .as_sequence_mut()
+    {
+        Some(s) => s,
+        None => return false,
+    };
+    if items.iter().any(|v| v.as_str() == Some(value)) {
+        return false;
+    }
+    items.push(Value::from(value));
+    items.sort_by(|a, b| a.as_str().unwrap_or("").cmp(b.as_str().unwrap_or("")));
+    true
+}
+
+/// Remove `value` from `key`'s sequence under `m` if present. Returns `true` if
+/// something was removed.
+fn list_discard(m: &mut serde_yaml::Mapping, key: &str, value: &str) -> bool {
+    let Some(seq) = m.get_mut(key).and_then(|v| v.as_sequence_mut()) else {
+        return false;
+    };
+    let before = seq.len();
+    seq.retain(|v| v.as_str() != Some(value));
+    seq.len() != before
 }
 
 /// Idempotent upsert of `KEY=value` lines in an env file. Preserves comments,
@@ -429,6 +515,64 @@ mod tests {
         );
         // A custom home off the standard layout → unknown service.
         assert_eq!(service_for_home(&PathBuf::from("/opt/agent"), &root), None);
+    }
+
+    fn enabled_set(config_path: &Path) -> Vec<String> {
+        let v: serde_yaml::Value =
+            serde_yaml::from_str(&std::fs::read_to_string(config_path).unwrap()).unwrap();
+        v["plugins"]["enabled"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .map(|s| s.as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn enable_plugin_creates_allow_list_when_config_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("config.yaml");
+        assert!(enable_plugin_in_config(&cfg).unwrap());
+        assert_eq!(enabled_set(&cfg), vec!["hearme"]);
+        // Second call is a no-op (already enabled).
+        assert!(!enable_plugin_in_config(&cfg).unwrap());
+    }
+
+    #[test]
+    fn enable_plugin_preserves_other_keys_and_plugins_sorted() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("config.yaml");
+        std::fs::write(&cfg, "model: claude\nplugins:\n  enabled:\n  - zzz-other\n").unwrap();
+        assert!(enable_plugin_in_config(&cfg).unwrap());
+        // hearme is added, the pre-existing plugin is kept, and the list is sorted.
+        assert_eq!(enabled_set(&cfg), vec!["hearme", "zzz-other"]);
+        // Unrelated top-level keys survive the round-trip.
+        let v: serde_yaml::Value =
+            serde_yaml::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(v["model"].as_str(), Some("claude"));
+    }
+
+    #[test]
+    fn enable_plugin_clears_stale_disabled_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("config.yaml");
+        std::fs::write(&cfg, "plugins:\n  disabled:\n  - hearme\n").unwrap();
+        assert!(enable_plugin_in_config(&cfg).unwrap());
+        assert_eq!(enabled_set(&cfg), vec!["hearme"]);
+        let v: serde_yaml::Value =
+            serde_yaml::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+        // A deny-list entry would override the allow-list, so it must be gone.
+        assert!(v["plugins"]["disabled"].as_sequence().unwrap().is_empty());
+    }
+
+    #[test]
+    fn enable_plugin_refuses_to_clobber_unparseable_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("config.yaml");
+        // A YAML scalar is valid YAML but not a mapping — leave it untouched.
+        std::fs::write(&cfg, "just-a-string\n").unwrap();
+        assert!(enable_plugin_in_config(&cfg).is_err());
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), "just-a-string\n");
     }
 
     #[test]
