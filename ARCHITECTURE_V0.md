@@ -5,7 +5,7 @@
 > - **[v1](ARCHITECTURE_V1.md):** non-custodial on-chain micropayments — pay to ask, get paid to answer, settled via a Merkle payout tree. Tests willingness to pay.
 > - **[v2](ARCHITECTURE_V2.md):** bigger answer incentives made safe — trust tiers, grounding/honeypot audits, vesting, a provenance proxy, and hardened bribery defenses.
 >
-> The original combined design lives in [ARCHITECTURE.md](ARCHITECTURE.md); these three split it by version.
+> These three documents replace the earlier single combined architecture doc, split by version.
 
 ---
 
@@ -451,7 +451,7 @@ Phone publishes a signed revocation to the broker (`POST /v1/revocations` — ta
 
 ```
 hearme/
-├── ARCHITECTURE.md  ARCHITECTURE_V0.md  ARCHITECTURE_V1.md  ARCHITECTURE_V2.md
+├── ARCHITECTURE_V0.md  ARCHITECTURE_V1.md  ARCHITECTURE_V2.md
 ├── docker-compose.yml             # postgres + broker + web + self-bridge for local dev
 ├── packages/
 │   ├── web/                       # § 4 — Next.js
