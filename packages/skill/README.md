@@ -40,6 +40,20 @@ hearme-skill install
 hearme-skill onboard --broker-url <url> --bridge-url <url>
 ```
 
+For the current public deployment, access the services through Caddy/TLS, not
+the raw container ports:
+
+```bash
+hearme-skill onboard \
+  --broker-url https://3-74-46-46.sslip.io \
+  --bridge-url https://3-74-46-46.sslip.io/self \
+  --profile=minimal
+```
+
+Direct `:8000` / `:8787` URLs are only for local development or on-box
+debugging; deployed broker and self-bridge ports are bound to loopback for
+security.
+
 > **Linux-first.** Only Linux x86_64/aarch64 binaries are published (the matrix
 > in `.github/workflows/build-binaries.yml` is easy to extend). The release
 > binaries target musl so they do not require the installing machine to have the
@@ -121,8 +135,8 @@ finance, …) are deliberately absent and still require `auto_answer: true`. The
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `HEARME_SKILL_BROKER_URL` | `http://localhost:8000` | Where to find the broker. |
-| `HEARME_SKILL_SELF_BRIDGE_URL` | `http://localhost:8787` | self-bridge, used only during onboarding. |
+| `HEARME_SKILL_BROKER_URL` | `http://localhost:8000` | Where to find the broker. For the public deployment, use `https://3-74-46-46.sslip.io`. |
+| `HEARME_SKILL_SELF_BRIDGE_URL` | `http://localhost:8787` | self-bridge, used only during onboarding. For the public deployment, use `https://3-74-46-46.sslip.io/self`. |
 | `HEARME_SKILL_ROOT_DIR` | `~/.hermes/hearme/` | Where the agent key, ledger, token, and policy live. |
 | `HEARME_SKILL_MEMORY_BACKEND` | `stub` | `chatgpt-export` to read the imported ChatGPT DB. |
 
