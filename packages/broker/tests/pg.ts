@@ -50,7 +50,7 @@ export async function startPg(): Promise<PgHandle> {
 export async function truncateAll(db: Db): Promise<void> {
   await db.execute(
     sql.raw(
-      "TRUNCATE envelopes, aggregates, revocations, registrations, " +
+      "TRUNCATE envelopes, aggregates, revocations, registrations, asker_admins, " +
         "self_nullifier_invalidations, self_chain_cursors, questions, askers RESTART IDENTITY CASCADE",
     ),
   );

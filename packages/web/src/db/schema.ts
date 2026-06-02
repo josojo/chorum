@@ -167,6 +167,25 @@ export const registrations = pgTable(
   }),
 );
 
+// Asker admins — the DB-backed bootstrap valve of the answer-credit economy
+// (ARCHITECTURE.md §15.3). An identity listed here bypasses the asker unlock
+// threshold entirely (it may open questions with zero earned credit), so the
+// network can be seeded with questions before there's a body of answerers to
+// earn against. Keyed by the Self nullifier (`unique_identifier`) — the same key
+// the gate decides on — so a row can exist before the identity has ever asked or
+// even onboarded an agent. Broker-owned and read live (no restart), the DB
+// complement to the static HEARME_BROKER_ASKER_ADMIN_IDENTIFIERS env allowlist;
+// the broker treats effective-admin as the union of the two. `label` is an
+// operator-set human note (the nullifier is opaque, so it's the only readable
+// handle) — e.g. the display name they ask under, or "founder seed".
+export const askerAdmins = pgTable("asker_admins", {
+  uniqueIdentifier: text("unique_identifier").primaryKey(),
+  label: text("label"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const selfNullifierInvalidations = pgTable("self_nullifier_invalidations", {
   uniqueIdentifier: text("unique_identifier").primaryKey(),
   source: text("source").notNull(),
