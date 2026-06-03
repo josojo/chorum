@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::contracts::{
-    py_str, ANSWER_PROMPT, DEFAULT_SCHEDULE, JOB_NAME, LIST_SCHEMA_PY, SUBMIT_NO_SIGNAL_SCHEMA_PY,
-    SUBMIT_SCHEMA_PY, TOOLSET,
+    answer_toolsets_py, py_str, ANSWER_PROMPT, DEFAULT_SCHEDULE, JOB_NAME, LIST_SCHEMA_PY,
+    SUBMIT_NO_SIGNAL_SCHEMA_PY, SUBMIT_SCHEMA_PY, TOOLSET,
 };
 use crate::Error;
 
@@ -112,6 +112,11 @@ HEARME_BIN = @@HEARME_BIN@@
 # off-standard-layout installs).
 HEARME_ROOT = @@HEARME_ROOT@@
 TOOLSET = @@TOOLSET@@
+# Toolsets granted to the answering cron: hearme's submit tools PLUS the agent's
+# own recall tools (session_search over past conversations, memory for
+# MEMORY.md/USER.md), so it can look the user up before answering instead of
+# running blind.
+ANSWER_TOOLSETS = @@ANSWER_TOOLSETS@@
 JOB_NAME = @@JOB_NAME@@
 DEFAULT_SCHEDULE = @@DEFAULT_SCHEDULE@@
 ANSWER_PROMPT = @@ANSWER_PROMPT@@
@@ -205,7 +210,7 @@ def _ensure_cron():
             prompt=ANSWER_PROMPT,
             schedule=DEFAULT_SCHEDULE,
             name=JOB_NAME,
-            enabled_toolsets=[TOOLSET],
+            enabled_toolsets=list(ANSWER_TOOLSETS),
         )
     except Exception:  # noqa: BLE001
         log.debug("Hearme cron auto-registration skipped", exc_info=True)
@@ -243,6 +248,7 @@ def register(ctx):
         .replace("@@HEARME_BIN@@", &py_str(binary_path))
         .replace("@@HEARME_ROOT@@", &py_str(hearme_root.unwrap_or("")))
         .replace("@@TOOLSET@@", &py_str(TOOLSET))
+        .replace("@@ANSWER_TOOLSETS@@", &answer_toolsets_py())
         .replace("@@JOB_NAME@@", &py_str(JOB_NAME))
         .replace("@@DEFAULT_SCHEDULE@@", &py_str(DEFAULT_SCHEDULE))
         .replace("@@ANSWER_PROMPT@@", &py_str(ANSWER_PROMPT))
@@ -512,6 +518,19 @@ mod tests {
         assert!(shim.contains("submit-no-signal"));
         assert!(shim.contains("hearme_submit_no_signal"));
         assert!(shim.contains("def register(ctx):"));
+    }
+
+    #[test]
+    fn shim_grants_recall_toolsets_to_cron() {
+        // The answering cron must reach the agent's own recall tools, not just
+        // hearme's submit tools — otherwise it answers blind. The baked
+        // ANSWER_TOOLSETS list must include session_search (past-conversation
+        // RAG) and memory, and the cron must be created with that list.
+        let shim = build_subprocess_shim("/opt/hearme/bin/hearme-skill", None);
+        assert!(shim.contains("ANSWER_TOOLSETS = [\"hearme\", \"session_search\", \"memory\"]"));
+        assert!(shim.contains("enabled_toolsets=list(ANSWER_TOOLSETS)"));
+        // The prompt must actively drive retrieval, not just hint at "memory".
+        assert!(shim.contains("session_search"));
     }
 
     #[test]
