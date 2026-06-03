@@ -226,6 +226,10 @@ export const RejectionReason = {
   QUESTION_CLOSED: "question_closed",
   NONCE_MISMATCH: "nonce_mismatch",
   SCOPE_INELIGIBLE: "scope_ineligible",
+  // A signal answer whose leading word matches none of the question's options
+  // (modulo no_signal). Rejected before INSERT so total_answers can never exceed
+  // the sum of the per-option buckets (§1.1).
+  ANSWER_UNCLASSIFIED: "answer_unclassified",
   DUPLICATE: "duplicate",
 
   // --- per-envelope override (POST /v1/envelopes/revoke; §1.12) ---

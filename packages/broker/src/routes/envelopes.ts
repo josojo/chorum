@@ -12,6 +12,7 @@
 
 import type { FastifyInstance } from "fastify";
 
+import { classifyAnswer } from "../aggregates";
 import { getSettings } from "../config";
 import { getDb } from "../db";
 import * as q from "../queries";
@@ -93,6 +94,14 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
         return ack(false, exc.reason);
       }
       throw exc;
+    }
+
+    // Step 6b: a signal answer must select one of the question's options.
+    // no_signal envelopes carry no opinion (answer is free / empty, §1.14) and
+    // skip this gate. Rejecting here — rather than accepting and dropping the
+    // vote into no bucket — keeps total_answers == sum(per-option buckets).
+    if (!envelope.no_signal && classifyAnswer(envelope.answer, question.options) === null) {
+      return ack(false, RejectionReason.ANSWER_UNCLASSIFIED);
     }
 
     // The envelope is stored under a per-question pseudonym, not the raw nullifier

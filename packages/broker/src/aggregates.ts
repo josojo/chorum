@@ -5,8 +5,11 @@
 // ["yes","no"]); by_predicate records per-option counts inside each disclosed
 // (predicate, value) bucket, e.g.
 //   {"region:EU": {"yes": 30, "no": 12}, "age_band:25-34": {"yes": 20, "no": 10}}
-// total_answers is the grand count of accepted envelopes; answers whose leading
-// word matches no option still count toward the total but no per-option bucket.
+// total_answers is the grand count of accepted envelopes. Ingest now rejects a
+// signal answer that classifies to no option (RejectionReason.ANSWER_UNCLASSIFIED),
+// so for envelopes accepted after that gate total_answers == sum(option buckets) +
+// no_signal_total. The null-choice branch below is retained defensively: it still
+// guards historical rows accepted before the gate and the no_signal path.
 
 // Multilingual yes/no synonyms — used only when the question's options are the
 // default ["yes","no"] so existing demo / seeded polls keep working.
