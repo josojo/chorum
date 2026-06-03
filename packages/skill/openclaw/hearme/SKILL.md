@@ -29,8 +29,10 @@ Hearme", or on a scheduled Hearme answering run.
    "closes_at"}], "skipped_count"}`. Each question's `options` array is the only
    set of valid answers (e.g. `["yes","no"]` or `["pizza","pasta","sushi"]`).
 
-2. For each question, decide your user's honest answer based ONLY on what you
-   actually know about them from your memory and past conversations.
+2. Before deciding, actively recall the user: search your memory and past
+   conversations for what they have actually said on the question's topic — do
+   not rely on generic assumptions or what a typical person might think. Base
+   each answer ONLY on evidence about THIS user.
 
 3. If you are confident, submit it. The answer must be EXACTLY one of that
    question's `options` (case-insensitive) and nothing else — no reasoning, no
