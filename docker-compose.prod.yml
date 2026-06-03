@@ -1,41 +1,55 @@
-# Prod overlay: mainnet-Self / fail-closed runtime for the public EC2 prod box.
+# Prod runtime: mainnet-Self / fail-closed stack for the public EC2 prod box,
+# backed by **managed Postgres (AWS RDS)** instead of an on-box container.
 #
-# Use explicitly (do NOT rely on a docker-compose.override.yml on the host —
-# implicit overrides hide "what is actually running" from anyone reading the
-# repo):
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
+# This is a STANDALONE compose file, not an overlay. Each service `extends` its
+# base definition in docker-compose.yml (inheriting build, the SHA-pinned
+# `image:` tag used by the rollback machinery in §7, ports, and healthcheck),
+# then overrides the env for prod and — crucially — resets `depends_on` to drop
+# the local `postgres` service, which prod does not run. (A `-f base -f overlay`
+# merge cannot *remove* a service or a depends_on edge, so prod is expressed as
+# one self-contained file.) Bring it up with a single -f:
 #
-# Required values live in the host's gitignored .env file. Compose fails fast
-# if any are missing, so prod cannot silently boot with committed dev passwords,
-# the dev broker signing key, mock passports, the Self testnet, or disabled
-# registry confirmation. See PROD.md for the per-box bring-up notes.
+#   HEARME_DEPLOY_SHA=$(git rev-parse --short=12 HEAD) \
+#     docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+#
+# `--remove-orphans` clears the old on-box `hearme-postgres` container left from
+# a pre-RDS deployment. Migrate its data into RDS FIRST — see docs/DEPLOYMENT.md
+# §4 (cutover runbook). The database now lives in RDS: automated backups + PITR,
+# off-box and durable, which is the whole point of the move. Deploy safety
+# (SHA-pinned images, health gate, last-good tracking, rollback) is unchanged —
+# see §7; the `image:` tags are inherited from the base via `extends`.
+#
+# Required values live in the host's gitignored .env file (rendered from AWS SSM
+# — see docs/DEPLOYMENT.md §1.1). Compose fails fast if any are missing, so prod
+# cannot silently boot with committed dev passwords, the dev broker signing key,
+# mock passports, the Self testnet, or disabled registry confirmation.
+# HEARME_PROD_POSTGRES_HOST is the RDS endpoint hostname.
 services:
-  postgres:
-    environment:
-      POSTGRES_PASSWORD: ${HEARME_PROD_POSTGRES_ADMIN_PASSWORD:?set in prod .env}
-      HEARME_DB_ADMIN_PASSWORD: ${HEARME_PROD_POSTGRES_ADMIN_PASSWORD:?set in prod .env}
-      HEARME_DB_WEB_PASSWORD: ${HEARME_PROD_POSTGRES_WEB_PASSWORD:?set in prod .env}
-      HEARME_DB_BROKER_PASSWORD: ${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}
-      HEARME_DB_CLASSIFIER_PASSWORD: ${HEARME_PROD_POSTGRES_CLASSIFIER_PASSWORD:?set in prod .env}
-    volumes:
-      # Shadow the demo seed so prod comes up with zero rows in
-      # askers/questions/envelopes/aggregates/registrations. Compose merges
-      # service volumes by container path, so this overrides the base mount.
-      - ./db/init.prod/03-seed.sql:/docker-entrypoint-initdb.d/03-seed.sql:ro
-
   broker:
+    extends:
+      file: docker-compose.yml
+      service: broker
+    # Drop the local-postgres edge; prod's DB is RDS (reached over the VPC).
+    depends_on: !reset
+      migrator:
+        condition: service_completed_successfully
+      self-bridge:
+        condition: service_started
     environment:
-      HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@postgres:5432/hearme
+      # Base sets HEARME_BROKER_DEV_MODE=1 for local dev; `extends` would inherit
+      # it. The TS broker does not read it (the fail-closed checks key off
+      # PRODUCTION_MODE), but blank it so the prod config is not misleading.
+      HEARME_BROKER_DEV_MODE: ""
+      HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme
       # Fail closed at startup if any documented dev default is still set
       # (dev signing key, dev DB password, dev-bypass route, oracle-mode
       # rejection reasons, registry-confirmation disabled). See
       # packages/broker/src/startupChecks.ts.
       # NOTE: this TS port still uses the opt-in HEARME_BROKER_PRODUCTION_MODE
       # toggle, NOT the "fail-closed-by-default + opt-in HEARME_BROKER_DEV_MODE"
-      # inversion that landed on main in #62 (fix(broker): fail closed by
-      # default). Until that inversion is ported, this env var MUST be set in
-      # prod — without it the startup checks do not run and the dev defaults
-      # pass through silently. Follow-up: port #62 to TS.
+      # inversion that landed on main in #62. Until that inversion is ported,
+      # this env var MUST be set in prod — without it the startup checks do not
+      # run and the dev defaults pass through silently. Follow-up: port #62 to TS.
       HEARME_BROKER_PRODUCTION_MODE: "1"
       HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "1"
       HEARME_BROKER_EXPOSE_REJECTION_REASONS: "0"
@@ -44,6 +58,9 @@ services:
       HEARME_BROKER_VOTER_TAG_SECRET: ${HEARME_PROD_BROKER_VOTER_TAG_SECRET:?set in prod .env}
 
   self-bridge:
+    extends:
+      file: docker-compose.yml
+      service: self-bridge
     environment:
       # The callback the Self app posts proofs to MUST be public HTTPS.
       SELF_ENDPOINT: ${HEARME_PROD_SELF_ENDPOINT:?set in prod .env}
@@ -63,16 +80,34 @@ services:
       SELF_CHAIN_ID: "42220"
 
   migrator:
+    extends:
+      file: docker-compose.yml
+      service: migrator
+    # RDS is external; nothing to wait on locally. The schema is bootstrapped
+    # once by scripts/bootstrap-rds.sh; this run applies any later deltas.
+    depends_on: !reset []
     environment:
-      MIGRATOR_DATABASE_URL: postgres://hearme_admin:${HEARME_PROD_POSTGRES_ADMIN_PASSWORD:?set in prod .env}@postgres:5432/hearme
+      MIGRATOR_DATABASE_URL: postgres://hearme_admin:${HEARME_PROD_POSTGRES_ADMIN_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme
 
   web:
+    extends:
+      file: docker-compose.yml
+      service: web
+    depends_on: !reset
+      migrator:
+        condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgres://hearme_web:${HEARME_PROD_POSTGRES_WEB_PASSWORD:?set in prod .env}@postgres:5432/hearme
+      DATABASE_URL: postgres://hearme_web:${HEARME_PROD_POSTGRES_WEB_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme
 
   classifier:
+    extends:
+      file: docker-compose.yml
+      service: classifier
+    depends_on: !reset
+      migrator:
+        condition: service_completed_successfully
     environment:
-      HEARME_CLASSIFIER_DATABASE_URL: postgres://hearme_classifier:${HEARME_PROD_POSTGRES_CLASSIFIER_PASSWORD:?set in prod .env}@postgres:5432/hearme
+      HEARME_CLASSIFIER_DATABASE_URL: postgres://hearme_classifier:${HEARME_PROD_POSTGRES_CLASSIFIER_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme
       HEARME_CLASSIFIER_OPENROUTER_API_KEY: ${HEARME_PROD_OPENROUTER_API_KEY:?set in prod .env}
 
   caddy:

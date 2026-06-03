@@ -69,7 +69,10 @@ if [ -n "${HEARME_COMPOSE_FILES:-}" ]; then
 else
   case "$env_name" in
     staging) compose_files=(-f docker-compose.yml -f docker-compose.staging.yml) ;;
-    prod)    compose_files=(-f docker-compose.yml -f docker-compose.prod.yml) ;;
+    # prod is a standalone file (it `extends` the base internally), so a single
+    # -f — not the base+overlay pair staging uses. It defines no postgres
+    # service: prod's DB is RDS. See docs/DEPLOYMENT.md §4.
+    prod)    compose_files=(-f docker-compose.prod.yml) ;;
     *) echo "unknown ENV '$env_name'; set HEARME_COMPOSE_FILES explicitly" >&2; exit 2 ;;
   esac
 fi

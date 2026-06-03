@@ -38,7 +38,7 @@ prefix="/hearme/${env_name}"
 # the console without decryption.
 is_public() {
   case "$1" in
-    *_CADDY_SITE_HOST | *_SELF_ENDPOINT) return 0 ;;
+    *_CADDY_SITE_HOST | *_SELF_ENDPOINT | *_POSTGRES_HOST) return 0 ;;
     *) return 1 ;;
   esac
 }
