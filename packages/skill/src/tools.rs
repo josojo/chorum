@@ -69,6 +69,23 @@ pub fn list_open_questions(settings: &Settings) -> Value {
 }
 
 fn list_impl(settings: &Settings) -> Result<Value, Error> {
+    // Cost cap: once this calendar month's recorded host-model spend for the
+    // hearme cron reaches the budget, hand out no questions so the agent stops
+    // before doing more (paid) answering. Fail-open: an unmeasurable cost
+    // (no Hermes usage DB, unresolved job id) never blocks answering. The guard
+    // also refreshes the durable cost.json snapshot each cycle.
+    let cost = crate::cost::guard(settings);
+    if cost.over_budget {
+        return Ok(json!({
+            "questions": [],
+            "skipped_count": 0,
+            "budget_reached": true,
+            "monthly_cost_usd": cost.current_month_cost_usd,
+            "monthly_budget_usd": cost.monthly_budget_usd,
+            "note": "Monthly hearme budget reached — skipping this answering cycle to cap host-model API cost. Adjust via HEARME_SKILL_MONTHLY_BUDGET_USD.",
+        }));
+    }
+
     let ledger = Ledger::open(&settings.ledger_path())?;
     let policy = load_policy(&settings.policy_path());
     let stats = ledger_stats(&ledger, settings)?;
