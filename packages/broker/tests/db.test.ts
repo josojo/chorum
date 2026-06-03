@@ -365,6 +365,33 @@ describe("POST /v1/envelopes (uniqueness + aggregate)", () => {
     ).toEqual({ accepted: true, reason: null });
   });
 
+  it("rejects a signal answer that matches no option, leaving aggregates untouched (#106)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const tok = await devToken({ uid: "self:e-unclassified" });
+    const question = await insertQuestion({ options: ["red", "blue"] });
+    // A validly-signed answer whose leading word is none of the options.
+    const env = makeEnvelope(tok, { questionId: question.id, answer: "purple", nonce: question.nonce });
+    expect((await app.inject({ method: "POST", url: "/v1/envelopes", payload: env })).json()).toMatchObject({
+      accepted: false,
+      reason: "answer_unclassified",
+    });
+    // Nothing was inserted and no aggregate row was created — so total_answers
+    // can never run ahead of the per-option bucket sums.
+    expect(await totalAnswers(question.id)).toBeNull();
+    const stored = (await db.execute(
+      sql`SELECT count(*)::int AS n FROM envelopes WHERE question_id = ${question.id}`,
+    )) as unknown as Array<{ n: number }>;
+    expect(Number(stored[0].n)).toBe(0);
+
+    // A no_signal envelope with the same empty/free answer is still accepted —
+    // the gate only applies to opinion-bearing (signal) answers.
+    const ns = makeEnvelope(tok, { questionId: question.id, answer: "", nonce: question.nonce, noSignal: true });
+    expect((await app.inject({ method: "POST", url: "/v1/envelopes", payload: ns })).json()).toEqual({
+      accepted: true,
+      reason: null,
+    });
+  });
+
   it("rejects a closed question", async (ctx) => {
     if (!pg) return ctx.skip();
     const tok = await devToken({ uid: "self:e-4" });
