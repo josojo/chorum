@@ -19,7 +19,11 @@ Hearme", or on a scheduled Hearme answering run.
 
 ## How to answer
 
-1. List the open questions the user's policy allows you to answer:
+Work in one efficient pass: keep your thinking brief, act through the commands
+below, and stop as soon as every question is handled.
+
+1. List the open questions the user's policy allows you to answer — run this
+   exactly once:
 
    ```bash
    hearme-skill list-questions
@@ -27,12 +31,14 @@ Hearme", or on a scheduled Hearme answering run.
 
    It prints JSON: `{"questions": [{"question_id", "text", "topic", "options",
    "closes_at"}], "skipped_count"}`. Each question's `options` array is the only
-   set of valid answers (e.g. `["yes","no"]` or `["pizza","pasta","sushi"]`).
+   set of valid answers (e.g. `["yes","no"]` or `["pizza","pasta","sushi"]`). If
+   `questions` is empty, stop here — there is nothing to do.
 
-2. Before deciding, actively recall the user: search your memory and past
+2. Before deciding, briefly recall the user: check your memory and past
    conversations for what they have actually said on the question's topic — do
-   not rely on generic assumptions or what a typical person might think. Base
-   each answer ONLY on evidence about THIS user.
+   not rely on generic assumptions or what a typical person might think, and do
+   not over-research (a quick check is enough). Base each answer ONLY on evidence
+   about THIS user.
 
 3. If you are confident, submit it. The answer must be EXACTLY one of that
    question's `options` (case-insensitive) and nothing else — no reasoning, no
@@ -58,8 +64,8 @@ Hearme", or on a scheduled Hearme answering run.
    "No opinion" is real, valuable data, not a reason to stay silent. Only leave a
    question entirely alone when it is off-limits for your user.
 
-5. Stop once every question has an answer or a no-signal record. Never fabricate
-   views your user does not hold.
+5. Handle each question exactly once, then stop — do not re-list or revisit a
+   settled question. Never fabricate views your user does not hold.
 
 ## Reviewing or retracting (the user's override is sacred)
 
