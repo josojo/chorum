@@ -24,6 +24,14 @@
 # cannot silently boot with committed dev passwords, the dev broker signing key,
 # mock passports, the Self testnet, or disabled registry confirmation.
 # HEARME_PROD_POSTGRES_HOST is the RDS endpoint hostname.
+#
+# Every DSN below ends with `?sslmode=require`: RDS Postgres forces TLS
+# (rds.force_ssl=1) and rejects unencrypted connections ("no pg_hba.conf entry
+# … no encryption"). postgres.js maps sslmode=require to an encrypted connection
+# with rejectUnauthorized=false — TLS without verifying RDS's private CA, which
+# is what we want without bundling the CA. (verify-full + the RDS CA bundle is a
+# later hardening step.) The container Postgres in dev/staging does not need it,
+# which is why only the prod DSNs carry it.
 services:
   broker:
     extends:
@@ -40,7 +48,7 @@ services:
       # it. The TS broker does not read it (the fail-closed checks key off
       # PRODUCTION_MODE), but blank it so the prod config is not misleading.
       HEARME_BROKER_DEV_MODE: ""
-      HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme
+      HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme?sslmode=require
       # Fail closed at startup if any documented dev default is still set
       # (dev signing key, dev DB password, dev-bypass route, oracle-mode
       # rejection reasons, registry-confirmation disabled). See
@@ -87,7 +95,7 @@ services:
     # once by scripts/bootstrap-rds.sh; this run applies any later deltas.
     depends_on: !reset []
     environment:
-      MIGRATOR_DATABASE_URL: postgres://hearme_admin:${HEARME_PROD_POSTGRES_ADMIN_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme
+      MIGRATOR_DATABASE_URL: postgres://hearme_admin:${HEARME_PROD_POSTGRES_ADMIN_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme?sslmode=require
 
   web:
     extends:
@@ -97,7 +105,7 @@ services:
       migrator:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgres://hearme_web:${HEARME_PROD_POSTGRES_WEB_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme
+      DATABASE_URL: postgres://hearme_web:${HEARME_PROD_POSTGRES_WEB_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme?sslmode=require
 
   classifier:
     extends:
@@ -107,7 +115,7 @@ services:
       migrator:
         condition: service_completed_successfully
     environment:
-      HEARME_CLASSIFIER_DATABASE_URL: postgres://hearme_classifier:${HEARME_PROD_POSTGRES_CLASSIFIER_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme
+      HEARME_CLASSIFIER_DATABASE_URL: postgres://hearme_classifier:${HEARME_PROD_POSTGRES_CLASSIFIER_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme?sslmode=require
       HEARME_CLASSIFIER_OPENROUTER_API_KEY: ${HEARME_PROD_OPENROUTER_API_KEY:?set in prod .env}
 
   caddy:
