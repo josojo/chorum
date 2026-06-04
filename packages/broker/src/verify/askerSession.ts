@@ -23,7 +23,7 @@ import nacl from "tweetnacl";
 import { type Settings, getSettings } from "../config";
 import { type AskerSession, RejectionReason } from "../models";
 import { canonicalJson } from "./canonical";
-import { SCOPE, iso, loadSigningSeed } from "./credential";
+import { iso, loadSigningSeed } from "./credential";
 import { VerifyDelegationError } from "./delegation";
 
 // Short by design: the session only has to live from the verifying scan to the
@@ -33,13 +33,14 @@ export const ASKER_SESSION_TTL_MS = 30 * 60 * 1000;
 type SessionClaims = {
   version: 1;
   kind: "asker_session";
-  scope: typeof SCOPE;
+  scope: string;
   unique_identifier: string;
   issued_at: string;
   expires_at: string;
 };
 
 function claims(args: {
+  scope: string;
   unique_identifier: string;
   issued_at: string;
   expires_at: string;
@@ -47,7 +48,7 @@ function claims(args: {
   return {
     version: 1,
     kind: "asker_session",
-    scope: SCOPE,
+    scope: args.scope,
     unique_identifier: args.unique_identifier,
     issued_at: args.issued_at,
     expires_at: args.expires_at,
@@ -68,6 +69,7 @@ export function issueAskerSession(args: {
   const settings = args.settings ?? getSettings();
   const keyPair = nacl.sign.keyPair.fromSeed(loadSigningSeed(settings));
   const c = claims({
+    scope: settings.selfScope,
     unique_identifier: args.unique_identifier,
     issued_at: iso(args.issued_at),
     expires_at: iso(args.expires_at),
@@ -84,8 +86,20 @@ export function verifyAskerSession(
   opts: { now?: Date; settings?: Settings } = {},
 ): { uniqueIdentifier: string } {
   const settings = opts.settings ?? getSettings();
+
+  // Reject a session minted under a different scope (e.g. a staging session
+  // replayed against prod) before any crypto. The scope is FROZEN per env
+  // (verify/scope.ts); a mismatch can never be this broker's own session.
+  if (session.scope !== settings.selfScope) {
+    throw new VerifyDelegationError(
+      RejectionReason.SELF_SCOPE_MISMATCH,
+      `asker_session scope '${session.scope}' != broker scope '${settings.selfScope}'`,
+    );
+  }
+
   const keyPair = nacl.sign.keyPair.fromSeed(loadSigningSeed(settings));
   const c = claims({
+    scope: settings.selfScope,
     unique_identifier: session.unique_identifier,
     issued_at: session.issued_at,
     expires_at: session.expires_at,

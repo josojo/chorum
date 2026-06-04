@@ -36,8 +36,13 @@ import {
   mapDisclosed,
   profileThresholds,
 } from "./disclosure.js";
+import { PRODUCTION_SCOPE, resolveScope } from "./scope.js";
 
-const SCOPE = process.env.SELF_SCOPE || "hearme-v1";
+// The Self application scope is FROZEN and resolved by resolveScope() (see
+// scope.js for the full rationale). In production the scope is pinned to
+// PRODUCTION_SCOPE in code and SELF_SCOPE is ignored, so a config change cannot
+// silently re-mint every identity (GH #97). The effective SCOPE is resolved after
+// SELF_PRODUCTION_MODE is read below.
 // No default: SelfAppBuilder rejects localhost/127.0.0.1, and the Self app POSTs
 // proofs straight to this URL, so it must be publicly reachable (an ngrok https
 // URL in dev). Validated in /requests and at startup via endpointProblem().
@@ -69,6 +74,21 @@ if (SELF_PRODUCTION_MODE && (MOCK_PASSPORT || DEV_MODE)) {
       "identities. Set SELF_MOCK_PASSPORT=0 and SELF_DEV_MODE=0 for production.",
   );
   process.exit(1);
+}
+// Resolve the FROZEN scope now that production mode is known. In prod the scope
+// is pinned to PRODUCTION_SCOPE and any SELF_SCOPE is ignored; warn loudly if one
+// was set so an operator who expected it to apply is not misled.
+const { scope: SCOPE, ignoredEnvScope } = resolveScope({
+  productionMode: SELF_PRODUCTION_MODE,
+  envScope: process.env.SELF_SCOPE,
+});
+if (ignoredEnvScope) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[self-bridge] WARNING: SELF_SCOPE='${ignoredEnvScope}' is IGNORED in production — ` +
+      `the scope is frozen to '${PRODUCTION_SCOPE}'. Changing the production scope would ` +
+      `orphan every existing identity (GH #97). Remove SELF_SCOPE from the prod env to silence this.`,
+  );
 }
 // Optional chainID override. SelfAppBuilder otherwise picks 42220 (Celo
 // mainnet) for endpointType=staging_https — wrong for a mock passport, whose

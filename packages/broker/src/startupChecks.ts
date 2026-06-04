@@ -14,6 +14,7 @@ import {
   DEV_VOTER_TAG_MASTER_KEY,
   type Settings,
 } from "./config";
+import { PRODUCTION_SCOPE } from "./verify/scope";
 
 export class ProductionConfigError extends Error {
   constructor(message: string) {
@@ -96,6 +97,19 @@ export function validateProductionConfig(settings: Settings): ValidationReport {
   }
 
   // --- warnings: suspicious but not strictly blocking -----------------
+
+  // The scope is frozen to PRODUCTION_SCOPE in prod (settings.selfScope ignores
+  // HEARME_BROKER_SELF_SCOPE there — config.ts / verify/scope.ts). If an operator
+  // set the env var expecting it to apply, warn that it is inert (GH #97).
+  const rawScope = process.env.HEARME_BROKER_SELF_SCOPE;
+  if (rawScope && rawScope !== PRODUCTION_SCOPE) {
+    report.warnings.push(
+      `HEARME_BROKER_SELF_SCOPE='${rawScope}' is IGNORED in production — the broker scope is ` +
+        `frozen to '${PRODUCTION_SCOPE}'. Changing the production scope would invalidate every ` +
+        `credential and orphan every identity. Remove it from the prod env to silence this.`,
+    );
+  }
+
   if (
     settings.selfBridgeUrl.includes("localhost") ||
     settings.selfBridgeUrl.includes("127.0.0.1")

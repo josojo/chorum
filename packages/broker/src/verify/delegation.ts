@@ -54,6 +54,18 @@ export function verifyDelegation(
 ): VerifiedDelegation {
   const settings = opts.settings ?? getSettings();
 
+  // Step 0: the token's scope must be this environment's frozen scope. A
+  // mismatch (e.g. a staging token — scope "staging-hearme-v1" — replayed
+  // against prod) is rejected before any crypto. The scope is also bound into
+  // the signature below, but this gives a precise reason and an early, cheap
+  // cross-environment barrier even if signing keys were ever shared (GH #97).
+  if (token.scope !== settings.selfScope) {
+    throw new VerifyDelegationError(
+      RejectionReason.SELF_SCOPE_MISMATCH,
+      `token scope '${token.scope}' != broker scope '${settings.selfScope}'`,
+    );
+  }
+
   // Step 1: the token must be one THIS broker minted.
   if (!verifyBrokerSignature(token, settings)) {
     throw new VerifyDelegationError(

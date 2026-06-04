@@ -18,7 +18,12 @@ import { type Settings, getSettings } from "../config";
 import type { DelegationToken } from "../models";
 import { canonicalJson } from "./canonical";
 
-export const SCOPE = "hearme-v1";
+// The `scope` claim is resolved per-environment and FROZEN in production (see
+// verify/scope.ts and config.ts → settings.selfScope). It must equal the
+// self-bridge's SELF_SCOPE, since the nullifier it accompanies is derived under
+// that scope. issue/verify below take the scope from settings so a staging
+// credential (scope "staging-hearme-v1") can never be confused with a prod one
+// ("hearme-v1"). docs/DEPLOYMENT.md "Frozen constants — never change in prod".
 
 export function loadSigningSeed(settings: Settings): Uint8Array {
   const seed = Buffer.from(settings.brokerSigningKey, "base64");
@@ -44,7 +49,7 @@ export function iso(value: Date | string): string {
 
 type Claims = {
   version: 2;
-  scope: typeof SCOPE;
+  scope: string;
   unique_identifier: string;
   disclosed_predicates: Record<string, string>;
   agent_key: string;
@@ -52,8 +57,10 @@ type Claims = {
   expires_at: string;
 };
 
-// Token claims WITHOUT broker_signature — the signed payload's source.
+// Token claims WITHOUT broker_signature — the signed payload's source. `scope` is
+// the env-resolved settings.selfScope so the signature is bound to it.
 function claims(args: {
+  scope: string;
   unique_identifier: string;
   disclosed_predicates: Record<string, string>;
   agent_key: string;
@@ -62,7 +69,7 @@ function claims(args: {
 }): Claims {
   return {
     version: 2,
-    scope: SCOPE,
+    scope: args.scope,
     unique_identifier: args.unique_identifier,
     disclosed_predicates: args.disclosed_predicates,
     agent_key: args.agent_key,
@@ -88,6 +95,7 @@ export function issueDelegationToken(args: {
   const seed = loadSigningSeed(settings);
   const keyPair = nacl.sign.keyPair.fromSeed(seed);
   const c = claims({
+    scope: settings.selfScope,
     unique_identifier: args.unique_identifier,
     disclosed_predicates: args.disclosed_predicates,
     agent_key: args.agent_key,
@@ -107,6 +115,7 @@ export function verifyBrokerSignature(
   const seed = loadSigningSeed(s);
   const keyPair = nacl.sign.keyPair.fromSeed(seed);
   const c = claims({
+    scope: s.selfScope,
     unique_identifier: token.unique_identifier,
     disclosed_predicates: token.disclosed_predicates,
     agent_key: token.agent_key,

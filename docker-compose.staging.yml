@@ -38,6 +38,10 @@ services:
       # are what make them pass — drop one and the broker refuses to boot.
       HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "1"
       HEARME_BROKER_EXPOSE_REJECTION_REASONS: "0"
+      # Must match the self-bridge's SELF_SCOPE for this env. Distinct from
+      # mainnet ("hearme-v1") so a staging credential can never be accepted by
+      # prod (its scope check + signature both differ). Frozen for staging's data.
+      HEARME_BROKER_SELF_SCOPE: staging-hearme-v1
       HEARME_BROKER_SIGNING_KEY: ${HEARME_STAGING_BROKER_SIGNING_KEY:?set in staging .env}
       # Per-question voter-tag secret store (ADR-098): the broker-owned
       # `hearme_secrets` DB on the box's container Postgres (04-secrets-db.sh),
@@ -47,6 +51,12 @@ services:
 
   self-bridge:
     environment:
+      # Staging's nullifier scope is deliberately DISTINCT from mainnet's
+      # ("hearme-v1") so a staging mock-passport identity can never collide with a
+      # real prod identity. It is still frozen for the life of staging's data —
+      # changing it orphans every staging registration (GH #97). Prod ignores
+      # SELF_SCOPE entirely and pins "hearme-v1" in code (see self-bridge server.js).
+      SELF_SCOPE: staging-hearme-v1
       # The callback the Self app posts proofs to MUST be public HTTPS.
       SELF_ENDPOINT: ${HEARME_STAGING_SELF_ENDPOINT:?set in staging .env}
       # Staging exercises the REAL register->verify->envelope pipeline, but with

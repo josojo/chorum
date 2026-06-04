@@ -5,6 +5,8 @@
 // Defaults match the docker-compose dev environment so a fresh `dev-up.sh` can
 // boot straight out of the box. Mirrors the Python config.py one-for-one.
 
+import { resolveScope } from "./verify/scope";
+
 // Dev-only Ed25519 seed for the broker signing key (base64 of 32 bytes).
 // Production MUST override HEARME_BROKER_SIGNING_KEY with a secret-managed key;
 // a stable key is required so DelegationTokens survive broker restarts.
@@ -65,6 +67,13 @@ export interface Settings {
   // Ed25519 signing key (base64 of a 32-byte seed) the broker uses to sign the
   // DelegationToken it issues at registration. MUST be overridden in production.
   brokerSigningKey: string;
+
+  // The identity scope stamped into every DelegationToken / asker-session and
+  // checked against incoming credentials (verify/scope.ts). FROZEN, and must
+  // equal the self-bridge's SELF_SCOPE. In production it is pinned to
+  // PRODUCTION_SCOPE in code and HEARME_BROKER_SELF_SCOPE is ignored (GH #97);
+  // staging sets it to "staging-hearme-v1".
+  selfScope: string;
 
   // Per-question linkage-secret store (ADR-098, §1.4). A broker-owned database
   // (`hearme_secrets`) holding the `question_secrets` table; co-located on the
@@ -172,6 +181,13 @@ export function getSettings(overrides: Partial<Settings> = {}): Settings {
     selfRevocationCursorName: envStr(`${P}SELF_REVOCATION_CURSOR_NAME`, "self-revocations-v1"),
 
     brokerSigningKey: envStr(`${P}SIGNING_KEY`, DEV_BROKER_SIGNING_KEY),
+
+    // Frozen in prod (HEARME_BROKER_SELF_SCOPE ignored, pinned in code); env-
+    // selectable elsewhere. resolveScope mirrors the self-bridge (GH #97).
+    selfScope: resolveScope({
+      productionMode: envBool(`${P}PRODUCTION_MODE`, false),
+      envScope: process.env[`${P}SELF_SCOPE`],
+    }).scope,
 
     secretsDatabaseUrl: envStr(`${P}SECRETS_DATABASE_URL`, DEV_SECRETS_DATABASE_URL),
     voterTagMasterKey: envStr(`${P}VOTER_TAG_MASTER_KEY`, DEV_VOTER_TAG_MASTER_KEY),

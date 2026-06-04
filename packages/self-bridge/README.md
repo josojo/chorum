@@ -84,7 +84,7 @@ session credential, and nothing here is re-checked per answer.
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `SELF_SCOPE` | `hearme-v1` | application scope passed to `SelfAppBuilder` / `SelfBackendVerifier`; **part of the nullifier** (≤31 ASCII) |
+| `SELF_SCOPE` | `hearme-v1` | application scope passed to `SelfAppBuilder` / `SelfBackendVerifier`; **part of the nullifier** (≤31 ASCII). **FROZEN — never change in prod.** When `SELF_PRODUCTION_MODE=1` this var is **ignored**: the scope is pinned to `hearme-v1` in code (`PRODUCTION_SCOPE`) so a config change cannot silently re-mint every identity. Staging sets `staging-hearme-v1`. See `docs/DEPLOYMENT.md` §3.1 (GH #97). |
 | `SELF_ENDPOINT` | — | **required, no default.** Public URL of this bridge's `/callback`; must match the SelfApp `endpoint`. **Must not be `localhost`/`127.0.0.1`** — `SelfAppBuilder` rejects those; use an ngrok https URL in dev. `/requests` returns a clear error (and startup logs a warning) if it is missing or localhost. |
 | `SELF_ENDPOINT_TYPE` | `staging_https` | `staging_https` (testnet) or `https` (production) |
 | `SELF_MOCK_PASSPORT` | `1` | `1` = staging: accepts **mock-passport** proofs; `verify()` checks the root against the Alfajores testnet + staging hub. `0` = mainnet: requires a real passport; checks against the mainnet hub. (The Celo RPC URL and registry address are managed by `@selfxyz/core` itself — there is no env knob for them.) |
