@@ -147,6 +147,16 @@ jobs:
               -e HEARME_DB_WEB_PASSWORD="\$HEARME_STAGING_POSTGRES_WEB_PASSWORD" \
               -e HEARME_DB_BROKER_PASSWORD="\$HEARME_STAGING_POSTGRES_BROKER_PASSWORD" \
               hearme-postgres bash -s < db/init/02-roles.sh
+
+            # Same reason: 04-secrets-db.sh creates the broker-owned
+            # `hearme_secrets` DB (ADR-098), but only on a fresh volume. The
+            # broker opens it at startup (initSecretsDb) and crashes if it is
+            # missing, so re-apply it on the live container too. Idempotent
+            # (CREATE DATABASE … WHERE NOT EXISTS \gexec).
+            docker exec -i \
+              -e POSTGRES_USER=hearme_admin \
+              -e POSTGRES_DB=hearme \
+              hearme-postgres bash -s < db/init/04-secrets-db.sh
           fi
 
           # Pin the built images to this commit's SHA (docker-compose.yml reads
