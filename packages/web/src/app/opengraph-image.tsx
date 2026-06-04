@@ -5,7 +5,7 @@ import { ImageResponse } from "next/og";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "Hearme — ask the world";
+export const alt = "WorldSignal — ask the world";
 
 export default function Image() {
   return new ImageResponse(
@@ -38,10 +38,10 @@ export default function Image() {
               fontSize: "44px",
             }}
           >
-            🔊
+            📡
           </div>
           <div style={{ fontSize: "48px", fontWeight: 700, letterSpacing: "-1px" }}>
-            Hearme
+            WorldSignal
           </div>
         </div>
         <div

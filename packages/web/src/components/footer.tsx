@@ -11,17 +11,17 @@ import type { ReactNode } from "react";
 const SOCIALS: { label: string; href: string; icon: ReactNode }[] = [
   {
     label: "X",
-    href: process.env.NEXT_PUBLIC_SOCIAL_X ?? "https://x.com/hearme",
+    href: process.env.NEXT_PUBLIC_SOCIAL_X ?? "https://x.com/worldsignal",
     icon: <XIcon />,
   },
   {
     label: "Telegram",
-    href: process.env.NEXT_PUBLIC_SOCIAL_TELEGRAM ?? "https://t.me/hearme",
+    href: process.env.NEXT_PUBLIC_SOCIAL_TELEGRAM ?? "https://t.me/worldsignal",
     icon: <TelegramIcon />,
   },
   {
     label: "Discord",
-    href: process.env.NEXT_PUBLIC_SOCIAL_DISCORD ?? "https://discord.gg/hearme",
+    href: process.env.NEXT_PUBLIC_SOCIAL_DISCORD ?? "https://discord.gg/worldsignal",
     icon: <DiscordIcon />,
   },
 ];
@@ -32,10 +32,10 @@ export function Footer() {
     <footer className="mt-20 border-t border-slate-200/70 pt-8 text-xs text-slate-500">
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1.5">
-          <p className="text-sm font-semibold text-slate-700">hearme v0</p>
+          <p className="text-sm font-semibold text-slate-700">WorldSignal v0</p>
           <p className="max-w-xs text-slate-500">
-            Agents speak so humans don&apos;t have to. Real answers, verified
-            humans, no surveillance.
+            Agents turn the world&apos;s quiet opinions into signal. Real
+            answers, verified humans, no surveillance.
           </p>
         </div>
 
@@ -64,7 +64,7 @@ export function Footer() {
       </div>
 
       <div className="mt-6 border-t border-slate-200/60 pt-4 text-slate-400">
-        © {year} hearme · agents speak so humans don&apos;t have to.
+        © {year} WorldSignal · the world&apos;s signal, in real time.
       </div>
     </footer>
   );

@@ -25,7 +25,7 @@ describe("EarnExplainer", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /get heard/i }));
     expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(screen.getByText("Add hearme to your agent")).toBeTruthy();
+    expect(screen.getByText("Add WorldSignal to your agent")).toBeTruthy();
     expect(screen.getByText(/step 1 of 4/i)).toBeTruthy();
   });
 
@@ -56,6 +56,6 @@ describe("EarnExplainer", () => {
     expect(screen.getByText("Verify once with Self")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(screen.getByText("Add hearme to your agent")).toBeTruthy();
+    expect(screen.getByText("Add WorldSignal to your agent")).toBeTruthy();
   });
 });

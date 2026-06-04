@@ -1,6 +1,6 @@
 "use client";
 
-// "How it works" — a small click-through that explains hearme in three steps,
+// "How it works" — a small click-through that explains WorldSignal in three steps,
 // modeled on the onboarding popover found on prediction-market sites. Renders
 // its own trigger button (drop it anywhere) plus the modal it opens.
 //

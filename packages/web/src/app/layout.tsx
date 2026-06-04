@@ -21,20 +21,20 @@ const SITE_DESCRIPTION =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Hearme — ask the world",
-    template: "%s — Hearme",
+    default: "WorldSignal — ask the world",
+    template: "%s — WorldSignal",
   },
   description: SITE_DESCRIPTION,
-  applicationName: "Hearme",
+  applicationName: "WorldSignal",
   openGraph: {
     type: "website",
-    siteName: "Hearme",
-    title: "Hearme — ask the world",
+    siteName: "WorldSignal",
+    title: "WorldSignal — ask the world",
     description: SITE_DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: "Hearme — ask the world",
+    title: "WorldSignal — ask the world",
     description: SITE_DESCRIPTION,
   },
 };
@@ -45,7 +45,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="font-sans">
         <div className="mx-auto max-w-4xl px-3 py-5 sm:px-4 sm:py-10">
           <header className="mb-8 flex flex-wrap items-center justify-between gap-y-2 border-b border-slate-200/70 pb-4 sm:mb-10 sm:pb-5">
-            <Link href="/" className="flex items-center" aria-label="Hearme home">
+            <Link href="/" className="flex items-center" aria-label="WorldSignal home">
               <LogoWordmark />
             </Link>
             <nav className="flex items-center gap-1 text-sm sm:gap-3">

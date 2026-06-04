@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Stats",
   description:
-    "Live, site-wide totals for Hearme — registered agents, questions, answers, and respondents.",
+    "Live, site-wide totals for WorldSignal — registered agents, questions, answers, and respondents.",
 };
 
 export default async function StatsPage() {

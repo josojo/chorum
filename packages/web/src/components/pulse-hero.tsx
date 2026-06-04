@@ -2,12 +2,12 @@
 
 // Home hero — "the world is thinking out loud". Makes the thesis (a real-time,
 // trustworthy, paid feedback organ) visceral, all from real data:
-//   • a live "voices heard" counter — the real site-wide answer total, kept
+//   • a live "signals counted" counter — the real site-wide answer total, kept
 //     fresh by <LiveRefresh/> (server revalidation) and eased to its true value
 //   • the real WorldMap, shading the most-answered open question by sentiment
 //   • that question's live option result, summed from its public aggregate
 //   • a trust strip: verified human · anonymous · paid-for-your-voice (future)
-// Primary CTA "Add your voice" opens the real onboarding walkthrough.
+// Primary CTA "Add your signal" opens the real onboarding walkthrough.
 //
 // Degrades cleanly to a zero-data state (no featured question, total 0) so a
 // fresh deployment still looks intentional.
@@ -87,24 +87,25 @@ export function PulseHero({
             live
           </span>
           <span className="text-xs font-semibold uppercase tracking-widest text-violet-700">
-            The world is thinking out loud
+            The world is signaling
           </span>
         </div>
 
         {/* Headline */}
         <h1 className="mt-3 max-w-2xl text-3xl font-bold leading-tight tracking-tight text-slate-900 sm:text-5xl">
-          Add your voice to{" "}
+          Add your signal to{" "}
           <span className="bg-brand-gradient bg-clip-text text-transparent">
-            humanity&apos;s
+            the world&apos;s
           </span>
           .
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base">
           Ask anything, and verified people&apos;s own agents answer in hours —
-          anonymized and broken down by where and who. Your everyday opinions
-          finally count.{" "}
+          anonymized and broken down by nation and age. Nothing is made up: each
+          answer is inferred from your everyday chats with your own verified
+          agent.{" "}
           <span className="font-medium text-slate-800">
-            This is my voice — and now it gets heard.
+            This is my signal — and now the world sees it.
           </span>
         </p>
 
@@ -156,7 +157,7 @@ export function PulseHero({
             <div className="rounded-2xl bg-white/80 p-5 ring-1 ring-slate-200/70 backdrop-blur">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Voices heard
+                  Signals counted
                 </p>
                 <LiveRefresh />
               </div>
@@ -207,7 +208,7 @@ export function PulseHero({
             onClick={() => setEarnOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-gradient px-6 py-3 text-base font-semibold text-white shadow-glow transition hover:opacity-95"
           >
-            <MicIcon /> Add your voice
+            <SignalIcon /> Add your signal
           </button>
           <Link
             href="/ask"
@@ -225,16 +226,16 @@ export function PulseHero({
           <Pillar
             icon={<CheckBadge />}
             title="Verified human"
-            body="One real person, one voice — proven with Self. No bots, no troll farms."
+            body="One real person, one signal — proven with Self. No bots, no troll farms."
           />
           <Pillar
             icon={<MaskIcon />}
             title="Always anonymous"
-            body="The world only ever sees totals. Your individual answer is never shown."
+            body="The world only ever sees totals. Your individual signal is never shown."
           />
           <Pillar
             icon={<CoinIcon />}
-            title="Paid for your voice"
+            title="Paid for your signal"
             body={
               <>
                 You&apos;ll earn for every answer your agent gives. Today it
@@ -332,14 +333,15 @@ function Pillar({
 
 /* ---------- icons ---------- */
 
-function MicIcon() {
+function SignalIcon() {
+  // A broadcast glyph — a central dot with concentric radiating arcs.
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
-      <rect x="7.5" y="2.5" width="5" height="9" rx="2.5" fill="currentColor" />
+      <circle cx="10" cy="10" r="2.4" fill="currentColor" />
       <path
-        d="M5 9a5 5 0 0 0 10 0M10 14v3.5M7.5 17.5h5"
+        d="M5.8 5.8a6 6 0 0 0 0 8.4M14.2 5.8a6 6 0 0 1 0 8.4M3.3 3.3a9.5 9.5 0 0 0 0 13.4M16.7 3.3a9.5 9.5 0 0 1 0 13.4"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1.4"
         strokeLinecap="round"
       />
     </svg>

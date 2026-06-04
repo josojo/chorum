@@ -1,13 +1,14 @@
 "use client";
 
 // "Get heard" — the supply-side explainer/simulator. Where "How it works"
-// pitches askers, this walks a would-be respondent through plugging the hearme
-// add-on into the agent they already run (Openclaw, Hermes, …), verifying once
-// with Self, and then earning as their agent answers polls on their behalf.
+// pitches askers, this walks a would-be respondent through plugging the
+// WorldSignal add-on into the agent they already run (Openclaw, Hermes, …),
+// verifying once with Self, and then earning as their agent answers polls on
+// their behalf.
 //
 // Split in two:
 //   • EarnExplainerDialog — the controlled walkthrough (open/onClose). Reused by
-//     the header trigger AND the home hero's "Add your voice" CTA.
+//     the header trigger AND the home hero's "Add your signal" CTA.
 //   • EarnExplainer — the header trigger button that owns its own open state.
 //
 // Each step's illustration is a small live simulation driven by a `tick` that
@@ -33,8 +34,8 @@ type Step = {
 
 const STEPS: Step[] = [
   {
-    title: "Add hearme to your agent",
-    body: "Drop the hearme add-on into the agent you already run — Openclaw, Hermes, or any open runtime. One command wires it in.",
+    title: "Add WorldSignal to your agent",
+    body: "Drop the WorldSignal add-on into the agent you already run — Openclaw, Hermes, or any open runtime. One command wires it in.",
     illustration: TerminalIllustration,
   },
   {
@@ -49,7 +50,7 @@ const STEPS: Step[] = [
   },
   {
     title: "Get heard — and earn",
-    body: "Every answer gets your voice counted. Today it earns you the right to ask questions of your own; cash payouts are coming. Set your policy once and it runs quietly in the background. Sell your voice — don't give it away.",
+    body: "Every answer gets your signal counted. Today it earns you the right to ask questions of your own; cash payouts are coming. Set your policy once and it runs quietly in the background. Sell your signal — don't give it away.",
     illustration: EarningsIllustration,
   },
 ];
@@ -327,7 +328,7 @@ function EarningsIllustration(tick: number) {
   return (
     <div className="w-64 rounded-2xl bg-white p-5 shadow-xl ring-1 ring-slate-200/70">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-900">Your voice, counted</span>
+        <span className="text-xs font-semibold text-slate-900">Your signal, counted</span>
         <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
           live
