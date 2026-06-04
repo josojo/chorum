@@ -84,6 +84,36 @@ binary — the Hermes `cron` API lives inside the gateway's Python process. The
 generated plugin shim self-registers the answering cron job once a delegation
 token exists, so `install` + `onboard` is all you need.
 
+### Installing into a named Hermes profile
+
+If your Hermes agent runs under a **named profile** (`~/.hermes/profiles/<name>/`)
+rather than the default `~/.hermes/`, target it with the **global**
+`--hermes-profile` flag, which must come **before** the subcommand:
+
+```bash
+hearme-skill --hermes-profile <name> install
+hearme-skill --hermes-profile <name> onboard \
+  --broker-url https://3-74-46-46.sslip.io \
+  --bridge-url https://3-74-46-46.sslip.io/self
+```
+
+This drops the plugin into `~/.hermes/profiles/<name>/plugins/hearme/` instead of
+`~/.hermes/plugins/hearme/`. Without the flag, the active `$HERMES_HOME` is used,
+else the default `~/.hermes`. If your profile lives off the beaten path, use
+`--hermes-home <path>` instead — it's also global, must precede the subcommand,
+and overrides both `--hermes-profile` and any inherited `$HERMES_HOME`.
+
+> **Two unrelated `--profile` flags.** `--hermes-profile` (global, selects the
+> Hermes agent home) is **not** the same as `onboard --profile` (a subcommand
+> flag that selects the Self **identity tier**, e.g. `minimal`/`standard`). So
+> `hearme-skill --profile <name> install` is wrong on both counts — there is no
+> global `--profile`. The two can legitimately co-occur:
+> `hearme-skill --hermes-profile work onboard … --profile=minimal`.
+
+When named profiles exist and you run a bare `install`/`onboard` without scoping
+to one, the CLI warns that it's targeting the *default* profile, so the plugin
+doesn't silently land in the wrong agent home.
+
 ## How it wires into each host
 
 Both hosts ultimately run the **same binary**; only the adapter differs.
