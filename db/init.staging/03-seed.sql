@@ -1,0 +1,15 @@
+-- Staging seed shadow: intentionally a no-op.
+--
+-- The base docker-compose.yml mounts db/init/03-seed.sql into
+-- /docker-entrypoint-initdb.d/03-seed.sql to populate the dev/demo data
+-- (askers, questions, envelopes, aggregates) on first boot. On staging we want
+-- the box to come up EMPTY so every row is real data produced by verified
+-- agents (onboarded with a Self mock passport — see docker-compose.staging.yml),
+-- never co-mingled with demo rows. Testing the real data lifecycle on staging is
+-- the whole point: it catches data-management mistakes before they reach prod.
+--
+-- docker-compose.staging.yml remounts THIS file at the same container path; the
+-- staging override wins on volume-merge (same target), so postgres's
+-- docker-entrypoint-initdb.d runs this file instead of the demo seed.
+--
+-- Mirrors db/init.prod/03-seed.sql. Keep this file empty (modulo this comment).
