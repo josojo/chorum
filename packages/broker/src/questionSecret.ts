@@ -14,13 +14,42 @@
 // (secretsDb.ts), and the destroy is a real row mutation whose irreversibility is
 // the secrets instance's (short) backup retention.
 
-import { randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 import { getSettings } from "./config";
 import { getSecretsDb } from "./secretsDb";
 
 interface SecretRow {
   secret: Buffer | null;
+}
+
+// AES-256-GCM wrap of a question's secret s_q under the broker's master key
+// (config.voterTagMasterKey). Stored blob = iv(12) | tag(16) | ciphertext(32).
+// A DB-only dump without the master key yields only this blob; forward secrecy
+// still comes from DESTROYING the blob at close (the key can't decrypt a nulled
+// row), so a closed question is unlinkable even to a master-key holder (ADR-098).
+function masterKey(): Buffer {
+  const key = Buffer.from(getSettings().voterTagMasterKey, "base64");
+  if (key.length !== 32) {
+    throw new Error("HEARME_BROKER_VOTER_TAG_MASTER_KEY must be base64 of 32 bytes (AES-256)");
+  }
+  return key;
+}
+
+function wrap(plain: Buffer): Buffer {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", masterKey(), iv);
+  const ct = Buffer.concat([cipher.update(plain), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), ct]);
+}
+
+function unwrap(blob: Buffer): Buffer {
+  const iv = blob.subarray(0, 12);
+  const tag = blob.subarray(12, 28);
+  const ct = blob.subarray(28);
+  const decipher = createDecipheriv("aes-256-gcm", masterKey(), iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]);
 }
 
 // Lazily mint (or fetch) the live secret for a question. Concurrent first-answers
@@ -34,16 +63,19 @@ export async function ensureQuestionSecretKey(
   closesAt: Date,
 ): Promise<Buffer | null> {
   const db = getSecretsDb();
-  const fresh = randomBytes(32);
+  // Mint a fresh s_q and store it WRAPPED. The plaintext s_q never touches the
+  // DB; we unwrap whatever row wins the race to derive the tag.
+  const wrapped = wrap(randomBytes(32));
   await db`
     INSERT INTO question_secrets (question_id, secret, closes_at)
-    VALUES (${questionId}, ${fresh}, ${closesAt})
+    VALUES (${questionId}, ${wrapped}, ${closesAt})
     ON CONFLICT (question_id) DO NOTHING
   `;
   const rows = (await db`
     SELECT secret FROM question_secrets WHERE question_id = ${questionId}
   `) as unknown as SecretRow[];
-  return rows[0]?.secret ?? null;
+  const blob = rows[0]?.secret ?? null;
+  return blob === null ? null : unwrap(blob);
 }
 
 // Return the question's secret only if it is still live; null once destroyed
@@ -56,7 +88,8 @@ export async function getQuestionSecretKeyIfLive(questionId: string): Promise<Bu
     SELECT secret FROM question_secrets
     WHERE question_id = ${questionId} AND secret IS NOT NULL
   `) as unknown as SecretRow[];
-  return rows[0]?.secret ?? null;
+  const blob = rows[0]?.secret ?? null;
+  return blob === null ? null : unwrap(blob);
 }
 
 // Destroy (null + stamp) every secret whose question closed more than `grace`

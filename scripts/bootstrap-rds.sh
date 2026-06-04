@@ -57,23 +57,36 @@ psql_admin() {
       -h "$PGHOST" -U hearme_admin -d hearme "$@"
 }
 
-echo "[bootstrap-rds] 1/3 ensuring pgcrypto extension on ${PGHOST}"
+echo "[bootstrap-rds] 1/4 ensuring pgcrypto extension on ${PGHOST}"
 psql_admin -c 'CREATE EXTENSION IF NOT EXISTS "pgcrypto";'
 
-echo "[bootstrap-rds] 2/3 applying schema via the migrator (admin DSN → RDS)"
+echo "[bootstrap-rds] 2/4 applying schema via the migrator (admin DSN → RDS)"
 docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/docker-compose.prod.yml" \
   run --rm migrator
 
-echo "[bootstrap-rds] 3/3 applying roles + grants (db/init/roles.sql)"
+echo "[bootstrap-rds] 3/4 applying roles + grants (db/init/roles.sql)"
 psql_admin \
   -v web_password="$HEARME_PROD_POSTGRES_WEB_PASSWORD" \
   -v broker_password="$HEARME_PROD_POSTGRES_BROKER_PASSWORD" \
   -v classifier_password="$HEARME_PROD_POSTGRES_CLASSIFIER_PASSWORD" \
   -f /init/roles.sql
 
+# ADR-098: the per-question voter-tag secrets live in a broker-OWNED database,
+# co-located on this same RDS instance (the broker has only USAGE on the shared
+# schema, so it can't create the table in `hearme`). Owned by hearme_broker, so
+# the broker's CREATE TABLE IF NOT EXISTS (secretsDb.ts) succeeds at startup.
+echo "[bootstrap-rds] 4/4 ensuring broker-owned hearme_secrets database (ADR-098)"
+if [ "$(psql_admin -tAc "SELECT 1 FROM pg_database WHERE datname='hearme_secrets'")" != "1" ]; then
+  psql_admin -c 'CREATE DATABASE hearme_secrets OWNER hearme_broker;'
+  echo "[bootstrap-rds]   created hearme_secrets"
+else
+  echo "[bootstrap-rds]   hearme_secrets already present — skipping"
+fi
+
 cat <<'EOF'
-[bootstrap-rds] done. RDS now has: pgcrypto, the full schema, and the three
-scoped roles (hearme_web / hearme_broker / hearme_classifier).
+[bootstrap-rds] done. RDS now has: pgcrypto, the full schema, the three
+scoped roles (hearme_web / hearme_broker / hearme_classifier), and the
+broker-owned hearme_secrets database (ADR-098).
 
 Verify the grant boundary held (optional but recommended) by spot-checking that
 hearme_web cannot read envelopes:

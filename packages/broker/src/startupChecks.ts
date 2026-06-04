@@ -8,19 +8,12 @@
 // (failing closed). The check is structural only — no DB/bridge/chain contact.
 // Mirrors startup_checks.py.
 
-import { DEV_BROKER_SIGNING_KEY, DEV_SECRETS_DATABASE_URL, type Settings } from "./config";
-
-// host:port of a Postgres DSN, for the separate-instance check below. Returns the
-// raw DSN if it can't be parsed (so a malformed value can't masquerade as
-// "different host" and slip past the guard).
-function dsnHostPort(dsn: string): string {
-  try {
-    const u = new URL(dsn);
-    return `${u.hostname}:${u.port || "5432"}`;
-  } catch {
-    return dsn;
-  }
-}
+import {
+  DEV_BROKER_SIGNING_KEY,
+  DEV_SECRETS_DATABASE_URL,
+  DEV_VOTER_TAG_MASTER_KEY,
+  type Settings,
+} from "./config";
 
 export class ProductionConfigError extends Error {
   constructor(message: string) {
@@ -50,22 +43,26 @@ export function validateProductionConfig(settings: Settings): ValidationReport {
     );
   }
 
-  // Per-question linkage secrets (ADR-098, §1.4) must live in a SEPARATE Postgres
-  // instance from the envelopes data. RDS backup retention is instance-wide, so a
-  // shared instance silently inherits the main instance's long retention as the
-  // secret's deletion horizon — defeating the whole "destroy at close" guarantee.
+  // The master key that wraps each question's secret at rest (ADR-098, §1.4).
+  // With the dev value, anyone with the source can decrypt the wrapped secrets in
+  // a DB dump and re-link the envelopes table to individuals.
+  if (settings.voterTagMasterKey === DEV_VOTER_TAG_MASTER_KEY) {
+    report.errors.push(
+      "HEARME_BROKER_VOTER_TAG_MASTER_KEY is the documented dev default. It wraps the " +
+        "per-question voter-tag secrets (ADR-098, §1.4); with the dev value, anyone with " +
+        "the source can decrypt them from a DB dump and re-link the envelopes table. " +
+        "Generate a fresh 32-byte key (openssl rand -base64 32) and store it in your " +
+        "secret manager.",
+    );
+  }
+
+  // The voter-tag secret store must be wired to its own (broker-owned) database,
+  // not left at the dev default (ADR-098). It is co-located on the main RDS
+  // instance in production; the wrap above is what protects it at rest there.
   if (settings.secretsDatabaseUrl === DEV_SECRETS_DATABASE_URL) {
     report.errors.push(
-      "HEARME_BROKER_SECRETS_DATABASE_URL is the documented dev default (the shared " +
-        "dev Postgres). The per-question voter-tag secrets (ADR-098) must live in a " +
-        "separate, short-retention instance. Provision one and set this DSN.",
-    );
-  } else if (dsnHostPort(settings.secretsDatabaseUrl) === dsnHostPort(settings.databaseUrl)) {
-    report.errors.push(
-      "HEARME_BROKER_SECRETS_DATABASE_URL shares a host with HEARME_BROKER_DATABASE_URL. " +
-        "The voter-tag secret store must be a SEPARATE Postgres instance with short " +
-        "backup retention — on the same instance, RDS's instance-wide retention becomes " +
-        "the secret's deletion horizon and 'destroy at close' (ADR-098) is cosmetic.",
+      "HEARME_BROKER_SECRETS_DATABASE_URL is the documented dev default. Point it at the " +
+        "broker-owned hearme_secrets database (ADR-098); see docs/DEPLOYMENT.md.",
     );
   }
 

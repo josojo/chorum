@@ -271,6 +271,26 @@ describe("POST /v1/envelopes (uniqueness + aggregate)", () => {
     expect(byQ.get(qa.id)).toBe(await voterTagIfLive(qa.id, uid));
   });
 
+  it("wraps the per-question secret at rest — DB holds ciphertext, not raw s_q (ADR-098)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:wrap-1";
+    const tok = await devToken({ uid });
+    const question = await insertQuestion({});
+    await app.inject({
+      method: "POST",
+      url: "/v1/envelopes",
+      payload: makeEnvelope(tok, { questionId: question.id, answer: "yes", nonce: question.nonce }),
+    });
+    const rows = (await getSecretsDb()`
+      SELECT secret FROM question_secrets WHERE question_id = ${question.id}
+    `) as unknown as Array<{ secret: Buffer }>;
+    // Stored blob is the AES-256-GCM wrap: iv(12) | tag(16) | ciphertext(32) = 60
+    // bytes — NOT a bare 32-byte key. A DB dump without the master key is opaque.
+    expect(rows[0].secret.length).toBe(60);
+    // …yet the broker still round-trips it (unwrap → HMAC) while the secret lives.
+    expect(await voterTagIfLive(question.id, uid)).not.toBeNull();
+  });
+
   it("destroys a question's secret after close + grace, orphaning its answers (ADR-098)", async (ctx) => {
     if (!pg) return ctx.skip();
     const uid = "self:reaper-1";
