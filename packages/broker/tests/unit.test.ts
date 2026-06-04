@@ -95,11 +95,12 @@ describe("voter tag — per-question pseudonym (§1.4)", () => {
 describe("production startup checks", () => {
   it("flags every dev default as an error", () => {
     const report = validateProductionConfig(getSettings()); // all dev defaults
-    // Dev defaults trip: signing key, voter-tag secret, dev DB password,
-    // expose-rejection-reasons.
-    expect(report.errors.length).toBeGreaterThanOrEqual(4);
+    // Dev defaults trip: signing key, voter-tag master key, secrets-DB DSN, dev
+    // DB password, expose-rejection-reasons.
+    expect(report.errors.length).toBeGreaterThanOrEqual(5);
     expect(report.errors.some((e) => e.includes("HEARME_BROKER_SIGNING_KEY"))).toBe(true);
-    expect(report.errors.some((e) => e.includes("HEARME_BROKER_VOTER_TAG_SECRET"))).toBe(true);
+    expect(report.errors.some((e) => e.includes("HEARME_BROKER_VOTER_TAG_MASTER_KEY"))).toBe(true);
+    expect(report.errors.some((e) => e.includes("HEARME_BROKER_SECRETS_DATABASE_URL"))).toBe(true);
     expect(() => enforceProductionConfig(getSettings(), { warn() {}, info() {} })).toThrow(
       ProductionConfigError,
     );
@@ -108,7 +109,10 @@ describe("production startup checks", () => {
   it("accepts a properly secured config", () => {
     const safe = getSettings({
       brokerSigningKey: Buffer.alloc(32, 9).toString("base64"),
-      voterTagSecret: Buffer.alloc(32, 5).toString("base64"),
+      // Fresh master key wrapping the per-question secrets, and the secrets store
+      // wired to its own broker-owned DB (co-located on the main instance) — ADR-098.
+      voterTagMasterKey: Buffer.alloc(32, 5).toString("base64"),
+      secretsDatabaseUrl: "postgres://hearme_broker:s3cret@db:5432/hearme_secrets",
       databaseUrl: "postgres://hearme_broker:s3cret@db:5432/hearme",
       devInsecureRegister: false,
       requireRegistryConfirmation: true,

@@ -11,16 +11,24 @@
 // b"BROKER-SIGNING-KEY-HEARME-DEV32B"
 export const DEV_BROKER_SIGNING_KEY = "QlJPS0VSLVNJR05JTkctS0VZLUhFQVJNRS1ERVYzMkI=";
 
-// Dev-only HMAC key (base64 of 32 bytes) for the per-question voter tag that
-// pseudonymizes the envelopes table (ARCHITECTURE_V0.md §1.4, src/voterTag.ts).
-// Production MUST override HEARME_BROKER_VOTER_TAG_SECRET with a secret-managed
-// key. It is the linkage secret: anyone holding it (plus the registrations
-// nullifier list) can re-link a person's answers, so it must NEVER live in the
-// shared DB. A stable value is required so the broker can reproduce a person's
-// tags for revoke / invalidation; rotating it orphans all existing tags (the v2
-// epoch-rotation mechanism that makes old history unlinkable even to the broker).
+// Dev default for the per-question linkage-secret store DSN (ADR-098). The
+// secrets live in a broker-OWNED database (`hearme_secrets`) so the broker can
+// create/destroy rows there (it has only USAGE, not CREATE, on the shared
+// schema). In production this is co-located on the SAME RDS instance as the main
+// DB (a separate database on it), which is why the at-rest secret is WRAPPED
+// (below) — a dump of that instance then yields only ciphertext.
+export const DEV_SECRETS_DATABASE_URL =
+  "postgres://hearme_broker:hearme_broker_dev@localhost:5432/hearme_secrets";
+
+// Dev-only master key (base64 of 32 bytes) that WRAPS each question's secret
+// `s_q` at rest (AES-256-GCM, questionSecret.ts). Production MUST override
+// HEARME_BROKER_VOTER_TAG_MASTER_KEY with a secret-managed key. Forward secrecy
+// comes from DESTROYING a question's wrapped secret at close, not from this key:
+// the master key can't decrypt a row that's been nulled, so a closed question's
+// answers stay unlinkable even to a holder of the master key (ADR-098). It must
+// stay stable — rotating it orphans the still-live wrapped secrets.
 // b"HEARME-VOTER-TAG-SECRET-DEV-32B!"
-export const DEV_VOTER_TAG_SECRET = "SEVBUk1FLVZPVEVSLVRBRy1TRUNSRVQtREVWLTMyQiE=";
+export const DEV_VOTER_TAG_MASTER_KEY = "SEVBUk1FLVZPVEVSLVRBRy1TRUNSRVQtREVWLTMyQiE=";
 
 export interface Settings {
   databaseUrl: string;
@@ -58,10 +66,24 @@ export interface Settings {
   // DelegationToken it issues at registration. MUST be overridden in production.
   brokerSigningKey: string;
 
-  // HMAC key (base64) for the per-question voter tag (§1.4, src/voterTag.ts).
-  // MUST be overridden in production; it is the linkage secret and must never be
-  // stored in the shared DB.
-  voterTagSecret: string;
+  // Per-question linkage-secret store (ADR-098, §1.4). A broker-owned database
+  // (`hearme_secrets`) holding the `question_secrets` table; co-located on the
+  // main RDS instance in production (secretsDb.ts).
+  secretsDatabaseUrl: string;
+
+  // Master key (base64, 32 bytes) that wraps each question's secret at rest
+  // (AES-256-GCM, §1.4 / ADR-098). MUST be overridden in production. A DB-only
+  // dump without it yields ciphertext; destroying a wrapped secret at close is
+  // what makes a closed question unlinkable even to a holder of this key.
+  voterTagMasterKey: string;
+
+  // Voter-tag lifecycle (ADR-098). A question's linkage secret is destroyed
+  // `voterTagGraceSeconds` after it closes (the grace window covers in-flight
+  // revocations / aggregate recompute / disputes); the reaper sweeps every
+  // `voterTagReapIntervalSeconds`. After destruction the question's answers are
+  // unlinkable even to the broker.
+  voterTagGraceSeconds: number;
+  voterTagReapIntervalSeconds: number;
 
   // DANGER — testing only. When true, mounts POST /v1/dev/register, which mints
   // a DelegationToken for a SYNTHETIC identity WITHOUT any Self proof or bridge
@@ -143,7 +165,11 @@ export function getSettings(overrides: Partial<Settings> = {}): Settings {
     selfRevocationCursorName: envStr(`${P}SELF_REVOCATION_CURSOR_NAME`, "self-revocations-v1"),
 
     brokerSigningKey: envStr(`${P}SIGNING_KEY`, DEV_BROKER_SIGNING_KEY),
-    voterTagSecret: envStr(`${P}VOTER_TAG_SECRET`, DEV_VOTER_TAG_SECRET),
+
+    secretsDatabaseUrl: envStr(`${P}SECRETS_DATABASE_URL`, DEV_SECRETS_DATABASE_URL),
+    voterTagMasterKey: envStr(`${P}VOTER_TAG_MASTER_KEY`, DEV_VOTER_TAG_MASTER_KEY),
+    voterTagGraceSeconds: envNum(`${P}VOTER_TAG_GRACE_SECONDS`, 604_800), // 7 days
+    voterTagReapIntervalSeconds: envNum(`${P}VOTER_TAG_REAP_INTERVAL_SECONDS`, 3_600),
 
     devInsecureRegister: envBool(`${P}DEV_INSECURE_REGISTER`, false),
     productionMode: envBool(`${P}PRODUCTION_MODE`, false),

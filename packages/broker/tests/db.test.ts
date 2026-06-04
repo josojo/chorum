@@ -17,7 +17,12 @@ import {
   ASKER_SESSION_TTL_MS,
   issueAskerSession,
 } from "../src/verify/askerSession";
-import { voterTagFor } from "../src/voterTag";
+import { voterTagIfLive } from "../src/voterTag";
+import {
+  destroyExpiredQuestionSecrets,
+  getQuestionSecretKeyIfLive,
+} from "../src/questionSecret";
+import { getSecretsDb } from "../src/secretsDb";
 import { startPg, truncateAll, type PgHandle } from "./pg";
 import { agentKeyB64, makeEnvelope, makeRevocation, makeEnrollment, makeToken, mockVerifyProof } from "./helpers";
 import * as q from "../src/queries";
@@ -261,8 +266,63 @@ describe("POST /v1/envelopes (uniqueness + aggregate)", () => {
     // …and the SAME person's two answers carry UNRELATED tags, so the table
     // cannot be grouped back into one person's answer history.
     expect(byQ.get(qa.id)).not.toBe(byQ.get(qb.id));
-    // The tag is the per-question HMAC, reproducible only with the linkage secret.
-    expect(byQ.get(qa.id)).toBe(voterTagFor(qa.id, uid));
+    // The tag is the per-question HMAC, reproducible only with that question's
+    // live linkage secret (ADR-098).
+    expect(byQ.get(qa.id)).toBe(await voterTagIfLive(qa.id, uid));
+  });
+
+  it("wraps the per-question secret at rest — DB holds ciphertext, not raw s_q (ADR-098)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:wrap-1";
+    const tok = await devToken({ uid });
+    const question = await insertQuestion({});
+    await app.inject({
+      method: "POST",
+      url: "/v1/envelopes",
+      payload: makeEnvelope(tok, { questionId: question.id, answer: "yes", nonce: question.nonce }),
+    });
+    const rows = (await getSecretsDb()`
+      SELECT secret FROM question_secrets WHERE question_id = ${question.id}
+    `) as unknown as Array<{ secret: Buffer }>;
+    // Stored blob is the AES-256-GCM wrap: iv(12) | tag(16) | ciphertext(32) = 60
+    // bytes — NOT a bare 32-byte key. A DB dump without the master key is opaque.
+    expect(rows[0].secret.length).toBe(60);
+    // …yet the broker still round-trips it (unwrap → HMAC) while the secret lives.
+    expect(await voterTagIfLive(question.id, uid)).not.toBeNull();
+  });
+
+  it("destroys a question's secret after close + grace, orphaning its answers (ADR-098)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:reaper-1";
+    const tok = await devToken({ uid });
+    const question = await insertQuestion({});
+    await app.inject({
+      method: "POST",
+      url: "/v1/envelopes",
+      payload: makeEnvelope(tok, { questionId: question.id, answer: "yes", nonce: question.nonce }),
+    });
+    // While the secret is live the broker can still reproduce the tag.
+    expect(await voterTagIfLive(question.id, uid)).not.toBeNull();
+
+    // Simulate the question having closed long ago, then run the reaper with no
+    // grace: the secret is destroyed (NULLed), not the envelope.
+    await getSecretsDb()`
+      UPDATE question_secrets SET closes_at = now() - make_interval(days => 1)
+      WHERE question_id = ${question.id}
+    `;
+    const destroyed = await destroyExpiredQuestionSecrets(0);
+    expect(destroyed).toBe(1);
+
+    // The secret is gone: the tag can no longer be reproduced from the nullifier,
+    // so the answer is cryptographically orphaned from the identity — even the
+    // broker cannot re-link it.
+    expect(await getQuestionSecretKeyIfLive(question.id)).toBeNull();
+    expect(await voterTagIfLive(question.id, uid)).toBeNull();
+    // The envelope row itself is untouched (the published aggregate stays intact).
+    const rows = (await db.execute(
+      sql`SELECT count(*)::int AS n FROM envelopes WHERE question_id = ${question.id}`,
+    )) as unknown as Array<{ n: number }>;
+    expect(Number(rows[0].n)).toBe(1);
   });
 
   it("stores no_signal and it does not count as signal (§1.14 / §15.4)", async (ctx) => {

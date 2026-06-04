@@ -20,7 +20,7 @@ import { isScopeEligible } from "../eligibility";
 import { type EnvelopeAck, RejectionReason, envelopeSchema } from "../models";
 import { VerifyDelegationError, verifyDelegation } from "../verify/delegation";
 import { VerifyEnvelopeError, verifyAgentSignature } from "../verify/envelope";
-import { voterTagFor } from "../voterTag";
+import { voterTagForInsert } from "../voterTag";
 
 function ack(accepted: boolean, reason?: RejectionReason): EnvelopeAck {
   const settings = getSettings();
@@ -105,10 +105,19 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
     }
 
     // The envelope is stored under a per-question pseudonym, not the raw nullifier
-    // (§1.4): voter_tag = HMAC(secret, question_id | nullifier). Deterministic, so
-    // the composite PK still rejects a second answer from the same human to the
-    // same question; unlinkable, so the answers table is no cross-question join key.
-    const voterTag = voterTagFor(envelope.question_id, verified.uniqueIdentifier);
+    // (§1.4): voter_tag = HMAC(s_q, question_id | nullifier), where s_q is the
+    // question's own secret, lazily minted here on first answer (ADR-098).
+    // Deterministic, so the composite PK still rejects a second answer from the
+    // same human to the same question; unlinkable, so the answers table is no
+    // cross-question join key. Null only if the secret was already destroyed
+    // (closed past grace) — fail closed rather than store an unkeyed envelope
+    // (unreachable: step 6a already rejected closed/expired questions).
+    const voterTag = await voterTagForInsert(
+      envelope.question_id,
+      verified.uniqueIdentifier,
+      question.closesAt,
+    );
+    if (voterTag === null) return ack(false, RejectionReason.QUESTION_CLOSED);
 
     // Steps 7-8 in a transaction so aggregates + per-person counters can't drift
     // from envelopes.

@@ -53,6 +53,11 @@ services:
       # does not run it directly — 02-roles.sh applies it via `psql -f`.
       - ./db/init/roles.sql:/hearme/roles.sql:ro
       - ./db/init/03-seed.sql:/docker-entrypoint-initdb.d/03-seed.sql:ro
+      # 04: the broker-owned `hearme_secrets` DB for per-question voter-tag
+      # secrets (ADR-098) — a second DB the broker owns (it has only USAGE on
+      # `hearme`). In prod the same DB is co-located on the RDS instance
+      # (bootstrap-rds.sh); the secret is wrapped at rest under the master key.
+      - ./db/init/04-secrets-db.sh:/docker-entrypoint-initdb.d/04-secrets-db.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hearme_admin -d hearme"]
       interval: 3s
@@ -94,8 +99,11 @@ services:
       HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "0"
       # Dev signing key for the broker-issued DelegationToken. OVERRIDE in prod.
       HEARME_BROKER_SIGNING_KEY: QlJPS0VSLVNJR05JTkctS0VZLUhFQVJNRS1ERVYzMkI=
-      # Dev linkage secret for the per-question voter tag (§1.4). OVERRIDE in prod.
-      HEARME_BROKER_VOTER_TAG_SECRET: SEVBUk1FLVZPVEVSLVRBRy1TRUNSRVQtREVWLTMyQiE=
+      # Per-question voter-tag secret store (ADR-098, §1.4): a broker-owned DB
+      # (04-secrets-db.sh), co-located on the same instance in prod. Each secret
+      # is wrapped at rest under the master key below. OVERRIDE the key in prod.
+      HEARME_BROKER_SECRETS_DATABASE_URL: postgres://hearme_broker:hearme_broker_dev@postgres:5432/hearme_secrets
+      HEARME_BROKER_VOTER_TAG_MASTER_KEY: SEVBUk1FLVZPVEVSLVRBRy1TRUNSRVQtREVWLTMyQiE=
       # Optional production hook: poll Self on-chain identity invalidation/update
       # events and revoke matching Hearme registrations + accepted votes.
       HEARME_BROKER_SELF_REVOCATION_LISTENER_ENABLED: "0"

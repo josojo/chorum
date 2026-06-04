@@ -63,7 +63,14 @@ services:
       HEARME_BROKER_EXPOSE_REJECTION_REASONS: "0"
       HEARME_BROKER_DEV_INSECURE_REGISTER: "0"
       HEARME_BROKER_SIGNING_KEY: ${HEARME_PROD_BROKER_SIGNING_KEY:?set in prod .env}
-      HEARME_BROKER_VOTER_TAG_SECRET: ${HEARME_PROD_BROKER_VOTER_TAG_SECRET:?set in prod .env}
+      # Per-question voter-tag secret store (ADR-098): a broker-owned
+      # `hearme_secrets` database, co-located on the SAME RDS instance as the main
+      # DB. At-rest protection is the AES-256-GCM wrap under the master key below
+      # (a dump of the instance yields only ciphertext); the unlink guarantee comes
+      # from destroying the wrapped secret at close. bootstrap-rds.sh creates the
+      # `hearme_secrets` DB on the instance.
+      HEARME_BROKER_SECRETS_DATABASE_URL: postgres://hearme_broker:${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme_secrets?sslmode=require
+      HEARME_BROKER_VOTER_TAG_MASTER_KEY: ${HEARME_PROD_BROKER_VOTER_TAG_MASTER_KEY:?set in prod .env}
 
   self-bridge:
     extends:

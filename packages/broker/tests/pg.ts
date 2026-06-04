@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { sql } from "drizzle-orm";
 
 import { type Db, closeDb, getDb, initDb } from "../src/db";
+import { closeSecretsDb, initSecretsDb } from "../src/secretsDb";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = join(here, "..", "..", "web", "drizzle", "migrations");
@@ -34,12 +35,17 @@ export async function startPg(): Promise<PgHandle> {
   const container = await new PostgreSqlContainer("postgres:16").start();
   const dsn = container.getConnectionUri();
   await closeDb();
+  await closeSecretsDb();
   const db = await initDb(dsn);
   // drizzle-orm splits on `;`-less statements oddly; run the whole file raw.
   await db.execute(sql.raw(schemaSql()));
+  // The secrets store (ADR-098) is a separate instance in prod; in tests it shares
+  // the container — initSecretsDb creates the question_secrets table here.
+  await initSecretsDb(dsn);
   return {
     db,
     stop: async () => {
+      await closeSecretsDb();
       await closeDb();
       await container.stop();
     },
@@ -51,7 +57,8 @@ export async function truncateAll(db: Db): Promise<void> {
   await db.execute(
     sql.raw(
       "TRUNCATE envelopes, aggregates, revocations, registrations, asker_admins, " +
-        "self_nullifier_invalidations, self_chain_cursors, questions, askers RESTART IDENTITY CASCADE",
+        "self_nullifier_invalidations, self_chain_cursors, question_secrets, questions, askers " +
+        "RESTART IDENTITY CASCADE",
     ),
   );
 }
