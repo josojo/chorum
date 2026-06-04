@@ -1,0 +1,70 @@
+# Optional observability stack (issue #101): Prometheus + Alertmanager +
+# blackbox-exporter + Grafana.
+#
+# Run it as an OVERLAY on the app stack so the monitoring containers share the
+# app network and can scrape services by their compose hostname (broker:8000,
+# self-bridge:8787, ...):
+#
+#   # local / staging:
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+#   # prod:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.monitoring.yml up -d
+#
+# Every UI binds to LOOPBACK only — like every other service (see the note in
+# docker-compose.yml) — and the Caddyfile deliberately has no route to them, so
+# nothing here is internet-reachable. Reach the UIs over an SSH tunnel, e.g.
+#   ssh -L 9090:localhost:9090 -L 3001:localhost:3001 <box>
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: hearme-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: hearme-alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+
+  # Probes service /healthz endpoints for the liveness alerts. No published port
+  # — Prometheus reaches it internally at blackbox-exporter:9115.
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: hearme-blackbox-exporter
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: hearme-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      # Default dev password is "admin"; override in prod via the env / SSM.
+      GF_SECURITY_ADMIN_PASSWORD: ${HEARME_GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:

@@ -94,6 +94,13 @@ export interface Settings {
   // any documented dev default is still set.
   productionMode: boolean;
 
+  // Observability (issue #101). logLevel tunes the pino logger; metricsEnabled
+  // gates the Prometheus GET /metrics endpoint (default on — it is internal-only,
+  // not routed by Caddy, see observability/metrics.ts). Sentry is configured via the
+  // conventional SENTRY_* env vars (see observability/sentry.ts), not here.
+  logLevel: string;
+  metricsEnabled: boolean;
+
   // Per-client rate limiting on write endpoints (ratelimit.ts). Set any limit
   // to 0 to disable that rule.
   ratelimitEnabled: boolean;
@@ -173,6 +180,9 @@ export function getSettings(overrides: Partial<Settings> = {}): Settings {
 
     devInsecureRegister: envBool(`${P}DEV_INSECURE_REGISTER`, false),
     productionMode: envBool(`${P}PRODUCTION_MODE`, false),
+
+    logLevel: envStr(`${P}LOG_LEVEL`, "info"),
+    metricsEnabled: envBool(`${P}METRICS_ENABLED`, true),
 
     ratelimitEnabled: envBool(`${P}RATELIMIT_ENABLED`, true),
     ratelimitRegisterPerHour: envNum(`${P}RATELIMIT_REGISTER_PER_HOUR`, 3),

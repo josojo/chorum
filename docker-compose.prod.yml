@@ -71,6 +71,12 @@ services:
       # `hearme_secrets` DB on the instance.
       HEARME_BROKER_SECRETS_DATABASE_URL: postgres://hearme_broker:${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme_secrets?sslmode=require
       HEARME_BROKER_VOTER_TAG_MASTER_KEY: ${HEARME_PROD_BROKER_VOTER_TAG_MASTER_KEY:?set in prod .env}
+      # Error tracking (issue #101). OPTIONAL and env-gated: empty DSN = no-op, so
+      # this is safe to leave unset. Set HEARME_PROD_SENTRY_DSN in the .env (SSM)
+      # to turn it on. SENTRY_RELEASE pins errors to the deployed git SHA (§7).
+      SENTRY_DSN: ${HEARME_PROD_SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: prod
+      SENTRY_RELEASE: ${HEARME_DEPLOY_SHA:-}
 
   self-bridge:
     extends:

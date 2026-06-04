@@ -1,0 +1,72 @@
+# Alerting rules for the hearme stack (issue #101). Evaluated by Prometheus,
+# routed to Alertmanager. Two families: liveness (is it up?) and rate (is it
+# behaving?). Thresholds are v0 starting points — tune against real traffic.
+groups:
+  - name: hearme-liveness
+    rules:
+      # The broker's /metrics is unscrapeable — process down, crashed, or wedged.
+      - alert: BrokerScrapeDown
+        expr: up{job="broker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Broker /metrics unreachable"
+          description: "Prometheus cannot scrape broker:8000/metrics for 2m — the broker is down or unhealthy."
+
+      - alert: BrokerHealthzFailing
+        expr: probe_success{instance="http://broker:8000/healthz"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Broker /healthz failing"
+          description: "GET /healthz on the broker has returned non-2xx for 2m."
+
+      # The self-bridge has no /metrics yet, so its liveness rides on the
+      # blackbox probe. It is on the critical path for POST /v1/register.
+      - alert: SelfBridgeHealthzFailing
+        expr: probe_success{instance="http://self-bridge:8787/healthz"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Self-bridge /healthz failing"
+          description: "GET /healthz on the self-bridge has returned non-2xx for 2m — registration depends on it."
+
+  - name: hearme-broker-rates
+    rules:
+      # Error-rate spike on the answer path: most envelopes are being rejected.
+      # clamp_min keeps the ratio defined when there is little/no traffic.
+      - alert: BrokerEnvelopeRejectionSpike
+        expr: |
+          sum(rate(hearme_broker_envelopes_total{outcome="rejected"}[5m]))
+            / clamp_min(sum(rate(hearme_broker_envelopes_total[5m])), 0.001) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Majority of envelopes rejected"
+          description: 'Over 50% of POST /v1/envelopes rejected for 10m — verification-pipeline pressure. Break down by hearme_broker_rejections_total{route="envelopes"}.'
+
+      # Error-rate spike on the registration path.
+      - alert: BrokerRegisterRejectionSpike
+        expr: |
+          sum(rate(hearme_broker_register_total{outcome="rejected"}[5m]))
+            / clamp_min(sum(rate(hearme_broker_register_total[5m])), 0.001) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Majority of registrations rejected"
+          description: 'Over 50% of POST /v1/register rejected for 10m. Break down by hearme_broker_rejections_total{route="register"} (e.g. self_bridge_error vs self_proof_invalid).'
+
+      # Sustained rate-limit pressure (429s) — abuse or a misbehaving client.
+      - alert: BrokerRateLimitPressure
+        expr: sum(rate(hearme_broker_ratelimited_total[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sustained 429 rate"
+          description: "The broker is returning >1 rate-limited (429) response/sec averaged over 5m, for 10m. Inspect hearme_broker_ratelimited_total by route."

@@ -54,6 +54,9 @@ All settings are read from environment variables prefixed `HEARME_BROKER_`
 | `HEARME_BROKER_PRODUCTION_MODE`          | `false`                                                                | Refuse to boot if any dev default is still set (`src/startupChecks.ts`). |
 | `HEARME_BROKER_DEV_INSECURE_REGISTER`    | `false`                                                                | **Testing only.** Mounts `POST /v1/dev/register` (synthetic identity, no Self proof). |
 | `HEARME_BROKER_RATELIMIT_*`              | enabled; 3/h register, 30/min envelopes, 10/min revoke                 | Per-client sliding-window limits (`src/ratelimit.ts`). |
+| `HEARME_BROKER_LOG_LEVEL`                | `info`                                                                 | pino level for the structured JSON logger (`src/logging.ts`). |
+| `HEARME_BROKER_METRICS_ENABLED`          | `true`                                                                 | Serve Prometheus metrics at `GET /metrics` (internal-only; `src/observability/metrics.ts`). |
+| `SENTRY_DSN`                             | — (unset)                                                              | Enable Sentry error tracking. Unset = no-op. Companions: `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE` (`src/observability/sentry.ts`). |
 | `HEARME_BROKER_SELF_REVOCATION_LISTENER_ENABLED` | `false`                                                       | Poll Self on-chain invalidation/update events and revoke matching Hearme identities/votes. |
 | `HEARME_BROKER_SELF_REVOCATION_RPC_URL`  | —                                                                      | JSON-RPC endpoint for the chain carrying Self invalidation events. |
 | `HEARME_BROKER_SELF_REVOCATION_CONTRACT_ADDRESS` | —                                                              | Self contract address emitting invalidation/update events. |

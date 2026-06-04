@@ -1,0 +1,11 @@
+# Auto-provision the Prometheus datasource so Grafana is usable on first boot
+# (issue #101). Dashboards are intentionally not provisioned in v0 — explore the
+# hearme_broker_* series directly, or import a dashboard later.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

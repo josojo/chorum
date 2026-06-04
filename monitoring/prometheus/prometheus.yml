@@ -1,0 +1,47 @@
+# Prometheus scrape + alerting config for the hearme stack (issue #101).
+#
+# Loaded by the `prometheus` service in docker-compose.monitoring.yml, which runs
+# as an overlay on the app stack so these targets resolve by compose hostname.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # The broker's native Prometheus endpoint (prom-client). Carries the
+  # hearme_broker_* counters (register/envelope/revoke rate, rejection reasons,
+  # 429s) plus default Node process metrics.
+  - job_name: broker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["broker:8000"]
+
+  # Liveness probes via blackbox-exporter. This covers services that don't (yet)
+  # expose /metrics — notably self-bridge — so "broker/self-bridge down" alerts
+  # work today. Follow-up PRs add native /metrics for web / self-bridge /
+  # classifier and they get their own scrape job above.
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://broker:8000/healthz
+          - http://self-bridge:8787/healthz
+          - http://web:3000/api/healthz
+    relabel_configs:
+      # Move the target URL into the probe's ?target= param, keep it as the
+      # series `instance` label, then point the scrape at the exporter itself.
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
