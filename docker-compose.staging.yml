@@ -5,8 +5,13 @@
 #
 # Required values live in the host's gitignored .env file. Compose fails fast
 # if any are missing, so staging cannot silently boot with committed dev
-# passwords, the dev broker signing key, mock passports, or disabled registry
-# confirmation.
+# passwords, the dev broker signing key, or disabled registry confirmation.
+#
+# Identity posture: staging deliberately runs Self in MOCK-PASSPORT mode (see the
+# self-bridge block) so verified agents can onboard without a real document and
+# populate staging with real data. The broker still verifies every proof and
+# keeps REQUIRE_REGISTRY_CONFIRMATION=1 (against Celo Alfajores testnet). The
+# demo seed is shadowed out (see the postgres block) so staging starts empty.
 services:
   postgres:
     environment:
@@ -15,6 +20,15 @@ services:
       HEARME_DB_WEB_PASSWORD: ${HEARME_STAGING_POSTGRES_WEB_PASSWORD:?set in staging .env}
       HEARME_DB_BROKER_PASSWORD: ${HEARME_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}
       HEARME_DB_CLASSIFIER_PASSWORD: ${HEARME_STAGING_POSTGRES_CLASSIFIER_PASSWORD:?set in staging .env}
+    # Start staging EMPTY: shadow the demo seed with a no-op at the same
+    # container target (compose volume-merge keys on the mount path, so this
+    # wins over the base mount of db/init/03-seed.sql). All data on staging is
+    # then real — produced by verified agents that onboard with a Self mock
+    # passport (see self-bridge below). Mirrors the prod no-seed posture.
+    # NOTE: only takes effect on a FRESH volume; an existing volume keeps its
+    # rows until `docker compose down -v` recreates it.
+    volumes:
+      - ./db/init.staging/03-seed.sql:/docker-entrypoint-initdb.d/03-seed.sql:ro
 
   broker:
     environment:
@@ -35,11 +49,19 @@ services:
     environment:
       # The callback the Self app posts proofs to MUST be public HTTPS.
       SELF_ENDPOINT: ${HEARME_STAGING_SELF_ENDPOINT:?set in staging .env}
-      SELF_ENDPOINT_TYPE: https
-      # Public staging should exercise the real identity path. Use an isolated
-      # non-public dev stack if mock-passport onboarding is needed.
-      SELF_MOCK_PASSPORT: "0"
-      SELF_DEV_MODE: "0"
+      # Staging exercises the REAL register->verify->envelope pipeline, but with
+      # Self MOCK passports so verified agents can onboard from the Self app
+      # without a real document. The proof is still verified (broker -> bridge ->
+      # @selfxyz/core); only the passport is mock. This is what lets us populate
+      # staging with real, verified-agent data and rehearse data management
+      # before prod. Prod (docker-compose.prod.yml) keeps these at 0 (mainnet).
+      SELF_ENDPOINT_TYPE: staging_https
+      SELF_MOCK_PASSPORT: "1"
+      SELF_DEV_MODE: "1"
+      # A mock passport's identity commitment lives on Celo Alfajores testnet.
+      # Without this pin the SDK defaults the QR to chainID 42220 (mainnet) for
+      # endpointType=staging_https, so the scan fails on a network/root mismatch.
+      SELF_CHAIN_ID: "44787"
 
   migrator:
     environment:
