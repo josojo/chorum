@@ -48,6 +48,10 @@ services:
       - ./db/init/00-extensions.sql:/docker-entrypoint-initdb.d/00-extensions.sql:ro
       - ./packages/web/drizzle/migrations/0000_init.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./db/init/02-roles.sh:/docker-entrypoint-initdb.d/02-roles.sh:ro
+      # The role/grant body shared with the managed-Postgres path
+      # (scripts/bootstrap-rds.sh). Mounted OUTSIDE initdb.d so the entrypoint
+      # does not run it directly — 02-roles.sh applies it via `psql -f`.
+      - ./db/init/roles.sql:/hearme/roles.sql:ro
       - ./db/init/03-seed.sql:/docker-entrypoint-initdb.d/03-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U hearme_admin -d hearme"]

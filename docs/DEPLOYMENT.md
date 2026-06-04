@@ -103,11 +103,18 @@ scripts/render-secrets-env.sh prod \
 ssh -i ~/.ssh/hearme-prod.pem ubuntu@<prod-ip> bash -se <<'EOF'
   cd ~/hearme && git pull
   export HEARME_DEPLOY_SHA="$(git rev-parse --short=12 HEAD)"
-  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
+  docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
   scripts/healthgate.sh                 # fail here = do NOT finalize; rollback stays valid
   scripts/deploy-finalize.sh prod       # records .deploy-state, prunes stale images
 EOF
 ```
+
+`docker-compose.prod.yml` is a **standalone** file (it `extends` the base
+services internally), so prod uses a single `-f` — not the `-f base -f overlay`
+pair staging uses. Prod's database is **AWS RDS**, not an on-box container, so
+the prod file defines no `postgres` service and the DSNs target
+`${HEARME_PROD_POSTGRES_HOST}`. First-time RDS provisioning + bootstrap is §4;
+SHA-pinned images / rollback (§7) are unchanged.
 
 **IAM** — the principal that renders secrets needs, scoped to its env's path:
 
@@ -176,30 +183,122 @@ critical path for the entire `POST /v1/register` flow.
 
 ---
 
-## 4. Backups + retention
+## 4. Database: managed Postgres (RDS) + backups
 
-The shared Postgres holds the entire system of record: registrations,
-envelopes, aggregates. There is no other replica.
+Prod's Postgres holds the entire system of record: `registrations`,
+`envelopes`, `aggregates`. Losing `registrations` is **irreversible** — it
+binds each Self nullifier to an agent key, so a wipe forces every user to
+re-scan their passport (a relaunch, not a recovery). Durability is therefore
+not optional, and prod runs the database on **AWS RDS**, not an on-box
+container, precisely so backups are automated and stored off-box.
 
-A minimal nightly backup script ships at `scripts/backup-db.sh` (set
-`BACKUP_DIR` and a cron entry; `pg_dump --format=custom` into
-`$BACKUP_DIR/hearme-YYYYMMDD.dump`). Pair it with whatever offsite
-replication your environment uses (S3 lifecycle, restic, borg); the script
-deliberately does **not** ship the offsite step, because it is the part you
-must tailor.
+> Staging and local dev still use the container Postgres in
+> `docker-compose.yml`. Only **prod** points at RDS — that's why
+> `docker-compose.prod.yml` is a standalone file with no `postgres` service
+> (§1.1).
 
-Restore drill: confirm at least once before going live that
+### 4.1 What RDS gives you (vs. the old on-box volume)
+
+| | On-box container (old) | RDS (now) |
+|---|---|---|
+| Backups | a cron you must remember to add | **automated daily**, managed |
+| Off-box copy | a step you had to tailor yourself | **always** (AWS-managed S3) |
+| Recovery point | last nightly dump → up to 24h loss | **point-in-time, to the second** within the retention window |
+| Instance dies | total loss | restore from automated backup/snapshot |
+
+`scripts/provision-rds.sh` creates the instance: single-AZ `db.t4g.micro`,
+encrypted, **not publicly accessible**, deletion-protection on, **7-day**
+automated backups + point-in-time recovery (PITR). Single-AZ keeps cost low and
+already covers the durability requirement; Multi-AZ (HA standby + auto-failover)
+is a separate availability decision that does not change the backup story.
+
+### 4.2 First-time provisioning + bootstrap
+
+One-time, from a workstation with AWS creds (`rds:CreateDBInstance`, and SSM
+read/write on `/hearme/prod/*`):
 
 ```sh
-pg_restore -d hearme-restored "$BACKUP_DIR/hearme-YYYY-MM-DD.dump"
+# 0. Master password must already be in SSM (push-secrets-to-ssm.sh prod ...).
+# 1. Create the instance and record its endpoint in SSM as HEARME_PROD_POSTGRES_HOST.
+scripts/provision-rds.sh \
+  --subnet-group hearme-db-subnets \   # DB subnet group over the VPC's private subnets
+  --security-group sg-0abc123 \        # SG that allows 5432 FROM the EC2 box's SG
+  --push-ssm
+
+# 2. On the prod box: render the .env (now incl. HEARME_PROD_POSTGRES_HOST) and
+#    bootstrap the empty DB — pgcrypto, schema (migrator), roles + grants.
+scripts/render-secrets-env.sh prod | ssh prod 'umask 077; cat > ~/hearme/.env'
+ssh prod 'cd ~/hearme && git pull && scripts/bootstrap-rds.sh'
 ```
 
-produces a DB that `scripts/verify-db.sh` accepts.
+`bootstrap-rds.sh` is idempotent and applies the **same** role/grant boundary as
+local dev — both run `db/init/roles.sql`, which `scripts/verify-db.sh` guards in
+CI. After it succeeds, bring the stack up normally (§1.1).
 
-Retention: nothing prunes envelopes today. At v0 scale that is fine; once
-the table exceeds the working-set RAM you will want a partitioning or
-archival step. Aggregates are derived (the self-revocations path
-recomputes them after a delete), so envelopes are the only must-keep.
+### 4.3 Cutover from an existing on-box database
+
+If the prod box is already live on the container Postgres, migrate its rows into
+RDS **before** switching, or you re-create exactly the data-loss risk this move
+exists to remove:
+
+```sh
+# On the prod box, with the old stack still running:
+docker exec hearme-postgres pg_dump --format=custom --no-owner --no-privileges \
+  -U hearme_admin hearme > /tmp/cutover.dump
+
+# After provision + bootstrap (4.2) created the schema + roles on RDS, load the
+# DATA only (schema already exists; --no-owner/--no-privileges keeps it portable):
+docker run --rm --network host -e PGPASSWORD="$HEARME_PROD_POSTGRES_ADMIN_PASSWORD" \
+  -v /tmp/cutover.dump:/cutover.dump:ro postgres:16 \
+  pg_restore --no-owner --no-privileges --data-only --disable-triggers \
+    -h "$HEARME_PROD_POSTGRES_HOST" -U hearme_admin -d hearme /cutover.dump
+
+# Sanity-check row counts match, THEN switch the deploy to the RDS file (§1.1):
+HEARME_DEPLOY_SHA="$(git rev-parse --short=12 HEAD)" \
+  docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+shred -u /tmp/cutover.dump
+```
+
+`--remove-orphans` retires the old `hearme-postgres` container. Keep its Docker
+volume (`hearme-pgdata`) until you've confirmed RDS is serving correctly — it is
+your rollback.
+
+### 4.4 Restore drill (do this once before launch)
+
+Managed backups you have never restored are untested backups. RDS restores to a
+**new** instance (it never overwrites the source), which is exactly what you
+want for a drill:
+
+```sh
+# Point-in-time restore to a throwaway instance:
+aws rds restore-db-instance-to-point-in-time \
+  --source-db-instance-identifier hearme-prod \
+  --target-db-instance-identifier hearme-restore-drill \
+  --use-latest-restorable-time \
+  --db-subnet-group-name hearme-db-subnets \
+  --vpc-security-group-ids sg-0abc123 --no-publicly-accessible
+aws rds wait db-instance-available --db-instance-identifier hearme-restore-drill
+```
+
+Then point a psql at the restored endpoint and confirm the schema + the 8 tables
+are present and row counts look right (the managed-Postgres equivalent of
+`scripts/verify-db.sh`, which itself targets the local container). Delete the
+drill instance afterwards (`aws rds delete-db-instance --skip-final-snapshot`).
+
+### 4.5 Logical dumps (`scripts/backup-db.sh`) — now optional
+
+RDS owns durability, so `scripts/backup-db.sh` is no longer the critical path
+and does **not** need a cron. It remains useful for ad-hoc, portable
+`pg_dump --format=custom` exports — pre-migration snapshots, cross-account
+copies, or a local restore drill. Run it against the RDS endpoint with the
+standard libpq env vars when you want one.
+
+### 4.6 Retention
+
+Nothing prunes `envelopes` today. At v0 scale that is fine; once the table
+exceeds the working-set RAM you will want a partitioning or archival step.
+Aggregates are derived (the self-revocations path recomputes them after a
+delete), so envelopes are the only must-keep.
 
 ---
 
@@ -246,8 +345,8 @@ Run through this before flipping the public DNS:
 - [ ] `SELF_CELO_RPC_URL` set and a hand `curl` against it succeeds.
 - [ ] Caddy or your reverse proxy sets `X-Real-IP` for both broker and web
       (rate limit cannot otherwise distinguish clients).
-- [ ] `scripts/backup-db.sh` is scheduled, and a restore has been tested
-      against a throwaway DB.
+- [ ] Prod DB is on RDS (`scripts/provision-rds.sh`), with automated backups +
+      PITR on, and the restore drill (§4.4) has been performed once.
 - [ ] Broker `GET /healthz` and web `GET /api/healthz` are monitored.
 - [ ] A rollback has been rehearsed once: `scripts/rollback.sh` returns the box
       to the previous good SHA and the health gate passes (§7).

@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Nightly Postgres backup — minimal, cron-friendly.
+# Ad-hoc logical Postgres backup — minimal, cron-friendly.
 #
-# Schedules `pg_dump --format=custom` into $BACKUP_DIR with a date-stamped
+# NOTE: prod durability is owned by AWS RDS (automated backups + point-in-time
+# recovery; see docs/DEPLOYMENT.md §4). This script is NOT the prod backup of
+# record and does not need a cron. Keep it for portable, ad-hoc dumps —
+# pre-migration snapshots, cross-account copies, or a local restore drill — by
+# pointing the libpq env vars below at whichever instance you want.
+#
+# Writes `pg_dump --format=custom` into $BACKUP_DIR with a date-stamped
 # filename, then prunes anything older than $BACKUP_KEEP_DAYS (default 14).
-# Deliberately does NOT ship the offsite step (S3 sync, restic, borg); that
-# belongs in the operator's environment.
 #
 # Required env:
 #   BACKUP_DIR         where to drop the dump (e.g. /var/lib/hearme-backups)
