@@ -25,6 +25,7 @@ venv/
 .deploy-state
 
 PROD.md
+docs/ADDING_SSM_SECRET.md
 
 # OS
 .DS_Store
