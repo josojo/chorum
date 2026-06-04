@@ -129,7 +129,10 @@ pub fn report(settings: &Settings) -> CostReport {
     let Some(job_id) = resolve_job_id(&jobs_path) else {
         return CostReport::unavailable(
             settings,
-            format!("could not resolve cron job '{JOB_NAME}' in {}", jobs_path.display()),
+            format!(
+                "could not resolve cron job '{JOB_NAME}' in {}",
+                jobs_path.display()
+            ),
         );
     };
 
@@ -142,8 +145,7 @@ pub fn report(settings: &Settings) -> CostReport {
 /// Read (read-only) the priced cron sessions for `job_id` from `state_db`.
 fn collect_runs(state_db: &Path, job_id: &str) -> Result<Vec<RunCost>, rusqlite::Error> {
     // READ-ONLY so we never lock or mutate Hermes' live DB, and never create it.
-    let conn =
-        rusqlite::Connection::open_with_flags(state_db, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let conn = rusqlite::Connection::open_with_flags(state_db, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     let like = format!("cron_{job_id}_%");
     let mut stmt = conn.prepare(
         "SELECT id, started_at, model, \
@@ -309,7 +311,11 @@ mod tests {
 
         let s = settings_with(dir.path(), 5.0);
         let runs = collect_runs(&s.hermes_state_db_path().unwrap(), "abc123").unwrap();
-        assert_eq!(runs.len(), 3, "foreign job's session must not be attributed");
+        assert_eq!(
+            runs.len(),
+            3,
+            "foreign job's session must not be attributed"
+        );
         let rep = finish(&s, "abc123".into(), runs, "2026-06");
         assert!(rep.available);
         assert_eq!(rep.lifetime_runs, 3);
@@ -328,7 +334,10 @@ mod tests {
         let runs = collect_runs(&s.hermes_state_db_path().unwrap(), "j").unwrap();
         // Evaluate "as if" the current month is June: May's spend must not count.
         let rep = finish(&s, "j".into(), runs, "2026-06");
-        assert!(!rep.over_budget, "prior month's spend must not block this month");
+        assert!(
+            !rep.over_budget,
+            "prior month's spend must not block this month"
+        );
         assert_eq!(rep.remaining_usd, 5.0);
         // And in May itself, the same data DOES trip the budget.
         let runs2 = collect_runs(&s.hermes_state_db_path().unwrap(), "j").unwrap();

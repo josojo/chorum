@@ -499,13 +499,16 @@ mod tests {
         let mut settings = Settings::defaults();
         settings.root_dir = home.path().join("hearme");
         settings.monthly_budget_usd = 0.5; // recorded $1.00 > $0.50 budget
-        // A broker that MUST NOT be contacted — if the guard didn't short-circuit,
-        // fetch_open_questions would surface an {"error": ...} instead.
+                                           // A broker that MUST NOT be contacted — if the guard didn't short-circuit,
+                                           // fetch_open_questions would surface an {"error": ...} instead.
         settings.broker_url = "http://127.0.0.1:1/should-never-be-called".to_string();
 
         let out = list_open_questions(&settings);
         assert_eq!(out["questions"].as_array().unwrap().len(), 0);
         assert_eq!(out["budget_reached"], json!(true));
-        assert!(out.get("error").is_none(), "broker must not be contacted when over budget");
+        assert!(
+            out.get("error").is_none(),
+            "broker must not be contacted when over budget"
+        );
     }
 }

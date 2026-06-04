@@ -294,7 +294,10 @@ def register(ctx):
         .replace("@@ANSWER_TOOLSETS@@", &answer_toolsets_py())
         .replace("@@JOB_NAME@@", &py_str(JOB_NAME))
         .replace("@@DEFAULT_SCHEDULE@@", &py_str(DEFAULT_SCHEDULE))
-        .replace("@@BUDGET_SUSPEND_SCHEDULE@@", &py_str(BUDGET_SUSPEND_SCHEDULE))
+        .replace(
+            "@@BUDGET_SUSPEND_SCHEDULE@@",
+            &py_str(BUDGET_SUSPEND_SCHEDULE),
+        )
         .replace("@@ANSWER_PROMPT@@", &py_str(ANSWER_PROMPT))
         .replace("@@LIST_SCHEMA@@", LIST_SCHEMA_PY)
         .replace("@@SUBMIT_NO_SIGNAL_SCHEMA@@", SUBMIT_NO_SIGNAL_SCHEMA_PY)
