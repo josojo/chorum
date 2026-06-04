@@ -212,6 +212,13 @@ automated backups + point-in-time recovery (PITR). Single-AZ keeps cost low and
 already covers the durability requirement; Multi-AZ (HA standby + auto-failover)
 is a separate availability decision that does not change the backup story.
 
+> **AWS Free plan caps retention.** A restricted Free-plan account rejects the
+> 7-day default (`FreeTierRestrictionError: backup retention period exceeds the
+> maximum`). Pass `--retention-days 1` to provision now (still automated +
+> off-box + 1-day PITR — a large step up from a single volume), then raise it
+> after upgrading the plan, with no downtime:
+> `aws rds modify-db-instance --db-instance-identifier hearme-prod --backup-retention-period 7 --apply-immediately`.
+
 ### 4.2 First-time provisioning + bootstrap
 
 One-time, from a workstation with AWS creds (`rds:CreateDBInstance`, and SSM
@@ -238,52 +245,111 @@ CI. After it succeeds, bring the stack up normally (§1.1).
 ### 4.3 Cutover from an existing on-box database
 
 If the prod box is already live on the container Postgres, migrate its rows into
-RDS **before** switching, or you re-create exactly the data-loss risk this move
-exists to remove:
+RDS **before** switching. Bootstrap (§4.2) already created the schema + roles on
+RDS, so you load **data only** — but two RDS facts shape *how*, and the obvious
+`pg_restore --data-only --disable-triggers` does **not** work:
+
+- **RDS forces TLS** (`rds.force_ssl=1`) — every connection needs
+  `sslmode=require` (the prod compose DSNs already carry it; pass it explicitly
+  for ad-hoc `psql`/`pg_restore`).
+- **The RDS master is `rds_superuser`, not a true superuser**, so
+  `--disable-triggers` (`ALTER TABLE … DISABLE TRIGGER ALL`) is **refused**
+  (`permission denied: … is a system trigger`). Without trigger disabling a
+  data-only load enforces FKs and fails on table order (children load before
+  parents). The fix the master *is* allowed to use: `SET session_replication_role
+  = replica`, which defers FK enforcement for the load session.
+
+Dump the on-box data — a full custom dump, **excluding the migration ledger** so
+it doesn't collide with the one bootstrap already wrote:
 
 ```sh
-# On the prod box, with the old stack still running:
-docker exec hearme-postgres pg_dump --format=custom --no-owner --no-privileges \
-  -U hearme_admin hearme > /tmp/cutover.dump
+# On the prod box, old stack still running:
+docker exec hearme-postgres pg_dump -U hearme_admin -Fc --no-owner --no-privileges \
+  --exclude-table=_schema_migrations hearme > /tmp/cutover.dump
+```
 
-# After provision + bootstrap (4.2) created the schema + roles on RDS, load the
-# DATA only (schema already exists; --no-owner/--no-privileges keeps it portable):
-docker run --rm --network host -e PGPASSWORD="$HEARME_PROD_POSTGRES_ADMIN_PASSWORD" \
-  -v /tmp/cutover.dump:/cutover.dump:ro postgres:16 \
-  pg_restore --no-owner --no-privileges --data-only --disable-triggers \
-    -h "$HEARME_PROD_POSTGRES_HOST" -U hearme_admin -d hearme /cutover.dump
+Quiesce writers (so nothing is lost between dump and switch), then load in one
+transaction. It is atomic: if the `SET` is denied or any `COPY` fails, the whole
+load — including the `TRUNCATE` — rolls back, leaving no partial state:
 
-# Sanity-check row counts match, THEN switch the deploy to the RDS file (§1.1):
-HEARME_DEPLOY_SHA="$(git rev-parse --short=12 HEAD)" \
-  docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+```sh
+docker stop hearme-broker hearme-web hearme-classifier
+set -a; . ~/hearme/.env; set +a
+PGH="$HEARME_PROD_POSTGRES_HOST"; ADMINPW="$HEARME_PROD_POSTGRES_ADMIN_PASSWORD"
+
+{ echo "SET session_replication_role = replica;"
+  echo "TRUNCATE aggregates,askers,envelopes,questions,registrations,revocations,self_chain_cursors,self_nullifier_invalidations RESTART IDENTITY CASCADE;"
+  docker run --rm -v /tmp/cutover.dump:/cutover.dump:ro postgres:16 \
+    pg_restore --data-only --no-owner --no-privileges -f - /cutover.dump
+} | docker run --rm -i --network host -e PGPASSWORD="$ADMINPW" postgres:16 \
+    psql "host=$PGH user=hearme_admin dbname=hearme sslmode=require" \
+      -v ON_ERROR_STOP=1 --single-transaction
+```
+
+(`pg_restore … -f -` writes the data section to stdout; piping it through `psql`
+in the same session as the `SET` is what lets FK enforcement stay deferred —
+`pg_restore` itself can't set the role.)
+
+Verify row counts match between the on-box DB and RDS, **then** switch (§1.1):
+
+```sh
+cd ~/hearme
+export HEARME_DEPLOY_SHA="$(git rev-parse --short=12 HEAD)"
+docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+scripts/healthgate.sh && scripts/deploy-finalize.sh prod
 shred -u /tmp/cutover.dump
 ```
 
 `--remove-orphans` retires the old `hearme-postgres` container. Keep its Docker
-volume (`hearme-pgdata`) until you've confirmed RDS is serving correctly — it is
-your rollback.
+volume (`hearme-pgdata`) until RDS is confirmed serving — it is your rollback.
+
+> **Additive migrations make this safe even when prod is behind.** Columns a
+> later migration adds (e.g. `0005`'s `answer_count`/`signal_count`) take their
+> `DEFAULT` on the restored rows, because the old dump's `COPY` column list
+> omits them. A *destructive* migration would need a different plan — see §7.
 
 ### 4.4 Restore drill (do this once before launch)
 
-Managed backups you have never restored are untested backups. RDS restores to a
-**new** instance (it never overwrites the source), which is exactly what you
-want for a drill:
+Managed backups you have never restored are untested backups. Pick the method
+your account allows:
+
+**RDS-native (gold standard).** Point-in-time restore to a throwaway instance
+(RDS never overwrites the source):
 
 ```sh
-# Point-in-time restore to a throwaway instance:
 aws rds restore-db-instance-to-point-in-time \
   --source-db-instance-identifier hearme-prod \
   --target-db-instance-identifier hearme-restore-drill \
   --use-latest-restorable-time \
   --db-subnet-group-name hearme-db-subnets \
-  --vpc-security-group-ids sg-0abc123 --no-publicly-accessible
+  --vpc-security-group-ids <rds-sg> --no-publicly-accessible
 aws rds wait db-instance-available --db-instance-identifier hearme-restore-drill
+# psql to the restored endpoint, confirm the 8 tables + row counts, then:
+aws rds delete-db-instance --db-instance-identifier hearme-restore-drill --skip-final-snapshot
 ```
 
-Then point a psql at the restored endpoint and confirm the schema + the 8 tables
-are present and row counts look right (the managed-Postgres equivalent of
-`scripts/verify-db.sh`, which itself targets the local container). Delete the
-drill instance afterwards (`aws rds delete-db-instance --skip-final-snapshot`).
+This spins a **second** instance. On a restricted **AWS Free plan** that is
+blocked or billable (the same plan caps backup retention — §4.1), so run it
+after upgrading the plan.
+
+**Logical (free, no second instance).** Dump RDS and restore into a throwaway
+local Postgres container, then sanity-check the schema + row counts (the
+managed-Postgres analogue of `scripts/verify-db.sh`, which targets the local
+container):
+
+```sh
+set -a; . ~/hearme/.env; set +a
+docker run --rm --network host -e PGPASSWORD="$HEARME_PROD_POSTGRES_ADMIN_PASSWORD" \
+  postgres:16 pg_dump -h "$HEARME_PROD_POSTGRES_HOST" -U hearme_admin \
+  -Fc --no-owner --no-privileges hearme > /tmp/drill.dump
+# spin a scratch container, restore, count rows, throw it away:
+docker run -d --name pg-drill -e POSTGRES_PASSWORD=x postgres:16 >/dev/null
+sleep 5 && docker cp /tmp/drill.dump pg-drill:/drill.dump
+docker exec -e PGPASSWORD=x pg-drill createdb -U postgres hearme
+docker exec -e PGPASSWORD=x pg-drill pg_restore -U postgres -d hearme --no-owner /drill.dump
+docker exec -e PGPASSWORD=x pg-drill psql -U postgres -d hearme -c "\dt"
+docker rm -f pg-drill && rm -f /tmp/drill.dump
+```
 
 ### 4.5 Logical dumps (`scripts/backup-db.sh`) — now optional
 
