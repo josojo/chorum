@@ -10,6 +10,9 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { type Settings, getSettings } from "./config";
 import { closeDb, initDb, getDb } from "./db";
 import { closeSecretsDb, initSecretsDb } from "./secretsDb";
+import { buildLoggerConfig } from "./logging";
+import { registerMetricsRoute } from "./observability/metrics";
+import { captureException, flushSentry, initSentry } from "./observability/sentry";
 import { buildDefaultLimiter, registerRateLimit } from "./ratelimit";
 import { enforceProductionConfig } from "./startupChecks";
 import { SelfRevocationListener } from "./selfRevocations";
@@ -40,7 +43,19 @@ export interface BuildAppOptions {
 
 export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const settings = opts.settings ?? getSettings();
-  const app = Fastify({ logger: opts.logger ?? true });
+  // Structured JSON logs by default (issue #101); tests pass `logger: false`.
+  const logger = opts.logger === false ? false : buildLoggerConfig(settings);
+  const app = Fastify({ logger });
+
+  // Forward unhandled per-request errors to Sentry (no-op unless SENTRY_DSN set).
+  // Fastify still runs its own error handler and replies 500 as before.
+  app.addHook("onError", async (req, _reply, err) => {
+    captureException(err, { route: req.url, method: req.method });
+  });
+
+  if (settings.metricsEnabled) {
+    registerMetricsRoute(app);
+  }
 
   if (settings.ratelimitEnabled) {
     const limiter = buildDefaultLimiter(settings);
@@ -85,6 +100,10 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
 async function main(): Promise<void> {
   const settings = getSettings();
 
+  // Error tracking first, so a crash during startup checks / DB init is captured
+  // (no-op unless SENTRY_DSN is set).
+  initSentry();
+
   // Pre-flight: refuse to start in production mode with documented dev defaults.
   if (settings.productionMode) {
     enforceProductionConfig(settings);
@@ -109,6 +128,7 @@ async function main(): Promise<void> {
       await reaper.stop();
       await closeSecretsDb();
       await closeDb();
+      await flushSentry();
     } finally {
       process.exit(0);
     }

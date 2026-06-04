@@ -9,6 +9,7 @@ import type { FastifyInstance } from "fastify";
 
 import { getSettings } from "../config";
 import { getDb } from "../db";
+import { recordOutcome } from "../observability/metrics";
 import * as q from "../queries";
 import {
   type DelegationToken,
@@ -28,6 +29,9 @@ function ack(
   accepted: boolean,
   opts: { token?: DelegationToken; reason?: RejectionReason } = {},
 ): RegisterAck {
+  // Record the TRUE outcome/reason before the expose gate — metrics see what the
+  // caller doesn't when EXPOSE_REJECTION_REASONS=0.
+  recordOutcome("register", accepted, opts.reason);
   const settings = getSettings();
   if (!accepted && !settings.exposeRejectionReasons) {
     return { accepted: false, delegation_token: null, reason: null };
@@ -42,6 +46,7 @@ export function registerRegisterRoutes(
   app.post("/v1/register", async (req, reply) => {
     const parsed = enrollmentBundleSchema.safeParse(req.body);
     if (!parsed.success) {
+      recordOutcome("register", false, RejectionReason.SCHEMA_INVALID);
       return reply.code(422).send({ detail: parsed.error.issues });
     }
 

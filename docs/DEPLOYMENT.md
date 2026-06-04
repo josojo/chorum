@@ -368,28 +368,57 @@ delete), so envelopes are the only must-keep.
 
 ---
 
-## 5. Observability minimum
+## 5. Observability
 
-Logs are the only thing wired in v0 (`logging.basicConfig(level=INFO)` in
-`broker/main.py`). For a real deployment, at minimum:
+The **broker** is wired for production observability (issue #101); web,
+self-bridge, and the classifier are follow-ups (their liveness is already
+covered — see below). Three pieces:
 
-1. **Structured logs.** Switch the broker formatter to JSON (the broker
-   already emits `route=…`, `client=…` style key-value pairs in the
-   rate-limiter; the rest of the codebase is human-readable). Pipe to your
-   log backend.
-2. **Liveness.** `GET /healthz` already returns `{"status":"ok"}`. Have
-   the orchestrator restart on non-200.
-3. **Counters you want.** Envelope ingest rate, registration rate, dispatch
-   lag (the gap between `questions.created_at` and the median envelope
-   `submitted_at`), 429 rate (rate-limit pressure), 4xx rate by reason
-   (verification-pipeline pressure). The broker emits enough log lines today
-   to count these via your log backend; a `prometheus_client` middleware is
-   the v0.1 follow-up.
+1. **Structured logs.** The broker's pino logger emits newline-delimited JSON
+   with a `service: "broker"` field, an env-tunable level
+   (`HEARME_BROKER_LOG_LEVEL`, default `info`), and redaction of the
+   `Authorization`/`Cookie` request headers (`packages/broker/src/logging.ts`).
+   Pipe stdout to your log backend.
+2. **Liveness.** `GET /healthz` returns `{"status":"ok"}` — the orchestrator
+   restarts on non-200, and the monitoring stack alerts on it (below).
+3. **Metrics.** The broker serves Prometheus text at `GET /metrics` on `:8000`
+   (`packages/broker/src/observability/metrics.ts`). It is **internal-only** —
+   the Caddyfile routes only `/v1/*`, `/self/*`, and the web default, so
+   `/metrics` is never internet-reachable; Prometheus scrapes it over the
+   compose network. Series: `hearme_broker_register_total{outcome}`,
+   `…envelopes_total{outcome}`, `…revoke_total{outcome}` (register / ingest /
+   revoke rate), `…rejections_total{route,reason}` (verification-failure
+   breakdown by `RejectionReason`), `…ratelimited_total{route}` (429 rate), plus
+   default Node process metrics. Disable with `HEARME_BROKER_METRICS_ENABLED=0`.
+4. **Error tracking.** The broker forwards unhandled exceptions (per-request and
+   process-level) to **Sentry** when `SENTRY_DSN` is set
+   (`packages/broker/src/observability/sentry.ts`). It is **env-gated**: with no
+   DSN it is a silent no-op, so it ships safely before a Sentry project exists.
+   Wire the DSN via `HEARME_PROD_SENTRY_DSN` (see `prod.env.example`).
+
+### Running the monitoring stack
+
+Prometheus + Alertmanager + blackbox-exporter + Grafana ship as an **optional
+compose overlay** (`docker-compose.monitoring.yml`, configs under `monitoring/`):
+
+```sh
+docker compose -f docker-compose.prod.yml -f docker-compose.monitoring.yml up -d
+```
+
+All four UIs bind to loopback only (reach them over an SSH tunnel). Alerts
+(`monitoring/prometheus/alerts.yml`): **broker/self-bridge down** (the latter via
+a blackbox `/healthz` probe, since the bridge has no `/metrics` yet),
+**error-rate spikes** (majority of register/envelope requests rejected), and
+**sustained 429 pressure**. Alertmanager ships a no-op receiver — wire a
+Slack/webhook destination to actually page (`monitoring/alertmanager/alertmanager.yml`).
+Full details and the follow-up list (native `/metrics` + Sentry for the other
+three services, classifier-backlog gauge) are in `monitoring/README.md`.
 
 Don't enable `HEARME_BROKER_EXPOSE_REJECTION_REASONS=1` in production "just
 so logs are friendlier" — the same string the operator reads is the string
 the *attacker* reads (it answers "which bit of my forged envelope was
-wrong"). Log the reason internally; emit a generic ack externally.
+wrong"). The reason is recorded internally (logs + `…rejections_total`); the
+external ack stays generic.
 
 ---
 
@@ -414,6 +443,10 @@ Run through this before flipping the public DNS:
 - [ ] Prod DB is on RDS (`scripts/provision-rds.sh`), with automated backups +
       PITR on, and the restore drill (§4.4) has been performed once.
 - [ ] Broker `GET /healthz` and web `GET /api/healthz` are monitored.
+- [ ] Observability is up (§5): the monitoring overlay is running, Prometheus is
+      scraping `broker:8000/metrics`, the down/error-rate alerts have a real
+      Alertmanager destination, and `HEARME_PROD_SENTRY_DSN` is set (or you have
+      consciously deferred error tracking).
 - [ ] A rollback has been rehearsed once: `scripts/rollback.sh` returns the box
       to the previous good SHA and the health gate passes (§7).
 - [ ] One full end-to-end run on real passports: enrol with a real Self

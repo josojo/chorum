@@ -15,6 +15,7 @@ import type { FastifyInstance } from "fastify";
 import { classifyAnswer } from "../aggregates";
 import { getSettings } from "../config";
 import { getDb } from "../db";
+import { recordOutcome } from "../observability/metrics";
 import * as q from "../queries";
 import { isScopeEligible } from "../eligibility";
 import { type EnvelopeAck, RejectionReason, envelopeSchema } from "../models";
@@ -23,6 +24,8 @@ import { VerifyEnvelopeError, verifyAgentSignature } from "../verify/envelope";
 import { voterTagForInsert } from "../voterTag";
 
 function ack(accepted: boolean, reason?: RejectionReason): EnvelopeAck {
+  // Record the TRUE outcome/reason before the expose gate (see register.ts).
+  recordOutcome("envelopes", accepted, reason);
   const settings = getSettings();
   if (!accepted && !settings.exposeRejectionReasons) {
     return { accepted: false, reason: null };
@@ -34,6 +37,7 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
   app.post("/v1/envelopes", async (req, reply) => {
     const parsed = envelopeSchema.safeParse(req.body);
     if (!parsed.success) {
+      recordOutcome("envelopes", false, RejectionReason.SCHEMA_INVALID);
       return reply.code(422).send({ detail: parsed.error.issues });
     }
     const envelope = parsed.data;

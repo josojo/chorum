@@ -1,0 +1,29 @@
+# Alertmanager routing for the hearme stack (issue #101).
+#
+# v0 ships with a single no-op receiver: firing alerts are visible in the
+# Alertmanager UI (:9093) and Prometheus /alerts, but nothing is paged yet. Wire
+# a real destination by uncommenting one of the receiver configs below and
+# supplying the secret via env (store it in AWS SSM — see DEPLOYMENT.md §1.1 —
+# never commit it here).
+route:
+  receiver: default
+  group_by: ["alertname"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # Page critical (down) alerts faster than warnings.
+    - matchers:
+        - severity = "critical"
+      receiver: default
+      group_wait: 10s
+      repeat_interval: 1h
+
+receivers:
+  - name: default
+    # slack_configs:
+    #   - api_url: ${ALERTMANAGER_SLACK_WEBHOOK}
+    #     channel: "#hearme-alerts"
+    #     send_resolved: true
+    # webhook_configs:
+    #   - url: https://example.com/hooks/hearme-alerts

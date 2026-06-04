@@ -18,6 +18,7 @@ import type { FastifyInstance } from "fastify";
 
 import { getSettings } from "../config";
 import { getDb } from "../db";
+import { recordOutcome } from "../observability/metrics";
 import * as q from "../queries";
 import { type RevocationAck, RejectionReason, envelopeRevocationSchema } from "../models";
 import { VerifyDelegationError, verifyDelegation } from "../verify/delegation";
@@ -29,6 +30,10 @@ function ack(
   reason?: RejectionReason | null,
   found?: boolean | null,
 ): RevocationAck {
+  // Record the TRUE outcome/reason before the expose gate (see register.ts). The
+  // idempotent ENVELOPE_NOT_FOUND case is accepted=true, so it counts as an
+  // accept, not a rejection.
+  recordOutcome("revoke", accepted, reason);
   const settings = getSettings();
   if (!settings.exposeRejectionReasons) {
     // Production posture: never tell callers whether an answer existed, and never
@@ -42,6 +47,7 @@ export function registerRevocationsRoutes(app: FastifyInstance): void {
   app.post("/v1/envelopes/revoke", async (req, reply) => {
     const parsed = envelopeRevocationSchema.safeParse(req.body);
     if (!parsed.success) {
+      recordOutcome("revoke", false, RejectionReason.SCHEMA_INVALID);
       return reply.code(422).send({ detail: parsed.error.issues });
     }
     const revocation = parsed.data;
