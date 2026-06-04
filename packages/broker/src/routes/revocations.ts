@@ -22,7 +22,7 @@ import * as q from "../queries";
 import { type RevocationAck, RejectionReason, envelopeRevocationSchema } from "../models";
 import { VerifyDelegationError, verifyDelegation } from "../verify/delegation";
 import { VerifyEnvelopeError, verifyRevocationSignature } from "../verify/envelope";
-import { voterTagFor } from "../voterTag";
+import { voterTagIfLive } from "../voterTag";
 
 function ack(
   accepted: boolean,
@@ -93,10 +93,16 @@ export function registerRevocationsRoutes(app: FastifyInstance): void {
     // Step 4: delete the envelope and rebuild this question's aggregate. The row
     // is keyed by the per-question voter tag (§1.4); we re-derive it from the
     // verified nullifier + question_id, and also pass the nullifier so the
-    // registration's answer counters roll back.
+    // registration's answer counters roll back. If the question's secret was
+    // already destroyed (closed past grace, ADR-098), the tag can no longer be
+    // reproduced — the answer is unreachable, so this is an idempotent not-found.
+    const voterTag = await voterTagIfLive(revocation.question_id, verified.uniqueIdentifier);
+    if (voterTag === null) {
+      return ack(true, RejectionReason.ENVELOPE_NOT_FOUND, false);
+    }
     const found = await q.deleteOneEnvelopeAndRecompute(db, {
       questionId: revocation.question_id,
-      voterTag: voterTagFor(revocation.question_id, verified.uniqueIdentifier),
+      voterTag,
       uniqueIdentifier: verified.uniqueIdentifier,
     });
 

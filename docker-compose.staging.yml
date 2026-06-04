@@ -25,7 +25,11 @@ services:
       HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "1"
       HEARME_BROKER_EXPOSE_REJECTION_REASONS: "0"
       HEARME_BROKER_SIGNING_KEY: ${HEARME_STAGING_BROKER_SIGNING_KEY:?set in staging .env}
-      HEARME_BROKER_VOTER_TAG_SECRET: ${HEARME_STAGING_BROKER_VOTER_TAG_SECRET:?set in staging .env}
+      # Per-question voter-tag secret store (ADR-098). Staging shares the box's
+      # container Postgres (the broker-owned `hearme_secrets` DB, 04-secrets-db.sh)
+      # — acceptable because staging does NOT set PRODUCTION_MODE, so the
+      # separate-instance startup check does not fire. Prod uses a distinct RDS.
+      HEARME_BROKER_SECRETS_DATABASE_URL: postgres://hearme_broker:${HEARME_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}@postgres:5432/hearme_secrets
 
   self-bridge:
     environment:

@@ -9,9 +9,11 @@ import Fastify, { type FastifyInstance } from "fastify";
 
 import { type Settings, getSettings } from "./config";
 import { closeDb, initDb, getDb } from "./db";
+import { closeSecretsDb, initSecretsDb } from "./secretsDb";
 import { buildDefaultLimiter, registerRateLimit } from "./ratelimit";
 import { enforceProductionConfig } from "./startupChecks";
 import { SelfRevocationListener } from "./selfRevocations";
+import { QuestionSecretReaper } from "./questionSecret";
 import type {
   CreateSelfRequest,
   GetSelfRequest,
@@ -89,16 +91,23 @@ async function main(): Promise<void> {
   }
 
   await initDb();
+  // The per-question linkage-secret store (ADR-098) — a SEPARATE instance in prod.
+  await initSecretsDb();
   const app = buildApp({ settings });
 
   const listener = new SelfRevocationListener({ db: getDb(), settings, log: app.log });
   listener.start();
+  // Destroy each question's linkage secret a grace period after it closes.
+  const reaper = new QuestionSecretReaper({ log: app.log });
+  reaper.start();
 
   const shutdown = async (signal: string) => {
     app.log.info(`received ${signal}, shutting down`);
     try {
       await app.close();
       await listener.stop();
+      await reaper.stop();
+      await closeSecretsDb();
       await closeDb();
     } finally {
       process.exit(0);

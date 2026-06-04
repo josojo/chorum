@@ -63,7 +63,12 @@ services:
       HEARME_BROKER_EXPOSE_REJECTION_REASONS: "0"
       HEARME_BROKER_DEV_INSECURE_REGISTER: "0"
       HEARME_BROKER_SIGNING_KEY: ${HEARME_PROD_BROKER_SIGNING_KEY:?set in prod .env}
-      HEARME_BROKER_VOTER_TAG_SECRET: ${HEARME_PROD_BROKER_VOTER_TAG_SECRET:?set in prod .env}
+      # Per-question voter-tag secret store (ADR-098). MUST be a SEPARATE RDS
+      # instance from the main DB, with SHORT backup retention — its retention is
+      # the unlink horizon. The startup check (PRODUCTION_MODE=1) refuses to boot
+      # if this shares a host with HEARME_BROKER_DATABASE_URL. The instance needs
+      # the `hearme_secrets` DB + hearme_broker role bootstrapped (see PR / ADR).
+      HEARME_BROKER_SECRETS_DATABASE_URL: postgres://hearme_broker:${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@${HEARME_PROD_SECRETS_POSTGRES_HOST:?set in prod .env}:5432/hearme_secrets?sslmode=require
 
   self-bridge:
     extends:

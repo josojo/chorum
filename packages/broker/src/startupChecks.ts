@@ -8,7 +8,19 @@
 // (failing closed). The check is structural only — no DB/bridge/chain contact.
 // Mirrors startup_checks.py.
 
-import { DEV_BROKER_SIGNING_KEY, DEV_VOTER_TAG_SECRET, type Settings } from "./config";
+import { DEV_BROKER_SIGNING_KEY, DEV_SECRETS_DATABASE_URL, type Settings } from "./config";
+
+// host:port of a Postgres DSN, for the separate-instance check below. Returns the
+// raw DSN if it can't be parsed (so a malformed value can't masquerade as
+// "different host" and slip past the guard).
+function dsnHostPort(dsn: string): string {
+  try {
+    const u = new URL(dsn);
+    return `${u.hostname}:${u.port || "5432"}`;
+  } catch {
+    return dsn;
+  }
+}
 
 export class ProductionConfigError extends Error {
   constructor(message: string) {
@@ -38,13 +50,22 @@ export function validateProductionConfig(settings: Settings): ValidationReport {
     );
   }
 
-  if (settings.voterTagSecret === DEV_VOTER_TAG_SECRET) {
+  // Per-question linkage secrets (ADR-098, §1.4) must live in a SEPARATE Postgres
+  // instance from the envelopes data. RDS backup retention is instance-wide, so a
+  // shared instance silently inherits the main instance's long retention as the
+  // secret's deletion horizon — defeating the whole "destroy at close" guarantee.
+  if (settings.secretsDatabaseUrl === DEV_SECRETS_DATABASE_URL) {
     report.errors.push(
-      "HEARME_BROKER_VOTER_TAG_SECRET is the documented dev default. It is the " +
-        "linkage secret for the per-question voter tag (ARCHITECTURE_V0.md §1.4); " +
-        "with the dev value, anyone with the source can re-link the envelopes table " +
-        "to individuals. Generate a fresh 32-byte secret and store it in your secret " +
-        "manager (never in the shared DB).",
+      "HEARME_BROKER_SECRETS_DATABASE_URL is the documented dev default (the shared " +
+        "dev Postgres). The per-question voter-tag secrets (ADR-098) must live in a " +
+        "separate, short-retention instance. Provision one and set this DSN.",
+    );
+  } else if (dsnHostPort(settings.secretsDatabaseUrl) === dsnHostPort(settings.databaseUrl)) {
+    report.errors.push(
+      "HEARME_BROKER_SECRETS_DATABASE_URL shares a host with HEARME_BROKER_DATABASE_URL. " +
+        "The voter-tag secret store must be a SEPARATE Postgres instance with short " +
+        "backup retention — on the same instance, RDS's instance-wide retention becomes " +
+        "the secret's deletion horizon and 'destroy at close' (ADR-098) is cosmetic.",
     );
   }
 

@@ -11,16 +11,13 @@
 // b"BROKER-SIGNING-KEY-HEARME-DEV32B"
 export const DEV_BROKER_SIGNING_KEY = "QlJPS0VSLVNJR05JTkctS0VZLUhFQVJNRS1ERVYzMkI=";
 
-// Dev-only HMAC key (base64 of 32 bytes) for the per-question voter tag that
-// pseudonymizes the envelopes table (ARCHITECTURE_V0.md §1.4, src/voterTag.ts).
-// Production MUST override HEARME_BROKER_VOTER_TAG_SECRET with a secret-managed
-// key. It is the linkage secret: anyone holding it (plus the registrations
-// nullifier list) can re-link a person's answers, so it must NEVER live in the
-// shared DB. A stable value is required so the broker can reproduce a person's
-// tags for revoke / invalidation; rotating it orphans all existing tags (the v2
-// epoch-rotation mechanism that makes old history unlinkable even to the broker).
-// b"HEARME-VOTER-TAG-SECRET-DEV-32B!"
-export const DEV_VOTER_TAG_SECRET = "SEVBUk1FLVZPVEVSLVRBRy1TRUNSRVQtREVWLTMyQiE=";
+// Dev default for the per-question linkage-secret store DSN (ADR-098). In dev/CI
+// this points at the SAME Postgres as the main DB — one container, one extra
+// `question_secrets` table. In production it MUST be a SEPARATE instance with
+// short backup retention (startupChecks refuses to boot if it shares a host with
+// the main DB); see secretsDb.ts for why the instances must be split.
+export const DEV_SECRETS_DATABASE_URL =
+  "postgres://hearme_broker:hearme_broker_dev@localhost:5432/hearme";
 
 export interface Settings {
   databaseUrl: string;
@@ -58,10 +55,18 @@ export interface Settings {
   // DelegationToken it issues at registration. MUST be overridden in production.
   brokerSigningKey: string;
 
-  // HMAC key (base64) for the per-question voter tag (§1.4, src/voterTag.ts).
-  // MUST be overridden in production; it is the linkage secret and must never be
-  // stored in the shared DB.
-  voterTagSecret: string;
+  // Per-question linkage-secret store (ADR-098, §1.4). A SEPARATE Postgres
+  // instance from databaseUrl that holds the `question_secrets` table. Must be a
+  // distinct, short-retention instance in production (secretsDb.ts).
+  secretsDatabaseUrl: string;
+
+  // Voter-tag lifecycle (ADR-098). A question's linkage secret is destroyed
+  // `voterTagGraceSeconds` after it closes (the grace window covers in-flight
+  // revocations / aggregate recompute / disputes); the reaper sweeps every
+  // `voterTagReapIntervalSeconds`. After destruction the question's answers are
+  // unlinkable even to the broker.
+  voterTagGraceSeconds: number;
+  voterTagReapIntervalSeconds: number;
 
   // DANGER — testing only. When true, mounts POST /v1/dev/register, which mints
   // a DelegationToken for a SYNTHETIC identity WITHOUT any Self proof or bridge
@@ -143,7 +148,10 @@ export function getSettings(overrides: Partial<Settings> = {}): Settings {
     selfRevocationCursorName: envStr(`${P}SELF_REVOCATION_CURSOR_NAME`, "self-revocations-v1"),
 
     brokerSigningKey: envStr(`${P}SIGNING_KEY`, DEV_BROKER_SIGNING_KEY),
-    voterTagSecret: envStr(`${P}VOTER_TAG_SECRET`, DEV_VOTER_TAG_SECRET),
+
+    secretsDatabaseUrl: envStr(`${P}SECRETS_DATABASE_URL`, DEV_SECRETS_DATABASE_URL),
+    voterTagGraceSeconds: envNum(`${P}VOTER_TAG_GRACE_SECONDS`, 604_800), // 7 days
+    voterTagReapIntervalSeconds: envNum(`${P}VOTER_TAG_REAP_INTERVAL_SECONDS`, 3_600),
 
     devInsecureRegister: envBool(`${P}DEV_INSECURE_REGISTER`, false),
     productionMode: envBool(`${P}PRODUCTION_MODE`, false),

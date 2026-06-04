@@ -16,7 +16,7 @@ import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import type { Db } from "./db";
 import type * as schema from "./schema";
 import { classifyAnswer, computeByPredicate, computeNoSignal } from "./aggregates";
-import { voterTagFor } from "./voterTag";
+import { voterTagIfLive } from "./voterTag";
 
 export type Tx = PgTransaction<
   PostgresJsQueryResultHKT,
@@ -270,12 +270,19 @@ export async function invalidateRegistrationAndVotes(
     // This identity's envelopes are stored under per-question voter tags (§1.4),
     // not the raw nullifier — so we can't match them with a single equality.
     // Recompute the tag for every question that has any envelope and delete the
-    // matches (the linkage secret lives only in the broker process). Question
-    // count bounds the work; invalidation is rare.
+    // matches. Each question has its OWN secret (ADR-098); questions whose secret
+    // was already destroyed (closed past grace) are SKIPPED — their tags can no
+    // longer be reproduced, the deliberate closed-question carve-out (the
+    // aggregate is already published). Question count bounds the work;
+    // invalidation is rare.
     const answered = (await tx.execute(sql`
       SELECT DISTINCT question_id FROM envelopes
     `)) as unknown as Rows<{ question_id: string }>;
-    const tags = answered.map((r) => voterTagFor(r.question_id, args.uniqueIdentifier));
+    const tags: string[] = [];
+    for (const r of answered) {
+      const tag = await voterTagIfLive(r.question_id, args.uniqueIdentifier);
+      if (tag !== null) tags.push(tag);
+    }
     const affectedRows =
       tags.length === 0
         ? []

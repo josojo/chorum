@@ -95,11 +95,11 @@ describe("voter tag — per-question pseudonym (§1.4)", () => {
 describe("production startup checks", () => {
   it("flags every dev default as an error", () => {
     const report = validateProductionConfig(getSettings()); // all dev defaults
-    // Dev defaults trip: signing key, voter-tag secret, dev DB password,
+    // Dev defaults trip: signing key, secrets-DB DSN, dev DB password,
     // expose-rejection-reasons.
     expect(report.errors.length).toBeGreaterThanOrEqual(4);
     expect(report.errors.some((e) => e.includes("HEARME_BROKER_SIGNING_KEY"))).toBe(true);
-    expect(report.errors.some((e) => e.includes("HEARME_BROKER_VOTER_TAG_SECRET"))).toBe(true);
+    expect(report.errors.some((e) => e.includes("HEARME_BROKER_SECRETS_DATABASE_URL"))).toBe(true);
     expect(() => enforceProductionConfig(getSettings(), { warn() {}, info() {} })).toThrow(
       ProductionConfigError,
     );
@@ -108,7 +108,8 @@ describe("production startup checks", () => {
   it("accepts a properly secured config", () => {
     const safe = getSettings({
       brokerSigningKey: Buffer.alloc(32, 9).toString("base64"),
-      voterTagSecret: Buffer.alloc(32, 5).toString("base64"),
+      // Secrets store on a SEPARATE instance (distinct host) — ADR-098.
+      secretsDatabaseUrl: "postgres://hearme_secrets:s3cret@secrets-db:5432/hearme_secrets",
       databaseUrl: "postgres://hearme_broker:s3cret@db:5432/hearme",
       devInsecureRegister: false,
       requireRegistryConfirmation: true,
@@ -118,6 +119,22 @@ describe("production startup checks", () => {
     const report = validateProductionConfig(safe);
     expect(report.errors).toEqual([]);
     expect(() => enforceProductionConfig(safe, { warn() {}, info() {} })).not.toThrow();
+  });
+
+  it("rejects a secrets store on the same instance as the main DB (ADR-098)", () => {
+    // Non-default but co-located: same host:port as databaseUrl. The separate-
+    // instance guard must still fire, because RDS retention is instance-wide.
+    const colocated = getSettings({
+      brokerSigningKey: Buffer.alloc(32, 9).toString("base64"),
+      databaseUrl: "postgres://hearme_broker:s3cret@db:5432/hearme",
+      secretsDatabaseUrl: "postgres://hearme_broker:s3cret@db:5432/hearme_secrets",
+      devInsecureRegister: false,
+      requireRegistryConfirmation: true,
+      exposeRejectionReasons: false,
+      selfBridgeUrl: "http://self-bridge:8787",
+    });
+    const report = validateProductionConfig(colocated);
+    expect(report.errors.some((e) => e.includes("shares a host"))).toBe(true);
   });
 });
 
