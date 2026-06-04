@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::contracts::{
-    answer_toolsets_py, py_str, ANSWER_PROMPT, DEFAULT_SCHEDULE, JOB_NAME, LIST_SCHEMA_PY,
-    SUBMIT_NO_SIGNAL_SCHEMA_PY, SUBMIT_SCHEMA_PY, TOOLSET,
+    answer_toolsets_py, py_str, ANSWER_PROMPT, BUDGET_SUSPEND_SCHEDULE, DEFAULT_SCHEDULE, JOB_NAME,
+    LIST_SCHEMA_PY, SUBMIT_NO_SIGNAL_SCHEMA_PY, SUBMIT_SCHEMA_PY, TOOLSET,
 };
 use crate::Error;
 
@@ -119,6 +119,10 @@ TOOLSET = @@TOOLSET@@
 ANSWER_TOOLSETS = @@ANSWER_TOOLSETS@@
 JOB_NAME = @@JOB_NAME@@
 DEFAULT_SCHEDULE = @@DEFAULT_SCHEDULE@@
+# Cadence the cron is parked on once the monthly budget is reached (09:00 on the
+# 1st). It stays scheduled but won't fire until the new month, when the budget
+# resets and the first run swaps it back to DEFAULT_SCHEDULE.
+BUDGET_SUSPEND_SCHEDULE = @@BUDGET_SUSPEND_SCHEDULE@@
 ANSWER_PROMPT = @@ANSWER_PROMPT@@
 _LIST_SCHEMA = @@LIST_SCHEMA@@
 _SUBMIT_SCHEMA = @@SUBMIT_SCHEMA@@
@@ -156,7 +160,46 @@ def _run(args):
 
 
 def _handle_list(args, **_kwargs):
-    return _run(["list-questions"])
+    out = _run(["list-questions"])
+    _apply_budget_schedule(out)
+    return out
+
+
+def _apply_budget_schedule(raw):
+    # Cost backstop: when the binary reports the monthly budget is reached
+    # (budget_reached=true), park the cron on BUDGET_SUSPEND_SCHEDULE so it
+    # stops firing — and stops incurring host-model cost — until the budget
+    # resets next month. On the first run of the new month the binary is back
+    # under budget, so we swap the daily cadence back in. Changing the SCHEDULE
+    # (not next_run_at) is deliberate: Hermes' post-run mark_job_run recomputes
+    # next_run_at from the schedule, so a one-off next_run_at would be undone.
+    # Strictly best-effort — any failure leaves the schedule untouched and the
+    # binary's empty result already prevents (paid) answering this cycle.
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return
+    if not isinstance(data, dict):
+        return
+    try:
+        from cron.jobs import resolve_job_ref, update_job
+    except Exception:
+        return  # not inside the gateway / cron API unavailable
+    try:
+        job = resolve_job_ref(JOB_NAME)
+        if not job:
+            return
+        current = (job.get("schedule") or {}).get("expr")
+        if data.get("budget_reached"):
+            if current != BUDGET_SUSPEND_SCHEDULE:
+                update_job(job["id"], {"schedule": BUDGET_SUSPEND_SCHEDULE})
+                log.info("hearme: monthly budget reached — cron parked until next month")
+        elif current == BUDGET_SUSPEND_SCHEDULE:
+            # New month, back under budget → restore the normal daily cadence.
+            update_job(job["id"], {"schedule": DEFAULT_SCHEDULE})
+            log.info("hearme: budget reset — cron restored to daily (%s)", DEFAULT_SCHEDULE)
+    except Exception:
+        log.debug("hearme budget reschedule skipped", exc_info=True)
 
 
 def _handle_submit(args, **_kwargs):
@@ -251,6 +294,7 @@ def register(ctx):
         .replace("@@ANSWER_TOOLSETS@@", &answer_toolsets_py())
         .replace("@@JOB_NAME@@", &py_str(JOB_NAME))
         .replace("@@DEFAULT_SCHEDULE@@", &py_str(DEFAULT_SCHEDULE))
+        .replace("@@BUDGET_SUSPEND_SCHEDULE@@", &py_str(BUDGET_SUSPEND_SCHEDULE))
         .replace("@@ANSWER_PROMPT@@", &py_str(ANSWER_PROMPT))
         .replace("@@LIST_SCHEMA@@", LIST_SCHEMA_PY)
         .replace("@@SUBMIT_NO_SIGNAL_SCHEMA@@", SUBMIT_NO_SIGNAL_SCHEMA_PY)
@@ -518,6 +562,20 @@ mod tests {
         assert!(shim.contains("submit-no-signal"));
         assert!(shim.contains("hearme_submit_no_signal"));
         assert!(shim.contains("def register(ctx):"));
+    }
+
+    #[test]
+    fn shim_parks_cron_when_budget_reached() {
+        // The generated shim must react to the binary's budget_reached flag by
+        // swapping the cron onto the once-a-month suspend schedule, and restore
+        // the daily cadence otherwise — all via update_job(schedule=...).
+        let shim = build_subprocess_shim("/opt/hearme/bin/hearme-skill", None);
+        assert!(shim.contains("BUDGET_SUSPEND_SCHEDULE = \"0 9 1 * *\""));
+        assert!(shim.contains("def _apply_budget_schedule(raw):"));
+        assert!(shim.contains("_apply_budget_schedule(out)"));
+        assert!(shim.contains("data.get(\"budget_reached\")"));
+        assert!(shim.contains("update_job(job[\"id\"], {\"schedule\": BUDGET_SUSPEND_SCHEDULE})"));
+        assert!(shim.contains("update_job(job[\"id\"], {\"schedule\": DEFAULT_SCHEDULE})"));
     }
 
     #[test]

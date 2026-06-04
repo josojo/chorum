@@ -140,7 +140,7 @@ finance, …) are deliberately absent and still require `auto_answer: true`. The
 | `HEARME_SKILL_SELF_BRIDGE_URL` | `http://localhost:8787` | self-bridge, used only during onboarding. For the public deployment, use `https://3-74-46-46.sslip.io/self`. |
 | `HEARME_SKILL_ROOT_DIR` | `~/.hermes/hearme/` | Where the agent key, ledger, token, and policy live. |
 | `HEARME_SKILL_MEMORY_BACKEND` | `stub` | `chatgpt-export` to read the imported ChatGPT DB. |
-| `HEARME_SKILL_MONTHLY_BUDGET_USD` | `5.0` | Soft cap on the host-model API spend the answering cron may incur per calendar month. Once month-to-date spend reaches it, `list-questions` returns no questions so the agent stops. See `cost`. |
+| `HEARME_SKILL_MONTHLY_BUDGET_USD` | `5.0` | Soft cap on the host-model API spend the answering cron may incur per calendar month. Once month-to-date spend reaches it, `list-questions` returns no questions so the agent stops; on Hermes the shim then parks the cron on a once-a-month schedule so it stops firing until the budget resets next month (restored to daily automatically on the first run of the new month). See `cost`. |
 
 Idempotency comes from the ledger (`has_submission`), not a polling cursor — a
 question the agent skips reappears next cycle.
