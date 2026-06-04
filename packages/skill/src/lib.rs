@@ -19,6 +19,7 @@ pub mod chatgpt;
 pub mod cli;
 pub mod config;
 pub mod contracts;
+pub mod cost;
 pub mod crypto;
 pub mod delegation;
 pub mod envelope;

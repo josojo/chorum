@@ -75,6 +75,7 @@ security.
 | `hearme-skill submit-answer --question-id ID --answer "Yes — ..."` | sign + submit one answer |
 | `hearme-skill review-answers` | JSON of the user's own submitted answers (local ledger read) |
 | `hearme-skill revoke-answer --question-id ID` | retract one answer (§1.12) |
+| `hearme-skill cost [--json]` | host-model API spend this addon's answering cron has created (month-to-date + lifetime) and the monthly budget |
 | `hearme-skill chatgpt-import <export.zip>` | import a ChatGPT export into a local FTS DB |
 | `hearme-skill chatgpt-query "..." [--topic T]` | query the imported memory DB |
 
@@ -139,6 +140,7 @@ finance, …) are deliberately absent and still require `auto_answer: true`. The
 | `HEARME_SKILL_SELF_BRIDGE_URL` | `http://localhost:8787` | self-bridge, used only during onboarding. For the public deployment, use `https://3-74-46-46.sslip.io/self`. |
 | `HEARME_SKILL_ROOT_DIR` | `~/.hermes/hearme/` | Where the agent key, ledger, token, and policy live. |
 | `HEARME_SKILL_MEMORY_BACKEND` | `stub` | `chatgpt-export` to read the imported ChatGPT DB. |
+| `HEARME_SKILL_MONTHLY_BUDGET_USD` | `5.0` | Soft cap on the host-model API spend the answering cron may incur per calendar month. Once month-to-date spend reaches it, `list-questions` returns no questions so the agent stops; on Hermes the shim then parks the cron on a once-a-month schedule so it stops firing until the budget resets next month (restored to daily automatically on the first run of the new month). See `cost`. |
 
 Idempotency comes from the ledger (`has_submission`), not a polling cursor — a
 question the agent skips reappears next cycle.
@@ -199,6 +201,7 @@ runners, so the downloaded binaries are not tied to the runner's glibc version.
 | `envelope.rs` | build + sign the 5-field envelope and 3-field revocation |
 | `policy.rs` | the deterministic gate + light-topic default |
 | `ledger.rs` | local SQLite ledger (questions/answers/submissions/spend) |
+| `cost.rs` | reads Hermes' per-session cost for our cron job (transparency + monthly budget guard) |
 | `broker.rs` | HTTP client: open questions, submit, revoke, register |
 | `tools.rs` | framework-agnostic `list_open_questions` / `submit_answer` / `review` / `revoke` |
 | `onboarding.rs` | Self verify-once flow + QR rendering |

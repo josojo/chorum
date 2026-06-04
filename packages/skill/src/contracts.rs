@@ -25,6 +25,14 @@ pub const JOB_NAME: &str = "hearme-answer-cycle";
 /// daily keeps host-model cost predictable while staying responsive.
 pub const DEFAULT_SCHEDULE: &str = "0 9 * * *";
 
+/// Cadence the Hermes shim parks the cron on once the monthly budget is hit:
+/// 09:00 on the 1st of each month. The job stays scheduled but won't fire again
+/// until the new month (when the budget resets), at which point the shim swaps
+/// it back to [`DEFAULT_SCHEDULE`]. Changing the *schedule* (not `next_run_at`)
+/// is what makes the parking survive Hermes' post-run `mark_job_run`, which
+/// recomputes `next_run_at` from the schedule.
+pub const BUDGET_SUSPEND_SCHEDULE: &str = "0 9 1 * *";
+
 /// The behavioural contract handed to the Hermes agent each cycle.
 ///
 /// Written for token economy: a strict single pass with bounded retrieval and an

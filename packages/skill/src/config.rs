@@ -14,6 +14,11 @@ pub struct Settings {
     pub root_dir: PathBuf,
     /// Memory provider selection for the chatgpt-export DB path default.
     pub memory_backend: String,
+    /// Soft cap on the host-model API spend the answering cron may incur per
+    /// calendar month (USD). The cost guard in [`crate::tools::list_open_questions`]
+    /// stops handing out questions once this month's recorded spend reaches it.
+    /// Default 5.0; override via `HEARME_SKILL_MONTHLY_BUDGET_USD`.
+    pub monthly_budget_usd: f64,
 }
 
 fn env(key: &str) -> Option<String> {
@@ -45,6 +50,7 @@ impl Settings {
             self_bridge_url: "http://localhost:8787".to_string(),
             root_dir: default_root(),
             memory_backend: "stub".to_string(),
+            monthly_budget_usd: 5.0,
         }
     }
 
@@ -58,6 +64,10 @@ impl Settings {
                 .map(PathBuf::from)
                 .unwrap_or(d.root_dir),
             memory_backend: env("HEARME_SKILL_MEMORY_BACKEND").unwrap_or(d.memory_backend),
+            monthly_budget_usd: env("HEARME_SKILL_MONTHLY_BUDGET_USD")
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| *v >= 0.0)
+                .unwrap_or(d.monthly_budget_usd),
         }
     }
 
@@ -75,6 +85,30 @@ impl Settings {
     }
     pub fn chatgpt_memory_path(&self) -> PathBuf {
         self.root_dir.join("chatgpt_memory.sqlite")
+    }
+
+    /// The active Hermes home — the parent of our data root (`<home>/hearme`).
+    /// `None` only if `root_dir` has no parent (a degenerate path).
+    pub fn hermes_home(&self) -> Option<PathBuf> {
+        self.root_dir.parent().map(|p| p.to_path_buf())
+    }
+
+    /// Hermes' per-session usage/cost DB. We read it (read-only) to attribute
+    /// the host-model spend of our cron sessions. `None` off the standard layout.
+    pub fn hermes_state_db_path(&self) -> Option<PathBuf> {
+        self.hermes_home().map(|h| h.join("state.db"))
+    }
+
+    /// Hermes' cron job registry, used to resolve our cron job's id (so we can
+    /// attribute only OUR sessions, never another cron job's spend).
+    pub fn hermes_cron_jobs_path(&self) -> Option<PathBuf> {
+        self.hermes_home().map(|h| h.join("cron").join("jobs.json"))
+    }
+
+    /// Durable cost rollup we maintain for transparency (independent of Hermes'
+    /// own DB retention).
+    pub fn cost_snapshot_path(&self) -> PathBuf {
+        self.root_dir.join("cost.json")
     }
 }
 

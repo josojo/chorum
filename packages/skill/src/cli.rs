@@ -165,6 +165,13 @@ enum Command {
         #[arg(long)]
         db: Option<String>,
     },
+    /// Show the host-model API spend this addon's answering cron has created
+    /// (read from Hermes' per-session usage DB) and the monthly budget cap.
+    Cost {
+        /// Emit the full report as JSON instead of a human summary.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Parse argv and dispatch. Returns the process exit code.
@@ -301,6 +308,7 @@ pub fn run() -> i32 {
             limit,
             db,
         } => cmd_chatgpt_query(&text, topic.as_deref(), limit, db.as_deref()),
+        Command::Cost { json } => cmd_cost(json),
     }
 }
 
@@ -758,6 +766,65 @@ fn cmd_chatgpt_import(export_path: &str, db: Option<&str>, include_assistant: bo
             2
         }
     }
+}
+
+// --- cost / budget --------------------------------------------------------
+
+fn cmd_cost(as_json: bool) -> i32 {
+    let settings = get_settings();
+    let report = crate::cost::report(&settings);
+    crate::cost::write_snapshot(&settings, &report);
+
+    if as_json {
+        let value = serde_json::to_value(&report).unwrap_or_else(|_| serde_json::json!({}));
+        print_json(&value);
+        return 0;
+    }
+
+    if !report.available {
+        println!(
+            "Cost tracking unavailable: {}",
+            report.reason.as_deref().unwrap_or("unknown")
+        );
+        println!("No host-model spend could be attributed, so the budget guard fails open (answering is never blocked by a number we can't read).");
+        return 0;
+    }
+
+    println!("Hearme answering-cron cost — host-model API spend (read from Hermes' usage DB)");
+    println!(
+        "  This month ({}): ${:.4}  over {} run(s)",
+        report.current_month, report.current_month_cost_usd, report.current_month_runs
+    );
+    println!(
+        "  Monthly budget:  ${:.2}  (remaining ${:.4}){}",
+        report.monthly_budget_usd,
+        report.remaining_usd,
+        if report.over_budget {
+            "  [OVER BUDGET — answering paused until next month]"
+        } else {
+            ""
+        }
+    );
+    println!(
+        "  Lifetime:        ${:.4}  over {} run(s)",
+        report.lifetime_cost_usd, report.lifetime_runs
+    );
+    if report.by_month.len() > 1 {
+        println!("  By month:");
+        for (m, c) in &report.by_month {
+            println!("    {m}: ${c:.4}");
+        }
+    }
+    println!(
+        "  Basis: {}  •  budget override: HEARME_SKILL_MONTHLY_BUDGET_USD",
+        if report.has_actual_cost {
+            "actual + estimated provider pricing"
+        } else {
+            "estimated provider pricing"
+        }
+    );
+    println!("  Snapshot: {}", settings.cost_snapshot_path().display());
+    0
 }
 
 fn cmd_chatgpt_query(text: &str, topic: Option<&str>, limit: i64, db: Option<&str>) -> i32 {

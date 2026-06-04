@@ -69,6 +69,22 @@ pub fn list_open_questions(settings: &Settings) -> Value {
 }
 
 fn list_impl(settings: &Settings) -> Result<Value, Error> {
+    // Cost cap: once this calendar month's recorded host-model spend for the
+    // hearme cron reaches the budget, return ZERO questions so the agent does no
+    // further (paid) answering and stops immediately. We return the SAME minimal
+    // shape as a genuinely empty cycle — no prose, no cost numbers — so the
+    // answer prompt's "no questions -> [SILENT]" path fires with the fewest
+    // possible tokens (a budget-reached cycle should be the cheapest run there
+    // is). The `budget_reached` flag is a single boolean for transcript
+    // debuggability; the actual figures live in cost.json + `hearme-skill cost`.
+    // Fail-open: an unmeasurable cost (no Hermes usage DB, unresolved job id)
+    // leaves `over_budget` false and never blocks answering. The guard also
+    // refreshes the durable cost.json snapshot each cycle.
+    let cost = crate::cost::guard(settings);
+    if cost.over_budget {
+        return Ok(json!({ "questions": [], "skipped_count": 0, "budget_reached": true }));
+    }
+
     let ledger = Ledger::open(&settings.ledger_path())?;
     let policy = load_policy(&settings.policy_path());
     let stats = ledger_stats(&ledger, settings)?;
@@ -448,5 +464,51 @@ mod tests {
         let o = opts(&["yes", "no"]);
         assert_eq!(match_option("maybe", &o), None);
         assert_eq!(match_option("", &o), None);
+    }
+
+    #[test]
+    fn over_budget_returns_zero_questions_without_touching_the_broker() {
+        use crate::contracts::JOB_NAME;
+        use rusqlite::Connection;
+
+        // Fake Hermes home: <home>/{state.db, cron/jobs.json}; our root is <home>/hearme.
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(home.path().join("hearme")).unwrap();
+        std::fs::create_dir_all(home.path().join("cron")).unwrap();
+        std::fs::write(
+            home.path().join("cron").join("jobs.json"),
+            json!({"jobs": [{"id": "job1", "name": JOB_NAME}]}).to_string(),
+        )
+        .unwrap();
+        let conn = Connection::open(home.path().join("state.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT, model TEXT, started_at REAL,
+                input_tokens INTEGER, output_tokens INTEGER, reasoning_tokens INTEGER,
+                estimated_cost_usd REAL, actual_cost_usd REAL);",
+        )
+        .unwrap();
+        // A cron session in the CURRENT month whose cost blows past the budget.
+        let now = chrono::Utc::now().timestamp() as f64;
+        conn.execute(
+            "INSERT INTO sessions (id, source, model, started_at, input_tokens, output_tokens, reasoning_tokens, estimated_cost_usd, actual_cost_usd)
+             VALUES ('cron_job1_now', 'cron', 'm', ?1, 1, 1, 0, 1.0, NULL)",
+            [now],
+        )
+        .unwrap();
+
+        let mut settings = Settings::defaults();
+        settings.root_dir = home.path().join("hearme");
+        settings.monthly_budget_usd = 0.5; // recorded $1.00 > $0.50 budget
+                                           // A broker that MUST NOT be contacted — if the guard didn't short-circuit,
+                                           // fetch_open_questions would surface an {"error": ...} instead.
+        settings.broker_url = "http://127.0.0.1:1/should-never-be-called".to_string();
+
+        let out = list_open_questions(&settings);
+        assert_eq!(out["questions"].as_array().unwrap().len(), 0);
+        assert_eq!(out["budget_reached"], json!(true));
+        assert!(
+            out.get("error").is_none(),
+            "broker must not be contacted when over budget"
+        );
     }
 }
