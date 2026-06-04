@@ -82,6 +82,8 @@ Self ([self.xyz](https://self.xyz), formerly OpenPassport, acquired by Self Labs
 
 The nullifier is the load-bearing piece: deterministic in `(passport, scope)`, so the same passport scanned twice produces the same nullifier — and Hearme rejects the second registration.
 
+> **⚠️ The scope is FROZEN. Never change it in production.** Because the nullifier is deterministic in `(passport, scope)`, changing the scope gives *every existing user a brand-new identity*: Sybil resistance resets, every `registrations` row orphans, and every per-question voter tag stops matching — with **no migration path** (old nullifiers cannot be re-derived under a new scope). Production is pinned to `hearme-v1` **in code** (`packages/self-bridge/src/scope.js` → `PRODUCTION_SCOPE`): when `SELF_PRODUCTION_MODE=1` the bridge ignores any `SELF_SCOPE` env var, so a stray config change cannot silently re-mint identities. Staging uses a separate frozen scope (`staging-hearme-v1`) so its mock-passport identities never collide with mainnet. See `docs/DEPLOYMENT.md` §3.1 "Frozen constants — never change in prod" (GH #97).
+
 **Testing without a real passport.** The Self app generates a mock passport (tap the passport button 5×). Mock proofs verify **only** with `SELF_MOCK_PASSPORT=1` (staging / Celo Sepolia + staging endpoints); flip it to `0` (mainnet) and the same mock proof is rejected — which is the proof that real SNARK verification is in force.
 
 

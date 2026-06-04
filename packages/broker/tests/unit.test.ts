@@ -25,6 +25,8 @@ import {
 import { RejectionReason } from "../src/models";
 import { extractNullifierFromLog, nullifierCandidates } from "../src/selfRevocations";
 import { computeVoterTag } from "../src/voterTag";
+import { issueDelegationToken } from "../src/verify/credential";
+import { PRODUCTION_SCOPE, resolveScope } from "../src/verify/scope";
 import { makeToken } from "./helpers";
 
 describe("rate limiter (sliding window)", () => {
@@ -122,6 +124,54 @@ describe("production startup checks", () => {
     const report = validateProductionConfig(safe);
     expect(report.errors).toEqual([]);
     expect(() => enforceProductionConfig(safe, { warn() {}, info() {} })).not.toThrow();
+  });
+
+  it("warns (does not error) when prod ignores a set HEARME_BROKER_SELF_SCOPE", () => {
+    const prevScope = process.env.HEARME_BROKER_SELF_SCOPE;
+    const prevMode = process.env.HEARME_BROKER_PRODUCTION_MODE;
+    process.env.HEARME_BROKER_SELF_SCOPE = "oops-v2";
+    process.env.HEARME_BROKER_PRODUCTION_MODE = "1";
+    try {
+      const report = validateProductionConfig(getSettings());
+      expect(report.warnings.some((w) => w.includes("HEARME_BROKER_SELF_SCOPE"))).toBe(true);
+      // It is ignored, not fatal: the scope still resolves to the frozen value.
+      expect(getSettings().selfScope).toBe(PRODUCTION_SCOPE);
+    } finally {
+      if (prevScope === undefined) delete process.env.HEARME_BROKER_SELF_SCOPE;
+      else process.env.HEARME_BROKER_SELF_SCOPE = prevScope;
+      if (prevMode === undefined) delete process.env.HEARME_BROKER_PRODUCTION_MODE;
+      else process.env.HEARME_BROKER_PRODUCTION_MODE = prevMode;
+    }
+  });
+});
+
+describe("scope freeze — resolveScope (GH #97)", () => {
+  it("production pins PRODUCTION_SCOPE and reports an ignored override", () => {
+    expect(resolveScope({ productionMode: true, envScope: "oops-v2" })).toEqual({
+      scope: PRODUCTION_SCOPE,
+      ignoredEnvScope: "oops-v2",
+    });
+    expect(resolveScope({ productionMode: true, envScope: PRODUCTION_SCOPE })).toEqual({
+      scope: PRODUCTION_SCOPE,
+      ignoredEnvScope: null,
+    });
+    expect(resolveScope({ productionMode: true, envScope: undefined })).toEqual({
+      scope: PRODUCTION_SCOPE,
+      ignoredEnvScope: null,
+    });
+  });
+  it("outside production the env var selects the scope", () => {
+    expect(resolveScope({ productionMode: false, envScope: "staging-hearme-v1" })).toEqual({
+      scope: "staging-hearme-v1",
+      ignoredEnvScope: null,
+    });
+    expect(resolveScope({ productionMode: false, envScope: undefined })).toEqual({
+      scope: PRODUCTION_SCOPE,
+      ignoredEnvScope: null,
+    });
+  });
+  it("PRODUCTION_SCOPE is the frozen mainnet value", () => {
+    expect(PRODUCTION_SCOPE).toBe("hearme-v1");
   });
 });
 
@@ -229,6 +279,27 @@ describe("delegation verification", () => {
       expect((e as VerifyDelegationError).reason).toBe(RejectionReason.BROKER_SIGNATURE_INVALID);
     }
   });
+  it("rejects a token minted under another env's scope (GH #97)", () => {
+    // A token issued under staging's scope (same key, so we isolate the scope
+    // barrier) must be rejected by a prod-scoped broker BEFORE signature — proof
+    // that staging and prod credentials can never be mixed up.
+    const staging = getSettings({ selfScope: "staging-hearme-v1" });
+    const tok = issueDelegationToken({
+      unique_identifier: "self:nullifier-1",
+      disclosed_predicates: { region: "EU", age_band: "35-49" },
+      agent_key: makeToken().agent_key,
+      issued_at: new Date(Date.now() - 86400_000),
+      expires_at: new Date(Date.now() + 86400_000),
+      settings: staging,
+    });
+    expect(tok.scope).toBe("staging-hearme-v1");
+    try {
+      verifyDelegation(tok); // default settings → scope "hearme-v1"
+      expect.unreachable();
+    } catch (e) {
+      expect((e as VerifyDelegationError).reason).toBe(RejectionReason.SELF_SCOPE_MISMATCH);
+    }
+  });
 });
 
 describe("asker session (Sign in with Self credential)", () => {
@@ -272,6 +343,23 @@ describe("asker session (Sign in with Self credential)", () => {
       expect((e as VerifyDelegationError).reason).toBe(
         RejectionReason.BROKER_SIGNATURE_INVALID,
       );
+    }
+  });
+
+  it("rejects a session minted under another env's scope (GH #97)", () => {
+    const staging = getSettings({ selfScope: "staging-hearme-v1" });
+    const s = issueAskerSession({
+      unique_identifier: uid,
+      issued_at: new Date(),
+      expires_at: new Date(Date.now() + ASKER_SESSION_TTL_MS),
+      settings: staging,
+    });
+    expect(s.scope).toBe("staging-hearme-v1");
+    try {
+      verifyAskerSession(s); // default settings → scope "hearme-v1"
+      expect.unreachable();
+    } catch (e) {
+      expect((e as VerifyDelegationError).reason).toBe(RejectionReason.SELF_SCOPE_MISMATCH);
     }
   });
 

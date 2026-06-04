@@ -41,7 +41,11 @@ export type EnrollmentBundle = z.infer<typeof enrollmentBundleSchema>;
 export const delegationTokenSchema = z
   .object({
     version: z.literal(2),
-    scope: z.literal("hearme-v1"),
+    // Structural only. The exact value is FROZEN per environment and checked at
+    // verify time against settings.selfScope (verify/delegation.ts) — a static
+    // literal here cannot know staging's "staging-hearme-v1" vs prod's
+    // "hearme-v1" (GH #97).
+    scope: z.string(),
     unique_identifier: z.string(),
     disclosed_predicates: z.record(z.string(), z.string()),
     agent_key: z.string(),
@@ -120,7 +124,9 @@ export const askerSessionSchema = z
   .object({
     version: z.literal(1),
     kind: z.literal("asker_session"),
-    scope: z.literal("hearme-v1"),
+    // Structural only — exact value checked at verify time (see delegation
+    // schema note above and verify/askerSession.ts).
+    scope: z.string(),
     unique_identifier: z.string(),
     issued_at: z.string(),
     expires_at: z.string(),

@@ -93,6 +93,11 @@ services:
       HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:hearme_broker_dev@postgres:5432/hearme
       # Self proofs are verified once (at /v1/register) via the bridge the broker controls.
       HEARME_BROKER_SELF_BRIDGE_URL: http://self-bridge:8787
+      # Identity scope stamped into / checked on every credential. MUST equal the
+      # self-bridge's SELF_SCOPE. Local-dev value; staging overrides to
+      # "staging-hearme-v1" and prod IGNORES it (frozen to "hearme-v1" in code —
+      # GH #97). See packages/broker/src/verify/scope.ts and docs/DEPLOYMENT.md.
+      HEARME_BROKER_SELF_SCOPE: hearme-v1
       # Dev: no Celo RPC wired into the bridge, so skip the on-chain registry
       # gate. Set to "1" (and wire SELF_CELO_RPC_URL on the bridge) for the
       # Sybil-hardening check. See ARCHITECTURE_V0.md §5.
@@ -129,6 +134,10 @@ services:
     container_name: hearme-self-bridge
     restart: unless-stopped
     environment:
+      # Local-dev nullifier scope. Staging overrides this to "staging-hearme-v1"
+      # and prod IGNORES it entirely (frozen to "hearme-v1" in code — GH #97).
+      # Frozen for the life of any environment's data: changing it orphans every
+      # registration there. See scope.js PRODUCTION_SCOPE and docs/DEPLOYMENT.md.
       SELF_SCOPE: hearme-v1
       SELF_ENDPOINT: http://self-bridge:8787/callback
       SELF_ENDPOINT_TYPE: staging_https

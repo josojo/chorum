@@ -181,6 +181,41 @@ A non-error JSON response with a fresh `result` is the floor. If this fails
 in production, registration fails for *everyone* — the bridge is on the
 critical path for the entire `POST /v1/register` flow.
 
+### 3.1 Frozen constants — never change in prod
+
+Some values are **load-bearing for the identity graph and irreversible once
+live**. Changing them after launch does not error — it silently re-mints every
+identity. They are frozen for the life of an environment's data:
+
+| Constant | Frozen value (prod) | Env / staging | Defined in | Why it can never change |
+|----------|--------------------|---------------|------------|-------------------------|
+| **Self scope** (nullifier) | `hearme-v1` | `SELF_SCOPE` (staging: `staging-hearme-v1`) | `packages/self-bridge/src/scope.js` → `PRODUCTION_SCOPE` | The Self circuit hashes the scope into every nullifier (`unique_identifier`). A new scope gives every existing passport a brand-new identity: Sybil resistance resets, every `registrations` row orphans, and every per-question voter tag stops matching. There is no migration path — old nullifiers cannot be re-derived. (GH #97) |
+| **Broker credential `scope`** | `hearme-v1` | `HEARME_BROKER_SELF_SCOPE` (staging: `staging-hearme-v1`) | `packages/broker/src/verify/scope.ts` → `PRODUCTION_SCOPE` | Stamped into every DelegationToken / asker-session, bound into the broker signature, and checked against incoming credentials (`verify/delegation.ts`, `SELF_SCOPE_MISMATCH`). **Must equal the env's Self scope.** Together with the per-env signing key, it is what keeps a staging credential from ever being accepted by prod. |
+
+The two scopes **must match within an environment** (prod `hearme-v1` ↔
+`hearme-v1`; staging `staging-hearme-v1` ↔ `staging-hearme-v1`).
+
+How the freeze is enforced (both bridge and broker, identical pattern):
+
+- **Production ignores the env var entirely.** With `SELF_PRODUCTION_MODE=1`
+  (bridge) / `HEARME_BROKER_PRODUCTION_MODE=1` (broker), the scope is pinned to
+  `PRODUCTION_SCOPE` in code and `SELF_SCOPE` / `HEARME_BROKER_SELF_SCOPE` is
+  ignored (a loud warning is logged if one is set). A dropped/typo'd/edited env
+  var therefore **cannot** re-mint identities — the worst case is a warning, not
+  a silent identity reset (fail-safe).
+- **Staging uses a distinct frozen scope.** `docker-compose.staging.yml` pins
+  `SELF_SCOPE=staging-hearme-v1` and `HEARME_BROKER_SELF_SCOPE=staging-hearme-v1`
+  so staging's mock-passport identities and credentials can never collide with
+  prod. Equally frozen for staging's data. *(Adopting a distinct staging scope is
+  a one-time reset of staging's existing identity graph — fine pre-launch.)*
+- **Local dev** uses `hearme-v1` from `docker-compose.yml` (mock passports +
+  throwaway dev DB, so no collision with prod).
+
+To intentionally start a fresh identity generation (a true `v2`), you bump
+`PRODUCTION_SCOPE` in **both** `scope.js` (bridge) and `scope.ts` (broker)
+together, and accept that every user must re-register. That is a deliberate,
+breaking migration — never a config tweak.
+
 ---
 
 ## 4. Database: managed Postgres (RDS) + backups
@@ -437,6 +472,10 @@ Run through this before flipping the public DNS:
 - [ ] `HEARME_BROKER_DEV_INSECURE_REGISTER=false` (or unset).
 - [ ] `HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION=true`.
 - [ ] `SELF_MOCK_PASSPORT=0` on the self-bridge.
+- [ ] Self scope is frozen: prod runs with `SELF_PRODUCTION_MODE=1` (so the
+      scope is pinned to `hearme-v1` in code and `SELF_SCOPE` is ignored), and
+      `GET /healthz` on the bridge reports `"scope":"hearme-v1"`. This value is
+      **permanent** — see §3.1 Frozen constants.
 - [ ] `SELF_CELO_RPC_URL` set and a hand `curl` against it succeeds.
 - [ ] Caddy or your reverse proxy sets `X-Real-IP` for both broker and web
       (rate limit cannot otherwise distinguish clients).
