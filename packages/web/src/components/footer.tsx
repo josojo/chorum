@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 const SOCIALS: { label: string; href: string; icon: ReactNode }[] = [
   {
     label: "X",
-    href: process.env.NEXT_PUBLIC_SOCIAL_X ?? "https://x.com/hearme",
+    href: process.env.NEXT_PUBLIC_SOCIAL_X ?? "https://x.com/humsig",
     icon: <XIcon />,
   },
   {
@@ -21,7 +21,7 @@ const SOCIALS: { label: string; href: string; icon: ReactNode }[] = [
   },
   {
     label: "Discord",
-    href: process.env.NEXT_PUBLIC_SOCIAL_DISCORD ?? "https://discord.gg/hearme",
+    href: process.env.NEXT_PUBLIC_SOCIAL_DISCORD ?? "https://discord.gg/humsig",
     icon: <DiscordIcon />,
   },
 ];
