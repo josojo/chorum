@@ -1,7 +1,7 @@
 {
   "$id": "https://hearme.network/proto/topics.json",
   "title": "Question topic taxonomy",
-  "description": "Canonical, asker-INDEPENDENT topic tokens that the classifier service (packages/classifier) may assign to a question. Source of truth for both the classifier (which produces them) and the skill (which gates on them via the host agent's policy.yaml). The split between `safe` and `sensitive` is the privacy gate: tokens in `safe` intersect with packages/skill/src/hearme_skill/policy.py:DEFAULT_AUTO_ANSWER_TOPICS so the skill auto-answers them out of the box; tokens in `sensitive` deliberately do NOT — they require the user's explicit `auto_answer: true` opt-in. Askers do NOT pick the topic; the classifier derives it from the question text. The single fallback `other` is assigned when no other taxonomy member fits and is also outside the auto-answer set.",
+  "description": "Canonical, asker-INDEPENDENT topic tokens that the classifier service (packages/classifier) may assign to a question. Source of truth for both the classifier (which produces them) and the skill (which gates on them via the host agent's policy.yaml). The split between `safe` and `sensitive` is the privacy gate: tokens in `safe` intersect with packages/skill/src/policy.rs:DEFAULT_AUTO_ANSWER_TOPICS so the skill auto-answers them out of the box; tokens in `sensitive` deliberately do NOT — they require the user's explicit `auto_answer: true` opt-in. Only the small high-stakes core (politics, health, finance, religion, family) stays sensitive; everyday topics like work, news, education, philosophy, personal and relationships are answered by default. Askers do NOT pick the topic; the classifier derives it from the question text. The single fallback `other` is assigned when no other taxonomy member fits and is also outside the auto-answer set.",
   "safe": [
     "ai",
     "tech",
@@ -18,21 +18,21 @@
     "art",
     "science",
     "productivity",
-    "web"
+    "web",
+    "work",
+    "news",
+    "education",
+    "philosophy",
+    "personal",
+    "legal",
+    "relationships"
   ],
   "sensitive": [
     "politics",
     "health",
     "finance",
     "religion",
-    "relationships",
-    "family",
-    "education",
-    "work",
-    "news",
-    "philosophy",
-    "legal",
-    "personal"
+    "family"
   ],
   "fallback": "other"
 }
