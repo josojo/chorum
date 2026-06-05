@@ -126,10 +126,9 @@ function buildSystemPrompt(): string {
     "Rules:",
     "1. Pick 1 to 3 tokens, ordered most relevant first.",
     "2. Every token MUST appear in the taxonomy above, verbatim. Never invent a token.",
-    "3. Pick from `sensitive` whenever the question touches health, money, politics, religion,",
-    "   relationships, family, education, work, news, philosophy, legal advice, or anything",
-    `   personal — even if it could also be tagged from \`safe\`. The label must reflect what`,
-    "   the question is REALLY about, not how it is phrased.",
+    "3. Pick from `sensitive` whenever the question touches health, money/finance, politics,",
+    "   religion, or family — even if it could also be tagged from `safe`. The label must",
+    "   reflect what the question is REALLY about, not how it is phrased.",
     "4. Use `other` ONLY if no taxonomy member fits — never as filler.",
     "5. Reply with the JSON object only — no prose, no markdown fence.",
   ].join("\n");

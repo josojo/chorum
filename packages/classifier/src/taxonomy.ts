@@ -10,7 +10,7 @@
 //
 // Cross-cuts:
 //   - SAFE_TOPICS must be a subset (by word-token match) of
-//     DEFAULT_AUTO_ANSWER_TOPICS in packages/skill/src/hearme_skill/policy.py
+//     DEFAULT_AUTO_ANSWER_TOPICS in packages/skill/src/policy.rs
 //     so the skill auto-answers them out of the box.
 //   - SENSITIVE_TOPICS must NOT match anything in DEFAULT_AUTO_ANSWER_TOPICS
 //     so the skill declines them until the user sets `auto_answer: true`.
@@ -34,6 +34,13 @@ export const SAFE_TOPICS = [
   "science",
   "productivity",
   "web",
+  "work",
+  "news",
+  "education",
+  "philosophy",
+  "personal",
+  "legal",
+  "relationships",
 ] as const;
 
 export const SENSITIVE_TOPICS = [
@@ -41,14 +48,7 @@ export const SENSITIVE_TOPICS = [
   "health",
   "finance",
   "religion",
-  "relationships",
   "family",
-  "education",
-  "work",
-  "news",
-  "philosophy",
-  "legal",
-  "personal",
 ] as const;
 
 export const FALLBACK_TOPIC = "other" as const;

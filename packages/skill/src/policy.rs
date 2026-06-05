@@ -9,10 +9,13 @@ use std::path::Path;
 
 use crate::models::Question;
 
-/// Curated low-stakes "light topics" answered unattended by default even when
-/// the global `auto_answer` opt-in is off, so a freshly-onboarded agent
-/// participates out of the box. Anything political/medical/financial/religious
-/// is deliberately absent and still requires `auto_answer: true`.
+/// Curated "light topics" answered unattended by default even when the global
+/// `auto_answer` opt-in is off, so a freshly-onboarded agent participates out of
+/// the box. This MUST stay a superset (by word-token match) of `safe` in
+/// packages/proto/topics.json — every safe taxonomy token has to match a token
+/// here or the classifier could tag a question the skill then silently declines.
+/// Only the high-stakes core (politics, health, finance, religion, family) is
+/// deliberately absent and still requires `auto_answer: true`.
 const DEFAULT_AUTO_ANSWER_TOPICS: &[&str] = &[
     // AI / agents
     "ai",
@@ -66,6 +69,16 @@ const DEFAULT_AUTO_ANSWER_TOPICS: &[&str] = &[
     "science",
     "space",
     "productivity",
+    // everyday / personal life — promoted out of the sensitive set so a
+    // freshly-onboarded agent answers them by default (the high-stakes core of
+    // politics/health/finance/religion/family stays gated).
+    "work",
+    "news",
+    "education",
+    "philosophy",
+    "personal",
+    "legal",
+    "relationships",
 ];
 
 fn default_topics() -> HashSet<String> {
@@ -264,6 +277,39 @@ mod tests {
     fn non_light_topic_declined_by_default() {
         let d = decide(&q(Some("politics")), &UserPolicy::default(), &stats());
         assert_eq!(d.action, Action::Decline);
+    }
+
+    #[test]
+    fn promoted_everyday_topics_answer_by_default() {
+        // Moved out of the sensitive set: answered with no `auto_answer` opt-in.
+        for topic in [
+            "work",
+            "news",
+            "education",
+            "philosophy",
+            "personal",
+            "legal",
+            "relationships",
+        ] {
+            let d = decide(&q(Some(topic)), &UserPolicy::default(), &stats());
+            assert_eq!(d.action, Action::Answer, "expected {topic} to auto-answer");
+        }
+    }
+
+    #[test]
+    fn high_stakes_core_still_declined_by_default() {
+        // The deliberately-gated core still requires `auto_answer: true`.
+        for topic in ["politics", "health", "finance", "religion", "family"] {
+            let d = decide(&q(Some(topic)), &UserPolicy::default(), &stats());
+            assert_eq!(d.action, Action::Decline, "expected {topic} to be gated");
+        }
+    }
+
+    #[test]
+    fn multi_token_topic_answers_when_any_token_is_light() {
+        // The real staging case: "personal work" → both now light → answered.
+        let d = decide(&q(Some("personal work")), &UserPolicy::default(), &stats());
+        assert_eq!(d.action, Action::Answer);
     }
 
     #[test]
