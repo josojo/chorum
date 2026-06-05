@@ -21,10 +21,10 @@ pass() { echo "PASS: $*"; }
 
 # 1. Schema applied. (Includes the Self revocation-listener tables
 #    self_chain_cursors + self_nullifier_invalidations — ARCHITECTURE_V0.md §5.)
-expected="aggregates askers board_members envelopes questions referral_codes referrals registrations reputation revocations self_chain_cursors self_nullifier_invalidations"
+expected="aggregates askers envelopes questions registrations revocations self_chain_cursors self_nullifier_invalidations"
 actual=$(admin "SELECT string_agg(tablename, ' ' ORDER BY tablename) FROM pg_tables WHERE schemaname='public';")
 [ "$actual" = "$expected" ] || fail "tables mismatch: got '$actual', want '$expected'"
-pass "schema applied — 12 tables"
+pass "schema applied — 8 tables"
 
 # 2. Writer roles exist.
 for role in hearme_web hearme_broker hearme_classifier; do
@@ -82,20 +82,6 @@ fi
 admin "DELETE FROM questions WHERE id='$classifier_qid';" > /dev/null
 pass "hearme_classifier scoped to SELECT + UPDATE(topic) only"
 
-# 4c. Referral/reputation/board tables are broker-private (REFERRALS.md §5):
-#     web and classifier cannot read them; the broker can read+write.
-for t in referral_codes referrals reputation board_members; do
-  if web "SELECT 1 FROM $t LIMIT 1;" 2>/dev/null; then
-    fail "hearme_web should be denied SELECT on $t"
-  fi
-  if classifier "SELECT 1 FROM $t LIMIT 1;" 2>/dev/null; then
-    fail "hearme_classifier should be denied SELECT on $t"
-  fi
-  broker "SELECT 1 FROM $t LIMIT 1;" >/dev/null 2>&1 \
-    || fail "hearme_broker should be able to SELECT $t"
-done
-pass "referral/reputation/board tables broker-private"
-
 # 5. Composite PK rejects duplicate Sybil writes.
 web "INSERT INTO questions(text, closes_at) VALUES ('ci-test?', now() + interval '1 hour');" > /dev/null
 qid=$(web "SELECT id FROM questions WHERE text='ci-test?' ORDER BY created_at DESC LIMIT 1;")
@@ -108,7 +94,7 @@ if broker "INSERT INTO envelopes(question_id, unique_identifier, answer, disclos
 fi
 pass "composite PK rejects duplicate envelopes"
 
-admin "TRUNCATE envelopes, aggregates, revocations, registrations, referral_codes, referrals, reputation, board_members, questions, askers RESTART IDENTITY CASCADE;" > /dev/null
+admin "TRUNCATE envelopes, aggregates, revocations, registrations, questions, askers RESTART IDENTITY CASCADE;" > /dev/null
 
 echo
 echo "All DB checks passed."
