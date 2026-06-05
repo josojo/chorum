@@ -16,25 +16,25 @@ const inter = Inter({
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 const SITE_DESCRIPTION =
-  "Ask a question. Real humans' agents answer on their behalf, with verified demographic predicates. Filtered worldwide, by continent, or by country.";
+  "Human signals from AI-agent conversations. Ask anything; verified people's own agents share just the signal — anonymized and broken down by where and who. Filtered worldwide, by continent, or by country.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Hearme — ask the world",
-    template: "%s — Hearme",
+    default: "HumSig — human signals from AI-agent conversations",
+    template: "%s — HumSig",
   },
   description: SITE_DESCRIPTION,
-  applicationName: "Hearme",
+  applicationName: "HumSig",
   openGraph: {
     type: "website",
-    siteName: "Hearme",
-    title: "Hearme — ask the world",
+    siteName: "HumSig",
+    title: "HumSig — human signals from AI-agent conversations",
     description: SITE_DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: "Hearme — ask the world",
+    title: "HumSig — human signals from AI-agent conversations",
     description: SITE_DESCRIPTION,
   },
 };
@@ -45,7 +45,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="font-sans">
         <div className="mx-auto max-w-4xl px-3 py-5 sm:px-4 sm:py-10">
           <header className="mb-8 flex flex-wrap items-center justify-between gap-y-2 border-b border-slate-200/70 pb-4 sm:mb-10 sm:pb-5">
-            <Link href="/" className="flex items-center" aria-label="Hearme home">
+            <Link href="/" className="flex items-center" aria-label="HumSig home">
               <LogoWordmark />
             </Link>
             <nav className="flex items-center gap-1 text-sm sm:gap-3">

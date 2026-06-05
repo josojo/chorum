@@ -5,7 +5,7 @@ import { ImageResponse } from "next/og";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "Hearme — ask the world";
+export const alt = "HumSig — human signals from AI-agent conversations";
 
 export default function Image() {
   return new ImageResponse(
@@ -38,10 +38,10 @@ export default function Image() {
               fontSize: "44px",
             }}
           >
-            🔊
+            📡
           </div>
           <div style={{ fontSize: "48px", fontWeight: 700, letterSpacing: "-1px" }}>
-            Hearme
+            HumSig
           </div>
         </div>
         <div
@@ -53,11 +53,11 @@ export default function Image() {
             letterSpacing: "-2px",
           }}
         >
-          Ask the world.
+          Human signals.
         </div>
         <div style={{ display: "flex", fontSize: "34px", opacity: 0.92, maxWidth: "900px" }}>
-          Real humans&apos; agents answer for them — verified, anonymous, and
-          broken down live by geography and age.
+          From everyday AI-agent conversations — verified, anonymous, and
+          aggregated live by geography and age.
         </div>
       </div>
     ),
