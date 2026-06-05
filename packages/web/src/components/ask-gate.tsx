@@ -511,11 +511,16 @@ function ScanStage({ onVerified }: { onVerified: (s: StatusResponse) => void }) 
   }, []);
 
   return (
-    // Fill the dialog's illustration stage with the QR so it's big enough to
-    // scan without zooming (the old phone-mock framing shrank it to ~132px). The
-    // white card padding doubles as the QR's quiet zone.
-    <div className="flex items-center justify-center">
-      <div className="rounded-2xl bg-white p-4 shadow-xl ring-1 ring-slate-200">
+    // Two ways to reach the Self app from the same `qrUrl` universal link:
+    //  - desktop: scan the QR with the phone running Self;
+    //  - mobile: tap to open Self directly (you can't scan your own screen).
+    // Both are rendered and toggled by CSS breakpoint so there's no SSR/
+    // hydration mismatch from runtime UA sniffing; polling keeps running in
+    // this tab while the Self app is foregrounded, so the user just switches
+    // back here once verified.
+    <div className="flex flex-col items-center justify-center gap-4">
+      {/* Desktop: scan the QR from a separate phone. */}
+      <div className="hidden rounded-2xl bg-white p-4 shadow-xl ring-1 ring-slate-200 sm:block">
         {error ? (
           <p className="grid h-[180px] w-[180px] place-items-center px-3 text-center text-xs font-medium text-rose-600">
             {error}
@@ -536,6 +541,34 @@ function ScanStage({ onVerified }: { onVerified: (s: StatusResponse) => void }) 
           </div>
         )}
       </div>
+
+      {/* Mobile: open the Self app on this phone via the same universal link.
+          A plain <a> lets the OS hand off to Self without tearing down this
+          tab, so the status poll above survives the app switch. */}
+      <div className="w-full sm:hidden">
+        {error ? (
+          <p className="px-3 text-center text-xs font-medium text-rose-600">
+            {error}
+          </p>
+        ) : qrUrl ? (
+          <a
+            href={qrUrl}
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-brand-gradient px-5 py-3 text-sm font-semibold text-white shadow-glow transition active:opacity-90"
+          >
+            Open the Self app <span aria-hidden>→</span>
+          </a>
+        ) : (
+          <div className="grid h-12 place-items-center">
+            <span className="h-7 w-7 animate-spin rounded-full border-2 border-slate-200 border-t-violet-600" />
+          </div>
+        )}
+      </div>
+
+      {/* On desktop, hint that the QR is meant for a phone. */}
+      <p className="hidden max-w-[220px] text-center text-xs text-slate-500 sm:block">
+        Scan with your phone’s camera, or open this page on your phone to verify
+        without scanning.
+      </p>
     </div>
   );
 }
