@@ -35,6 +35,7 @@ function ack(accepted: boolean, reason?: RejectionReason): EnvelopeAck {
 
 export function registerEnvelopesRoutes(app: FastifyInstance): void {
   app.post("/v1/envelopes", async (req, reply) => {
+    const settings = getSettings();
     const parsed = envelopeSchema.safeParse(req.body);
     if (!parsed.success) {
       recordOutcome("envelopes", false, RejectionReason.SCHEMA_INVALID);
@@ -154,6 +155,17 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
         uniqueIdentifier: verified.uniqueIdentifier,
         delta: 1,
         signalDelta: envelope.no_signal ? 0 : 1,
+      });
+      // Referral activation (REFERRALS.md §4): if this answer just pushed the
+      // answerer over BOTH unlock thresholds and they have a pending referral,
+      // flip it to active and credit their referrer's reputation. Idempotent and
+      // usually a 0-row no-op, so it's cheap on the common (no-referral) path.
+      await q.creditReferralOnActivation(tx, {
+        refereeNullifier: verified.uniqueIdentifier,
+        requiredTotal: settings.askerUnlockTotalAnswers,
+        requiredSignal: settings.askerUnlockSignalAnswers,
+        scorePerReferral: settings.repPerActiveReferral,
+        boardThreshold: settings.repBoardThreshold,
       });
     });
     if (duplicate) return ack(false, RejectionReason.DUPLICATE);

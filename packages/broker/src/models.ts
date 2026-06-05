@@ -29,10 +29,17 @@ export const selfProofBundleSchema = z
 export type SelfProofBundle = z.infer<typeof selfProofBundleSchema>;
 
 // POST /v1/register body (mirror packages/proto/enrollment.json).
+//
+// `referral_code` is optional (REFERRALS.md §3.2): a new human carries the code
+// their referrer shared so the broker can attribute the referral after the Sybil
+// bind. It travels as plain registration metadata — NOT inside any Self proof —
+// so the proof stays minimal and the code stays off-chain. An unknown / expired /
+// exhausted code is ignored silently and never fails registration.
 export const enrollmentBundleSchema = z
   .object({
     self_proofs: z.array(selfProofBundleSchema).min(1),
     agent_key: z.string(),
+    referral_code: z.string().trim().min(1).max(64).optional(),
   })
   .strict();
 export type EnrollmentBundle = z.infer<typeof enrollmentBundleSchema>;
@@ -173,6 +180,102 @@ export const askerSessionVerifyRequestSchema = z
   .strict();
 export type AskerSessionVerifyRequest = z.infer<typeof askerSessionVerifyRequestSchema>;
 
+// Identity credential envelope for the referral/board endpoints (REFERRALS.md).
+// An identity proves itself with EITHER its agent DelegationToken (the durable
+// agent credential) OR a browser asker session ("Sign in with Self") — exactly
+// one. Both resolve to the same nullifier via verify/identityAuth.ts. `.strict()`
+// keeps the boundary discipline; the refine enforces the exclusive-or.
+const identityCredentialsShape = {
+  delegation_token: delegationTokenSchema.optional(),
+  asker_session: askerSessionSchema.optional(),
+} as const;
+
+function exactlyOneCredential(v: {
+  delegation_token?: unknown;
+  asker_session?: unknown;
+}): boolean {
+  return (v.delegation_token == null) !== (v.asker_session == null);
+}
+
+// POST /v1/referrals/create and POST /v1/referrals/stats body — just the
+// credential (the referrer is whoever the credential resolves to).
+export const referralCreateRequestSchema = z
+  .object(identityCredentialsShape)
+  .strict()
+  .refine(exactlyOneCredential, {
+    message: "provide exactly one of delegation_token or asker_session",
+  });
+export type ReferralCreateRequest = z.infer<typeof referralCreateRequestSchema>;
+
+export const referralStatsRequestSchema = referralCreateRequestSchema;
+export type ReferralStatsRequest = z.infer<typeof referralStatsRequestSchema>;
+
+// POST /v1/board/claim body — credential + a FRESH client-generated governance
+// public key (base64 Ed25519, REFERRALS.md §6.1). The credential is bound to
+// gov_key, never to the nullifier, so board actions don't link to answers.
+export const boardClaimRequestSchema = z
+  .object({ ...identityCredentialsShape, gov_key: z.string().min(1) })
+  .strict()
+  .refine(exactlyOneCredential, {
+    message: "provide exactly one of delegation_token or asker_session",
+  });
+export type BoardClaimRequest = z.infer<typeof boardClaimRequestSchema>;
+
+// Broker-issued anonymous board credential (verify/credential.ts). Same Ed25519
+// primitive as the DelegationToken, but signed under a SEPARATE governance scope
+// and binding gov_key + tier — NOT the nullifier. version 1 + kind discriminator
+// so it can never be confused with a DelegationToken / asker session on the wire.
+export const boardCredentialSchema = z
+  .object({
+    version: z.literal(1),
+    kind: z.literal("board_credential"),
+    scope: z.string(),
+    gov_key: z.string(),
+    tier: z.string(),
+    issued_at: z.string(),
+    expires_at: z.string(),
+    broker_signature: z.string(),
+  })
+  .strict();
+export type BoardCredential = z.infer<typeof boardCredentialSchema>;
+
+// Response to POST /v1/referrals/create.
+export interface ReferralCreateResponse {
+  // The cleartext code, returned exactly once — the broker stores only its hash.
+  code: string;
+  expires_at: string;
+}
+
+// Response to POST /v1/referrals/stats — a referrer's referral + reputation
+// dashboard.
+export interface ReferralStatsResponse {
+  unique_identifier: string;
+  codes_minted: number;
+  code_redemptions: number;
+  pending_referrals: number;
+  active_referrals: number;
+  score: number;
+  tier: string;
+}
+
+// Response to POST /v1/board/claim. `eligible` is the reputation gate; when true
+// the broker mints and returns the credential. `reason` carries the block reason
+// (or auth reason) otherwise.
+export interface BoardClaimResponse {
+  authorized: boolean;
+  eligible: boolean;
+  tier: string;
+  score: number;
+  required_score: number;
+  credential: BoardCredential | null;
+  reason: string | null;
+}
+
+// GET /v1/board/roster response — the public, nullifier-free board roster.
+export interface BoardRosterResponse {
+  members: Array<{ gov_key: string; tier: string }>;
+}
+
 // POST /v1/askers/eligibility response — authenticated asker gating decision
 // (ARCHITECTURE_V0.md §14.2). snake_case to match the other broker wire shapes.
 //
@@ -240,6 +343,14 @@ export const RejectionReason = {
 
   // --- per-envelope override (POST /v1/envelopes/revoke; §1.12) ---
   ENVELOPE_NOT_FOUND: "envelope_not_found",
+
+  // --- referrals & board (REFERRALS.md) ---
+  // The referrer already holds the maximum number of live referral codes.
+  REFERRAL_LIMIT_REACHED: "referral_limit_reached",
+  // The identity's reputation is below the board threshold.
+  BOARD_NOT_ELIGIBLE: "board_not_eligible",
+  // The supplied governance public key is not a valid base64 Ed25519 key.
+  GOV_KEY_INVALID: "gov_key_invalid",
 } as const;
 
 export type RejectionReason = (typeof RejectionReason)[keyof typeof RejectionReason];

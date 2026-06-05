@@ -17,6 +17,8 @@ import type { Db } from "./db";
 import type * as schema from "./schema";
 import { classifyAnswer, computeByPredicate, computeNoSignal } from "./aggregates";
 import { voterTagIfLive } from "./voterTag";
+import { hashReferralCode } from "./verify/referralCode";
+import { tierForScore } from "./reputation";
 
 export type Tx = PgTransaction<
   PostgresJsQueryResultHKT,
@@ -794,4 +796,284 @@ export async function platformStats(db: Db): Promise<PlatformStatsRow> {
     respondents: Number(row.respondents),
     answeredQuestions: Number(row.answered_questions),
   };
+}
+
+// ----- referrals & reputation (REFERRALS.md) -----------------------------
+
+// How many of a referrer's codes are still live (unexpired AND not exhausted).
+// Backs the per-referrer active-code cap so codes can't be minted without bound.
+export async function countLiveReferralCodes(
+  db: Executor,
+  referrerNullifier: string,
+): Promise<number> {
+  const rows = (await db.execute(sql`
+    SELECT count(*)::int AS n
+    FROM referral_codes
+    WHERE referrer_nullifier = ${referrerNullifier}
+      AND used_count < max_uses
+      AND (expires_at IS NULL OR expires_at > now())
+  `)) as unknown as Rows<{ n: number }>;
+  return Number(rows[0]?.n ?? 0);
+}
+
+// Persist a freshly minted code. Only the hash is stored (the cleartext is shown
+// to the referrer once and never recoverable from the DB — REFERRALS.md §3.1).
+export async function createReferralCode(
+  db: Executor,
+  args: {
+    codeHash: string;
+    referrerNullifier: string;
+    maxUses: number;
+    expiresAt: Date | null;
+  },
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO referral_codes (code_hash, referrer_nullifier, max_uses, expires_at)
+    VALUES (
+      ${args.codeHash}, ${args.referrerNullifier}, ${args.maxUses},
+      ${args.expiresAt === null ? null : args.expiresAt.toISOString()}::timestamptz
+    )
+  `);
+}
+
+export interface ReferralStats {
+  // Codes the referrer has minted and how many have been redeemed.
+  codesMinted: number;
+  codeRedemptions: number;
+  // Referral edges they own, split by lifecycle state.
+  pendingReferrals: number;
+  activeReferrals: number;
+  // Reputation rollup (zeros if the identity has never earned any).
+  score: number;
+  tier: string;
+}
+
+// One referrer's referral + reputation dashboard (POST /v1/referrals/stats).
+// Keyed by the raw nullifier the broker resolved from their credential.
+export async function referralStatsFor(
+  db: Executor,
+  referrerNullifier: string,
+): Promise<ReferralStats> {
+  const codes = (await db.execute(sql`
+    SELECT count(*)::int AS minted, COALESCE(sum(used_count), 0)::int AS redemptions
+    FROM referral_codes
+    WHERE referrer_nullifier = ${referrerNullifier}
+  `)) as unknown as Rows<{ minted: number; redemptions: number }>;
+  const edges = (await db.execute(sql`
+    SELECT
+      count(*) FILTER (WHERE state = 'pending')::int AS pending,
+      count(*) FILTER (WHERE state = 'active')::int  AS active
+    FROM referrals
+    WHERE referrer_nullifier = ${referrerNullifier}
+  `)) as unknown as Rows<{ pending: number; active: number }>;
+  const rep = (await db.execute(sql`
+    SELECT score, tier FROM reputation WHERE unique_identifier = ${referrerNullifier}
+  `)) as unknown as Rows<{ score: number; tier: string }>;
+  return {
+    codesMinted: Number(codes[0]?.minted ?? 0),
+    codeRedemptions: Number(codes[0]?.redemptions ?? 0),
+    pendingReferrals: Number(edges[0]?.pending ?? 0),
+    activeReferrals: Number(edges[0]?.active ?? 0),
+    score: Number(rep[0]?.score ?? 0),
+    tier: rep[0]?.tier ?? "none",
+  };
+}
+
+export interface RedeemResult {
+  redeemed: boolean;
+  // Why redemption was a no-op (never surfaced to the redeemer — REFERRALS.md
+  // §3.2 fails silently so the endpoint can't be used to probe codes).
+  reason:
+    | "unknown_code"
+    | "expired"
+    | "exhausted"
+    | "self_referral"
+    | "already_attributed"
+    | null;
+}
+
+// Redeem a referral code for a NEW human at registration (REFERRALS.md §3.2).
+// MUST run inside the registration transaction so the new human and their
+// referral edge commit atomically. Never throws on an expected failure — it
+// returns a reason and leaves registration to succeed regardless. The referral
+// edge is born 'pending'; it only earns the referrer reputation once the referee
+// becomes active (creditReferralOnActivation).
+export async function redeemReferralCode(
+  db: Executor,
+  args: { code: string; refereeNullifier: string; now: Date },
+): Promise<RedeemResult> {
+  const codeHash = hashReferralCode(args.code);
+  // Lock the code row so two concurrent redemptions of the same single-use code
+  // can't both pass the use-count check.
+  const rows = (await db.execute(sql`
+    SELECT referrer_nullifier, max_uses, used_count, expires_at
+    FROM referral_codes
+    WHERE code_hash = ${codeHash}
+    FOR UPDATE
+  `)) as unknown as Rows<{
+    referrer_nullifier: string;
+    max_uses: number;
+    used_count: number;
+    expires_at: string | Date | null;
+  }>;
+  const row = rows[0];
+  if (!row) return { redeemed: false, reason: "unknown_code" };
+  if (row.expires_at !== null && new Date(row.expires_at).getTime() <= args.now.getTime()) {
+    return { redeemed: false, reason: "expired" };
+  }
+  if (Number(row.used_count) >= Number(row.max_uses)) {
+    return { redeemed: false, reason: "exhausted" };
+  }
+  if (row.referrer_nullifier === args.refereeNullifier) {
+    return { redeemed: false, reason: "self_referral" };
+  }
+  // Record the edge. The referee PK makes attribution single-shot: if this human
+  // was already attributed to some referrer, DO NOTHING and don't burn a use.
+  const inserted = (await db.execute(sql`
+    INSERT INTO referrals (referee_nullifier, referrer_nullifier, code_hash, state)
+    VALUES (${args.refereeNullifier}, ${row.referrer_nullifier}, ${codeHash}, 'pending')
+    ON CONFLICT (referee_nullifier) DO NOTHING
+    RETURNING 1 AS inserted
+  `)) as unknown as Rows<unknown>;
+  if (inserted.length === 0) return { redeemed: false, reason: "already_attributed" };
+  await db.execute(sql`
+    UPDATE referral_codes SET used_count = used_count + 1 WHERE code_hash = ${codeHash}
+  `);
+  return { redeemed: true, reason: null };
+}
+
+export interface CreditResult {
+  credited: boolean;
+  referrerNullifier: string | null;
+}
+
+// Activation crediting (REFERRALS.md §4). Called from the envelope path right
+// after a referee's answer counters advance. In ONE statement it flips that
+// referee's pending referral to 'active' iff their maintained counters now clear
+// BOTH unlock thresholds — a no-op (0 rows) when there is no pending referral or
+// the bar isn't met yet, so it's cheap on every answer. The `state = 'pending'`
+// guard makes it idempotent: only the first crossing flips the edge, so the
+// referrer is credited exactly once. MUST run in the envelope's transaction.
+export async function creditReferralOnActivation(
+  db: Executor,
+  args: {
+    refereeNullifier: string;
+    requiredTotal: number;
+    requiredSignal: number;
+    scorePerReferral: number;
+    boardThreshold: number;
+  },
+): Promise<CreditResult> {
+  const flipped = (await db.execute(sql`
+    UPDATE referrals r
+    SET state = 'active', activated_at = now()
+    FROM registrations reg
+    WHERE r.referee_nullifier = ${args.refereeNullifier}
+      AND r.state = 'pending'
+      AND reg.unique_identifier = ${args.refereeNullifier}
+      AND reg.answer_count >= ${args.requiredTotal}
+      AND reg.signal_count >= ${args.requiredSignal}
+    RETURNING r.referrer_nullifier
+  `)) as unknown as Rows<{ referrer_nullifier: string }>;
+  const referrer = flipped[0]?.referrer_nullifier;
+  if (referrer === undefined) return { credited: false, referrerNullifier: null };
+
+  // Credit the referrer: +1 active referral, +scorePerReferral to the score.
+  const repRow = (await db.execute(sql`
+    INSERT INTO reputation (unique_identifier, referrals_active, score, tier, updated_at)
+    VALUES (
+      ${referrer}, 1, ${args.scorePerReferral},
+      ${tierForScore(args.scorePerReferral, args.boardThreshold)}, now()
+    )
+    ON CONFLICT (unique_identifier) DO UPDATE
+    SET referrals_active = reputation.referrals_active + 1,
+        score = reputation.score + ${args.scorePerReferral},
+        updated_at = now()
+    RETURNING score
+  `)) as unknown as Rows<{ score: number }>;
+  // Recompute the tier from the new score (the ON CONFLICT branch above can't
+  // know it pre-update). Cheap single-row update keyed by PK.
+  const newTier = tierForScore(Number(repRow[0]?.score ?? 0), args.boardThreshold);
+  await db.execute(sql`
+    UPDATE reputation SET tier = ${newTier} WHERE unique_identifier = ${referrer}
+  `);
+  return { credited: true, referrerNullifier: referrer };
+}
+
+export interface ReputationRow {
+  uniqueIdentifier: string;
+  referralsActive: number;
+  score: number;
+  tier: string;
+}
+
+// One identity's reputation, or null if it has never earned any.
+export async function getReputation(
+  db: Executor,
+  uniqueIdentifier: string,
+): Promise<ReputationRow | null> {
+  const rows = (await db.execute(sql`
+    SELECT unique_identifier, referrals_active, score, tier
+    FROM reputation
+    WHERE unique_identifier = ${uniqueIdentifier}
+  `)) as unknown as Rows<{
+    unique_identifier: string;
+    referrals_active: number;
+    score: number;
+    tier: string;
+  }>;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    uniqueIdentifier: row.unique_identifier,
+    referralsActive: Number(row.referrals_active),
+    score: Number(row.score),
+    tier: row.tier,
+  };
+}
+
+// ----- board membership (REFERRALS.md §6) --------------------------------
+
+// Record a board claim: map this human's nullifier to the FRESH governance key
+// they presented (one live credential per human — re-claiming refreshes the key
+// + tier + expiry). The nullifier never leaves this table; board actions and the
+// public roster reference only gov_key.
+export async function upsertBoardMember(
+  db: Executor,
+  args: {
+    uniqueIdentifier: string;
+    govKey: string;
+    tier: string;
+    expiresAt: Date;
+  },
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO board_members (unique_identifier, gov_key, tier, claimed_at, expires_at)
+    VALUES (
+      ${args.uniqueIdentifier}, ${args.govKey}, ${args.tier}, now(),
+      ${args.expiresAt.toISOString()}::timestamptz
+    )
+    ON CONFLICT (unique_identifier) DO UPDATE
+    SET gov_key = EXCLUDED.gov_key,
+        tier = EXCLUDED.tier,
+        claimed_at = now(),
+        expires_at = EXCLUDED.expires_at
+  `);
+}
+
+export interface RosterEntry {
+  govKey: string;
+  tier: string;
+}
+
+// The public board roster: live (unexpired) members as (gov_key, tier) only —
+// no nullifiers, nothing linkable to a member's answers (REFERRALS.md §6.2).
+export async function boardRoster(db: Executor): Promise<RosterEntry[]> {
+  const rows = (await db.execute(sql`
+    SELECT gov_key, tier
+    FROM board_members
+    WHERE expires_at > now()
+    ORDER BY claimed_at ASC
+  `)) as unknown as Rows<{ gov_key: string; tier: string }>;
+  return rows.map((r) => ({ govKey: r.gov_key, tier: r.tier }));
 }
