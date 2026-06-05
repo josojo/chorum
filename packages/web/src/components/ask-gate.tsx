@@ -23,7 +23,7 @@ import {
   primaryButtonClass,
 } from "./onboarding-dialog";
 
-const TEAM_EMAIL = "newquestion@hearme.fi";
+const TEAM_EMAIL = "newquestions@humsig.org";
 const POLL_INTERVAL_MS = 2500;
 
 type Scope = "worldwide" | "continent" | "country";

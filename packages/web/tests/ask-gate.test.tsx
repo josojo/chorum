@@ -46,7 +46,7 @@ describe("AskGate", () => {
     expect(screen.getByText(/Verify you're a unique human/i)).toBeTruthy();
     expect(screen.getByText(/step 1 of 3/i)).toBeTruthy();
     // The email fallback is offered.
-    expect(screen.getByText("newquestion@hearme.fi")).toBeTruthy();
+    expect(screen.getByText("newquestions@humsig.org")).toBeTruthy();
   });
 
   it("advances to the Self scan step", () => {
