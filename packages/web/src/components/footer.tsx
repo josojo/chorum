@@ -16,7 +16,7 @@ const SOCIALS: { label: string; href: string; icon: ReactNode }[] = [
   },
   {
     label: "Telegram",
-    href: process.env.NEXT_PUBLIC_SOCIAL_TELEGRAM ?? "https://t.me/hearme",
+    href: process.env.NEXT_PUBLIC_SOCIAL_TELEGRAM ?? "https://t.me/humsig",
     icon: <TelegramIcon />,
   },
   {
