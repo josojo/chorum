@@ -25,6 +25,7 @@ import {
 import { getSecretsDb } from "../src/secretsDb";
 import { startPg, truncateAll, type PgHandle } from "./pg";
 import { agentKeyB64, makeEnvelope, makeRevocation, makeEnrollment, makeToken, mockVerifyProof } from "./helpers";
+import { hashReferralCode as hashCode } from "../src/verify/referralCode";
 import * as q from "../src/queries";
 
 let pg: PgHandle | null = null;
@@ -847,6 +848,235 @@ describe("GET /v1/questions/open (consent gate: only classified rows, §1.1)", (
     const rows = await q.listOpenQuestions(db, null);
     expect(rows.map((r) => r.id)).toContain(pending.id);
     expect(rows.find((r) => r.id === pending.id)?.topic).toBe("politics");
+  });
+});
+
+describe("referrals + reputation (REFERRALS.md)", () => {
+  // Mint a referral code as `referrerUid` (registers them first so the agent
+  // DelegationToken authenticates against a live registration).
+  async function createCode(referrerUid: string): Promise<string> {
+    const token = await devToken({ uid: referrerUid });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/referrals/create",
+      payload: { delegation_token: token },
+    });
+    if (res.statusCode !== 200) throw new Error(`create code failed: ${res.body}`);
+    return res.json().code as string;
+  }
+
+  async function statsFor(referrerUid: string) {
+    const token = await devToken({ uid: referrerUid });
+    return (
+      await app.inject({
+        method: "POST",
+        url: "/v1/referrals/stats",
+        payload: { delegation_token: token },
+      })
+    ).json();
+  }
+
+  it("mints an opaque code that is never the nullifier, stored only as a hash", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const code = await createCode("self:ref-mint");
+    expect(code).toMatch(/^HUM-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+    // The cleartext is not the referrer nullifier, and the DB holds only a hash.
+    expect(code).not.toContain("self:ref-mint");
+    const rows = (await db.execute(sql`
+      SELECT code_hash, referrer_nullifier, used_count, max_uses FROM referral_codes
+    `)) as unknown as Array<{ code_hash: string; referrer_nullifier: string; used_count: number; max_uses: number }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].code_hash).not.toContain(code); // hashed, not the cleartext
+    expect(rows[0].referrer_nullifier).toBe("self:ref-mint");
+    expect(Number(rows[0].used_count)).toBe(0);
+  });
+
+  it("redeems at registration (pending), then activates + credits on threshold", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const code = await createCode("self:ref-A");
+
+    // New human registers carrying the code → a pending edge, no credit yet.
+    const reg = await app.inject({
+      method: "POST",
+      url: "/v1/register",
+      payload: { ...makeEnrollment({ uniqueIdentifier: "self:ree-A" }), referral_code: code },
+    });
+    expect(reg.json().accepted).toBe(true);
+    expect(await statsFor("self:ref-A")).toMatchObject({
+      pending_referrals: 1,
+      active_referrals: 0,
+      code_redemptions: 1,
+      score: 0,
+      tier: "none",
+    });
+
+    // The code is now exhausted (single-use): a second human can't reuse it.
+    const reg2 = await app.inject({
+      method: "POST",
+      url: "/v1/register",
+      payload: { ...makeEnrollment({ uniqueIdentifier: "self:ree-A2" }), referral_code: code },
+    });
+    expect(reg2.json().accepted).toBe(true); // registration still succeeds…
+    expect((await statsFor("self:ref-A")).pending_referrals).toBe(1); // …but no new edge
+
+    // Referee crosses the unlock bar (50 total / 10 signal) → referrer credited.
+    await seedAnswers("self:ree-A", { total: 50, signal: 10 });
+    expect(await statsFor("self:ref-A")).toMatchObject({
+      pending_referrals: 0,
+      active_referrals: 1,
+      score: 1,
+      tier: "bronze",
+    });
+
+    // Idempotent: more answers from an already-active referee credit nothing more.
+    await seedAnswers("self:ree-A", { total: 3, signal: 3 });
+    expect((await statsFor("self:ref-A")).score).toBe(1);
+  });
+
+  it("does not credit before the referee crosses BOTH thresholds", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const code = await createCode("self:ref-B");
+    await app.inject({
+      method: "POST",
+      url: "/v1/register",
+      payload: { ...makeEnrollment({ uniqueIdentifier: "self:ree-B" }), referral_code: code },
+    });
+    // Enough total but too little signal — below the activation bar.
+    await seedAnswers("self:ree-B", { total: 50, signal: 3 });
+    expect(await statsFor("self:ref-B")).toMatchObject({ pending_referrals: 1, active_referrals: 0, score: 0 });
+  });
+
+  it("registration succeeds and is unattributed for an unknown code", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const reg = await app.inject({
+      method: "POST",
+      url: "/v1/register",
+      payload: { ...makeEnrollment({ uniqueIdentifier: "self:ree-unk" }), referral_code: "HUM-ZZZZ-ZZZZ-ZZZZ-ZZZZ" },
+    });
+    expect(reg.json().accepted).toBe(true);
+    const rows = (await db.execute(sql`SELECT count(*)::int AS n FROM referrals`)) as unknown as Array<{ n: number }>;
+    expect(Number(rows[0].n)).toBe(0);
+  });
+
+  it("rejects an unauthenticated referral-create", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/referrals/create",
+      payload: { delegation_token: makeToken({ uniqueIdentifier: "self:never-reg" }) },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  // Guards that are awkward over HTTP (a new human always has a fresh nullifier)
+  // are exercised at the query layer directly.
+  it("redeemReferralCode enforces self-referral, double-attribution, expiry, exhaustion", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const { generateReferralCode } = await import("../src/verify/referralCode");
+    const now = new Date();
+
+    // self-referral: code owned by X, redeemed by X.
+    const selfCode = generateReferralCode();
+    await q.createReferralCode(db, { codeHash: hashCode(selfCode), referrerNullifier: "self:X", maxUses: 1, expiresAt: null });
+    expect(await q.redeemReferralCode(db, { code: selfCode, refereeNullifier: "self:X", now })).toMatchObject({
+      redeemed: false,
+      reason: "self_referral",
+    });
+
+    // double-attribution: same referee redeems a second time.
+    const c1 = generateReferralCode();
+    const c2 = generateReferralCode();
+    await q.createReferralCode(db, { codeHash: hashCode(c1), referrerNullifier: "self:R1", maxUses: 1, expiresAt: null });
+    await q.createReferralCode(db, { codeHash: hashCode(c2), referrerNullifier: "self:R2", maxUses: 1, expiresAt: null });
+    expect((await q.redeemReferralCode(db, { code: c1, refereeNullifier: "self:E", now })).redeemed).toBe(true);
+    expect(await q.redeemReferralCode(db, { code: c2, refereeNullifier: "self:E", now })).toMatchObject({
+      redeemed: false,
+      reason: "already_attributed",
+    });
+
+    // exhausted: single-use code already redeemed.
+    expect(await q.redeemReferralCode(db, { code: c1, refereeNullifier: "self:E2", now })).toMatchObject({
+      redeemed: false,
+      reason: "exhausted",
+    });
+
+    // expired.
+    const expCode = generateReferralCode();
+    await q.createReferralCode(db, {
+      codeHash: hashCode(expCode),
+      referrerNullifier: "self:R3",
+      maxUses: 1,
+      expiresAt: new Date(now.getTime() - 1000),
+    });
+    expect(await q.redeemReferralCode(db, { code: expCode, refereeNullifier: "self:E3", now })).toMatchObject({
+      redeemed: false,
+      reason: "expired",
+    });
+
+    // unknown.
+    expect(await q.redeemReferralCode(db, { code: "HUM-AAAA-BBBB-CCCC-DDDD", refereeNullifier: "self:E4", now })).toMatchObject({
+      redeemed: false,
+      reason: "unknown_code",
+    });
+  });
+});
+
+describe("board / governance (REFERRALS.md §6)", () => {
+  const govKey = Buffer.alloc(32, 9).toString("base64");
+
+  it("claims a board credential bound to gov_key (not the nullifier) when eligible", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:board-1";
+    const token = await devToken({ uid });
+    // Seed the reputation directly at the board threshold (default 10).
+    await db.execute(sql`
+      INSERT INTO reputation (unique_identifier, referrals_active, score, tier)
+      VALUES (${uid}, 10, 10, 'board')
+    `);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/board/claim",
+      payload: { delegation_token: token, gov_key: govKey },
+    });
+    const body = res.json();
+    expect(body).toMatchObject({ authorized: true, eligible: true, tier: "board", score: 10 });
+    expect(body.credential).toMatchObject({ kind: "board_credential", gov_key: govKey, tier: "board" });
+    // The credential carries NO nullifier and uses the separate governance scope.
+    expect(JSON.stringify(body.credential)).not.toContain(uid);
+    expect(body.credential.scope).toContain("gov");
+
+    // Roster lists gov_key + tier only — no nullifier.
+    const roster = (await app.inject({ method: "GET", url: "/v1/board/roster" })).json();
+    expect(roster.members).toContainEqual({ gov_key: govKey, tier: "board" });
+    expect(JSON.stringify(roster)).not.toContain(uid);
+  });
+
+  it("rejects a claim below the reputation threshold", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const token = await devToken({ uid: "self:board-low" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/board/claim",
+      payload: { delegation_token: token, gov_key: govKey },
+    });
+    expect(res.json()).toMatchObject({ authorized: true, eligible: false, credential: null, reason: "board_not_eligible" });
+  });
+
+  it("rejects an invalid gov_key", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:board-badkey";
+    const token = await devToken({ uid });
+    await db.execute(sql`
+      INSERT INTO reputation (unique_identifier, referrals_active, score, tier)
+      VALUES (${uid}, 10, 10, 'board')
+    `);
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/board/claim",
+      payload: { delegation_token: token, gov_key: "not-32-bytes" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ eligible: false, reason: "gov_key_invalid" });
   });
 });
 

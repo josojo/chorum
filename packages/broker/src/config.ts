@@ -127,6 +127,19 @@ export interface Settings {
   askerUnlockTotalAnswers: number;
   askerUnlockSignalAnswers: number;
   askerAdminIdentifiers: string;
+
+  // Referrals & reputation (REFERRALS.md). A referrer may hold at most
+  // `referralMaxActiveCodes` live (unexpired, unexhausted) codes at once; each
+  // code expires after `referralCodeTtlDays`. A referral earns the referrer
+  // `repPerActiveReferral` reputation once the referee crosses the §14.2 unlock
+  // bar (the activation event). Reaching `repBoardThreshold` reputation unlocks
+  // the governance/board claim. A board credential is valid for
+  // `boardCredentialTtlDays`.
+  referralMaxActiveCodes: number;
+  referralCodeTtlDays: number;
+  repPerActiveReferral: number;
+  repBoardThreshold: number;
+  boardCredentialTtlDays: number;
 }
 
 function envStr(name: string, def: string): string {
@@ -209,6 +222,12 @@ export function getSettings(overrides: Partial<Settings> = {}): Settings {
     askerUnlockTotalAnswers: envNum(`${P}ASKER_UNLOCK_TOTAL_ANSWERS`, 50),
     askerUnlockSignalAnswers: envNum(`${P}ASKER_UNLOCK_SIGNAL_ANSWERS`, 10),
     askerAdminIdentifiers: envStr(`${P}ASKER_ADMIN_IDENTIFIERS`, ""),
+
+    referralMaxActiveCodes: envNum(`${P}REFERRAL_MAX_ACTIVE_CODES`, 20),
+    referralCodeTtlDays: envNum(`${P}REFERRAL_CODE_TTL_DAYS`, 90),
+    repPerActiveReferral: envNum(`${P}REP_PER_ACTIVE_REFERRAL`, 1),
+    repBoardThreshold: envNum(`${P}REP_BOARD_THRESHOLD`, 10),
+    boardCredentialTtlDays: envNum(`${P}BOARD_CREDENTIAL_TTL_DAYS`, 180),
   };
   return { ...settings, ...overrides };
 }

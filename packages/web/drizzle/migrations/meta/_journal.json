@@ -43,6 +43,13 @@
       "when": 1780399680031,
       "tag": "0005_voter_tag_pseudonym_and_answer_counters",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780661291693,
+      "tag": "0006_referrals_reputation_board",
+      "breakpoints": true
     }
   ]
 }

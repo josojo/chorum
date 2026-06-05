@@ -4,9 +4,20 @@ Bootstrap incentive: let verified humans **refer** other humans, earn **reputati
 when those referees become active, and let reputation tiers grant a **board**
 role with more say in hearme's future — **without ever publishing a nullifier**.
 
-This doc is a design proposal for review, not yet implemented. It builds on
-ARCHITECTURE_V0.md (verify-once, broker-as-sole-verifier, voter-tag unlinkability)
-and reuses the existing broker-signed credential machinery (`verify/credential.ts`).
+Status: IMPLEMENTED in the broker (steps 1–6 + 8 of §8 below; the web "invite a
+friend" UI, step 7, is still to do). It builds on ARCHITECTURE_V0.md (verify-once,
+broker-as-sole-verifier, voter-tag unlinkability) and reuses the existing
+broker-signed credential machinery (`verify/credential.ts`).
+
+Implemented surface:
+- Endpoints: `POST /v1/referrals/create`, `POST /v1/referrals/stats`,
+  `POST /v1/board/claim`, `GET /v1/board/roster`; `POST /v1/register` now accepts
+  an optional `referral_code`.
+- Tables: `referral_codes`, `referrals`, `reputation`, `board_members`
+  (migration `0006_referrals_reputation_board.sql`, broker-private grants).
+- Config (`HEARME_BROKER_*`): `REFERRAL_MAX_ACTIVE_CODES` (20),
+  `REFERRAL_CODE_TTL_DAYS` (90), `REP_PER_ACTIVE_REFERRAL` (1),
+  `REP_BOARD_THRESHOLD` (10), `BOARD_CREDENTIAL_TTL_DAYS` (180).
 
 ---
 
