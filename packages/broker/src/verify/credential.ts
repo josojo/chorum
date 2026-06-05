@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 import nacl from "tweetnacl";
 
 import { type Settings, getSettings } from "../config";
-import type { DelegationToken } from "../models";
+import type { BoardCredential, DelegationToken } from "../models";
 import { canonicalJson } from "./canonical";
 
 // The `scope` claim is resolved per-environment and FROZEN in production (see
@@ -130,4 +130,98 @@ export function verifyBrokerSignature(
   }
   if (sig.length !== 64) return false;
   return nacl.sign.detached.verify(payload(c), new Uint8Array(sig), keyPair.publicKey);
+}
+
+// ----- board credential (governance, REFERRALS.md §6) --------------------
+
+// The governance scope, derived from (and distinct from) the answer scope, so a
+// board credential / action can never be confused with answer-time identity and
+// the two are unlinkable by scope. "hearme-v1" → "hearme-gov-v1"; staging's
+// "staging-hearme-v1" → "staging-hearme-gov-v1". Frozen per env like selfScope.
+export function governanceScope(selfScope: string): string {
+  return selfScope.replace("hearme-", "hearme-gov-");
+}
+
+type BoardClaims = {
+  version: 1;
+  kind: "board_credential";
+  scope: string;
+  gov_key: string;
+  tier: string;
+  issued_at: string;
+  expires_at: string;
+};
+
+function boardClaims(args: {
+  scope: string;
+  gov_key: string;
+  tier: string;
+  issued_at: string;
+  expires_at: string;
+}): BoardClaims {
+  return {
+    version: 1,
+    kind: "board_credential",
+    scope: args.scope,
+    gov_key: args.gov_key,
+    tier: args.tier,
+    issued_at: args.issued_at,
+    expires_at: args.expires_at,
+  };
+}
+
+function boardPayload(c: BoardClaims): Uint8Array {
+  return new Uint8Array(createHash("sha256").update(canonicalJson(c)).digest());
+}
+
+// Mint a broker-signed board credential. Crucially it binds the holder's FRESH
+// governance key (gov_key) and tier — NOT the nullifier — under the governance
+// scope, so board actions performed with gov_key don't link to the member's
+// answers or passport identity (REFERRALS.md §6.1). Same Ed25519 primitive as
+// the DelegationToken.
+export function issueBoardCredential(args: {
+  gov_key: string;
+  tier: string;
+  issued_at: Date | string;
+  expires_at: Date | string;
+  settings?: Settings;
+}): BoardCredential {
+  const settings = args.settings ?? getSettings();
+  const keyPair = nacl.sign.keyPair.fromSeed(loadSigningSeed(settings));
+  const c = boardClaims({
+    scope: governanceScope(settings.selfScope),
+    gov_key: args.gov_key,
+    tier: args.tier,
+    issued_at: iso(args.issued_at),
+    expires_at: iso(args.expires_at),
+  });
+  const sig = nacl.sign.detached(boardPayload(c), keyPair.secretKey);
+  return { ...c, broker_signature: Buffer.from(sig).toString("base64") };
+}
+
+// True iff `cred` is a valid, in-scope board credential signed by THIS broker.
+// (Provided for verifiers of board actions; the claim endpoint mints, it does
+// not verify.) Does not check expiry — callers decide on freshness.
+export function verifyBoardCredential(
+  cred: BoardCredential,
+  settings?: Settings,
+): boolean {
+  const s = settings ?? getSettings();
+  if (cred.scope !== governanceScope(s.selfScope)) return false;
+  const keyPair = nacl.sign.keyPair.fromSeed(loadSigningSeed(s));
+  const c = boardClaims({
+    scope: cred.scope,
+    gov_key: cred.gov_key,
+    tier: cred.tier,
+    issued_at: cred.issued_at,
+    expires_at: cred.expires_at,
+  });
+  let sig: Buffer;
+  try {
+    sig = Buffer.from(cred.broker_signature, "base64");
+  } catch {
+    return false;
+  }
+  if (sig.length !== 64) return false;
+  return nacl.sign.detached.verify(boardPayload(c), new Uint8Array(sig), keyPair.publicKey);
 }

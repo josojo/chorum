@@ -70,13 +70,31 @@ export function registerRegisterRoutes(
       return ack(false, { reason: RejectionReason.IDENTITY_REVOKED });
     }
 
-    // Step 3: atomic Sybil bind.
-    const status = await q.upsertRegistration(db, {
-      uniqueIdentifier: verified.uniqueIdentifier,
-      agentKey: verified.agentKey,
-      disclosedPredicates: verified.disclosedPredicates,
-      issuedAt: now,
-      expiresAt,
+    // Step 3: atomic Sybil bind — plus, for a genuinely new human, redeem any
+    // referral code in the SAME transaction so the registration and its referral
+    // edge commit together (REFERRALS.md §3.2). Redemption never fails the
+    // registration: an unknown/expired/exhausted code is logged and ignored.
+    let status: "created" | "refreshed" | null = null;
+    await db.transaction(async (tx) => {
+      status = await q.upsertRegistration(tx, {
+        uniqueIdentifier: verified.uniqueIdentifier,
+        agentKey: verified.agentKey,
+        disclosedPredicates: verified.disclosedPredicates,
+        issuedAt: now,
+        expiresAt,
+      });
+      // Only attribute on first creation — a re-registration (refresh) of an
+      // existing human must not redeem a second code.
+      if (status === "created" && parsed.data.referral_code) {
+        const outcome = await q.redeemReferralCode(tx, {
+          code: parsed.data.referral_code,
+          refereeNullifier: verified.uniqueIdentifier,
+          now,
+        });
+        if (!outcome.redeemed) {
+          req.log.info(`register: referral code not applied (${outcome.reason})`);
+        }
+      }
     });
     if (status === null) {
       return ack(false, { reason: RejectionReason.IDENTITY_ALREADY_BOUND });

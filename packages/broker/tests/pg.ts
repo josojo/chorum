@@ -57,7 +57,8 @@ export async function truncateAll(db: Db): Promise<void> {
   await db.execute(
     sql.raw(
       "TRUNCATE envelopes, aggregates, revocations, registrations, asker_admins, " +
-        "self_nullifier_invalidations, self_chain_cursors, question_secrets, questions, askers " +
+        "self_nullifier_invalidations, self_chain_cursors, question_secrets, " +
+        "referral_codes, referrals, reputation, board_members, questions, askers " +
         "RESTART IDENTITY CASCADE",
     ),
   );

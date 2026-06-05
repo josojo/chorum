@@ -16,6 +16,12 @@
     "agent_key": {
       "type": "string",
       "description": "base64 of the agent's Ed25519 public key (32 bytes); equals userDefinedData inside every proof."
+    },
+    "referral_code": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Optional referral code the new human carries from whoever invited them (REFERRALS.md §3.2). Plain registration metadata — NOT part of any Self proof. The broker resolves it to the referrer after the Sybil bind; an unknown/expired/exhausted code is ignored and never fails registration. The raw nullifier is never used as a referral pointer."
     }
   }
 }

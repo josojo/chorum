@@ -228,3 +228,101 @@ export const selfChainCursors = pgTable("self_chain_cursors", {
     .notNull()
     .defaultNow(),
 });
+
+// Referral codes — the bootstrap incentive's capability tokens (REFERRALS.md §3).
+// A referrer mints an opaque, human-friendly code (e.g. "HUM-7K2P-9QXR") and
+// shares it out-of-band; a new human redeems it at registration. CRUCIALLY the
+// raw Self nullifier is NEVER published as a referral pointer — it is the
+// permanent, scope-wide correlator and the registrations PK, deliberately kept
+// out of the answers table (see envelopes.uniqueIdentifier). Instead the code is
+// a bearer token that carries zero identity: only the broker can resolve it back
+// to `referrerNullifier`. We store ONLY sha256(code) so a DB read-leak cannot
+// replay live codes — the cleartext is returned to the referrer exactly once.
+// Sybil resistance is free here: Self gives one human one nullifier, so a
+// referrer cannot self-mint fake referees (REFERRALS.md §2). Broker-only table.
+export const referralCodes = pgTable(
+  "referral_codes",
+  {
+    codeHash: text("code_hash").primaryKey(),
+    referrerNullifier: text("referrer_nullifier").notNull(),
+    // Use cap + expiry bound farming/replay. Default one-shot, 90-day life.
+    maxUses: integer("max_uses").notNull().default(1),
+    usedCount: integer("used_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+  },
+  (t) => ({
+    referrerIdx: index("referral_codes_referrer_idx").on(t.referrerNullifier),
+  }),
+);
+
+// The referral graph (REFERRALS.md §3.2/§4). One row per referred human; the
+// `refereeNullifier` PK makes attribution single-shot — a referee can be credited
+// to at most one referrer, ever. `state` is the credit lifecycle: a referral is
+// born 'pending' at redemption and only flips to 'active' once the referee
+// crosses the participation bar (the §14.2 asker-unlock thresholds), at which
+// point the referrer earns reputation. Crediting on activation — not signup —
+// rewards real engagement over warm bodies (REFERRALS.md §4). Lives only in the
+// broker DB that already holds nullifiers; never crosses to the web tier.
+export const referrals = pgTable(
+  "referrals",
+  {
+    refereeNullifier: text("referee_nullifier").primaryKey(),
+    referrerNullifier: text("referrer_nullifier").notNull(),
+    codeHash: text("code_hash").notNull(),
+    state: text("state").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+  },
+  (t) => ({
+    referrerIdx: index("referrals_referrer_idx").on(t.referrerNullifier),
+    stateCheck: check("referrals_state_check", sql`${t.state} IN ('pending', 'active')`),
+  }),
+);
+
+// Reputation rollup per identity (REFERRALS.md §4/§5). Kept separate from
+// `registrations` so that table stays lean and the answer-counter hot path is
+// untouched. `referralsActive` is the count of activated referrals; `score` is
+// the reputation total (currently score == referralsActive * REP_PER_ACTIVE_
+// REFERRAL, but split out so the formula can grow — e.g. 2nd-degree bonuses —
+// without a migration). `tier` is derived from `score` at write time
+// (reputation.ts); the load-bearing one is 'board', which unlocks the governance
+// claim. Keyed by the raw nullifier, broker-only like registrations.
+export const reputation = pgTable("reputation", {
+  uniqueIdentifier: text("unique_identifier").primaryKey(),
+  referralsActive: integer("referrals_active").notNull().default(0),
+  score: integer("score").notNull().default(0),
+  tier: text("tier").notNull().default("none"),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// Board membership claims (REFERRALS.md §6). When an identity reaches the 'board'
+// reputation tier it claims a broker-issued anonymous credential bound to a FRESH
+// governance key (`govKey`), generated client-side and unrelated to its agent_key
+// or nullifier. This table maps nullifier → govKey so the broker can enforce one
+// live credential per human (anti-stacking) — but board ACTIONS reference only
+// `govKey`, and the public roster exposes only (govKey, tier). So a board vote /
+// listing is unlinkable to the member's passport nullifier or their answer
+// history (the credential is signed under a SEPARATE governance scope, never
+// carrying the nullifier). Broker-only.
+export const boardMembers = pgTable(
+  "board_members",
+  {
+    uniqueIdentifier: text("unique_identifier").primaryKey(),
+    govKey: text("gov_key").notNull(),
+    tier: text("tier").notNull(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    govKeyIdx: index("board_members_gov_key_idx").on(t.govKey),
+  }),
+);
