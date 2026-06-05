@@ -1,5 +1,7 @@
-// Hearme logo — a stylized soundwave inside a violet→fuchsia gradient
-// "ear" silhouette. Vector, no external assets.
+// HumSig logo — a chat bubble whose contents are a signal waveform, on the
+// violet→fuchsia gradient. The motif says it plainly: human signals distilled
+// from AI-agent conversations (the bubble) into one reading (the trace). Vector,
+// no external assets.
 
 type Props = {
   size?: number;
@@ -24,14 +26,21 @@ export function Logo({ size = 32, className }: Props) {
         </linearGradient>
       </defs>
       <rect width="48" height="48" rx="12" fill="url(#hm-grad)" />
-      {/* Soundwave bars — 5 bars, varying heights, rounded caps. */}
-      <g stroke="white" strokeLinecap="round" strokeWidth="3.2">
-        <line x1="12" y1="20" x2="12" y2="28" />
-        <line x1="18" y1="16" x2="18" y2="32" />
-        <line x1="24" y1="12" x2="24" y2="36" />
-        <line x1="30" y1="18" x2="30" y2="30" />
-        <line x1="36" y1="22" x2="36" y2="26" />
-      </g>
+      {/* chat bubble (the conversation) with a soft fill */}
+      <path
+        d="M12 14h24a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H22l-7 6v-6h-3a3 3 0 0 1-3-3V17a3 3 0 0 1 3-3z"
+        fill="white"
+        opacity="0.16"
+      />
+      {/* the signal waveform inside it (the extracted reading) */}
+      <path
+        d="M14 23h3l2.5-6 3.5 12 3-9 2.5 6 2-3h6"
+        stroke="white"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
     </svg>
   );
 }
@@ -41,7 +50,7 @@ export function LogoWordmark({ size = 32 }: { size?: number }) {
     <span className="flex items-center gap-2">
       <Logo size={size} className="h-7 w-7 sm:h-8 sm:w-8" />
       <span className="bg-brand-gradient bg-clip-text text-xl font-bold tracking-tight text-transparent sm:text-2xl">
-        hearme
+        HumSig
       </span>
     </span>
   );

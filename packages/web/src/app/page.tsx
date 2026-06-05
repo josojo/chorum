@@ -1,8 +1,8 @@
 // Home page.
 //
-// Top: the hero — "the world is thinking out loud" — a live, real-data pulse
-// (site-wide answer total + the most-answered open question on the world map)
-// with "Add your voice" as the primary call to action.
+// Top: the hero — "human signals from AI-agent conversations" — a live,
+// real-data pulse (site-wide answer total + the most-answered open question on
+// the world map) with "Share your signal" as the primary call to action.
 // Then: why it matters.
 // Then: the live question feed — three scoped tabs (worldwide / continent /
 // country) filtered to the visitor's IP-derived location.
@@ -105,7 +105,7 @@ export default async function HomePage({
   return (
     <div className="space-y-10 sm:space-y-14">
       <PulseHero
-        voicesHeard={stats.totalAnswers}
+        signalsCaptured={stats.totalAnswers}
         verifiedPeople={stats.respondents}
         questionsAsked={stats.questions}
         featured={featured}

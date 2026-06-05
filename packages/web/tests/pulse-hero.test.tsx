@@ -31,7 +31,7 @@ describe("PulseHero", () => {
   it("renders a neutral world map when there is no featured question", () => {
     render(
       <PulseHero
-        voicesHeard={0}
+        signalsCaptured={0}
         verifiedPeople={null}
         questionsAsked={0}
         featured={null}
@@ -41,7 +41,7 @@ describe("PulseHero", () => {
     // The map (an svg with role img) is present even with zero data.
     expect(screen.getByRole("img", { name: /world map/i })).toBeTruthy();
     // ...with the neutral, invitational caption rather than a question.
-    expect(screen.getByText(/no votes yet — add the first voice/i)).toBeTruthy();
+    expect(screen.getByText(/no signals yet — share the first one/i)).toBeTruthy();
     // No question link when nothing is featured.
     expect(screen.queryByRole("link", { name: /q\// })).toBeNull();
   });
@@ -49,7 +49,7 @@ describe("PulseHero", () => {
   it("colours the map with the featured question and links to it", () => {
     render(
       <PulseHero
-        voicesHeard={1200}
+        signalsCaptured={1200}
         verifiedPeople={42}
         questionsAsked={3}
         featured={FEATURED}
@@ -57,7 +57,7 @@ describe("PulseHero", () => {
     );
 
     expect(screen.getByRole("img", { name: /world map/i })).toBeTruthy();
-    expect(screen.getByText(/real humans/i)).toBeTruthy();
+    expect(screen.getByText(/your chat never leaves/i)).toBeTruthy();
     // The map card links to the question detail page.
     const link = screen
       .getAllByRole("link")

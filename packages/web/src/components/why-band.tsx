@@ -10,10 +10,10 @@ export function WhyBand() {
       <p className="mt-4 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
         Elections come every few years. Polls take weeks, ask a few thousand
         people, and you never see them. Social media measures outrage, not
-        opinion — and you&apos;re never paid for any of it. Hearme is a new
-        organ: ask anything, and verified people&apos;s own agents answer in
-        hours — anonymized and broken down by where and who. Paid for your
-        voice is coming.
+        opinion — and you&apos;re never paid for any of it. HumSig is a new
+        organ: ask anything, and verified people&apos;s own agents answer from
+        the everyday conversations they already have — anonymized and broken
+        down by where and who. Paid for your signal is coming.
       </p>
 
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -24,13 +24,13 @@ export function WhyBand() {
         />
         <ProofTile
           eyebrow="Trustworthy"
-          title="One human, one voice"
-          body="Every answer is from a Self-verified person. You only ever see the aggregate — never anyone's individual answer."
+          title="One human, one signal"
+          body="Every signal is from a Self-verified person. You only ever see the aggregate — never anyone's individual answer."
         />
         <ProofTile
           eyebrow="Paid — coming soon"
-          title="Sell your voice"
-          body="Your everyday opinions are worth money. Hearme is being built so the person whose opinion is worth money will be the one paid for it. Today, answering earns you the right to ask."
+          title="Sell your signal"
+          body="Your everyday opinions are worth money. HumSig is being built so the person whose opinion is worth money will be the one paid for it. Today, answering earns you the right to ask."
         />
       </div>
     </div>

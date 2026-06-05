@@ -1,13 +1,13 @@
 "use client";
 
-// Home hero — "the world is thinking out loud". Makes the thesis (a real-time,
-// trustworthy, paid feedback organ) visceral, all from real data:
-//   • a live "voices heard" counter — the real site-wide answer total, kept
+// Home hero — "human signals from AI-agent conversations". Makes the thesis (a
+// real-time, trustworthy, paid feedback organ) visceral, all from real data:
+//   • a live "signals captured" counter — the real site-wide answer total, kept
 //     fresh by <LiveRefresh/> (server revalidation) and eased to its true value
 //   • the real WorldMap, shading the most-answered open question by sentiment
 //   • that question's live option result, summed from its public aggregate
-//   • a trust strip: verified human · anonymous · paid-for-your-voice (future)
-// Primary CTA "Add your voice" opens the real onboarding walkthrough.
+//   • a trust strip: verified human · only-the-signal-leaves · paid (future)
+// Primary CTA "Share your signal" opens the real onboarding walkthrough.
 //
 // Degrades cleanly to a zero-data state (no featured question, total 0) so a
 // fresh deployment still looks intentional.
@@ -21,7 +21,7 @@ import { isYesNo, tallyTotal, type OptionTally } from "@/components/options-bar"
 import type { FeaturedQuestion } from "@/lib/featured";
 
 type Props = {
-  voicesHeard: number;
+  signalsCaptured: number;
   // Honest secondary number under the counter; null when unavailable.
   verifiedPeople: number | null;
   questionsAsked: number;
@@ -66,13 +66,13 @@ function useCountUp(target: number): number {
 }
 
 export function PulseHero({
-  voicesHeard,
+  signalsCaptured,
   verifiedPeople,
   questionsAsked,
   featured,
 }: Props) {
   const [earnOpen, setEarnOpen] = useState(false);
-  const shown = useCountUp(voicesHeard);
+  const shown = useCountUp(signalsCaptured);
 
   return (
     <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-mesh p-5 shadow-sm sm:p-8">
@@ -87,24 +87,24 @@ export function PulseHero({
             live
           </span>
           <span className="text-xs font-semibold uppercase tracking-widest text-violet-700">
-            The world is thinking out loud
+            Signals from conversations
           </span>
         </div>
 
         {/* Headline */}
         <h1 className="mt-3 max-w-2xl text-3xl font-bold leading-tight tracking-tight text-slate-900 sm:text-5xl">
-          Add your voice to{" "}
+          Human signals, from everyday{" "}
           <span className="bg-brand-gradient bg-clip-text text-transparent">
-            humanity&apos;s
+            AI conversations
           </span>
           .
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base">
-          Ask anything, and verified people&apos;s own agents answer in hours —
-          anonymized and broken down by where and who. Your everyday opinions
-          finally count.{" "}
+          You already tell your AI agent what you think. HumSig shares just the
+          signal — anonymized, verified human, and aggregated — so the world can
+          finally read what people actually believe.{" "}
           <span className="font-medium text-slate-800">
-            This is my voice — and now it gets heard.
+            Your chat never leaves your agent.
           </span>
         </p>
 
@@ -136,9 +136,9 @@ export function PulseHero({
           ) : (
             <div className="rounded-2xl bg-white/70 p-3 ring-1 ring-slate-200/70 backdrop-blur">
               <p className="mb-2 px-1 text-xs font-medium text-slate-500">
-                The world map fills in as people answer.{" "}
+                The world map fills in as signals arrive.{" "}
                 <span className="font-semibold text-slate-800">
-                  No votes yet — add the first voice.
+                  No signals yet — share the first one.
                 </span>
               </p>
               {/* Neutral world: every country greys out until real votes land. */}
@@ -156,7 +156,7 @@ export function PulseHero({
             <div className="rounded-2xl bg-white/80 p-5 ring-1 ring-slate-200/70 backdrop-blur">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Voices heard
+                  Signals captured
                 </p>
                 <LiveRefresh />
               </div>
@@ -181,7 +181,7 @@ export function PulseHero({
                     {questionsAsked === 1 ? "question" : "questions"}
                   </>
                 )}{" "}
-                · anonymized answers, counted in real time
+                · anonymized signals, captured in real time
               </p>
             </div>
 
@@ -193,21 +193,21 @@ export function PulseHero({
               />
             ) : (
               <div className="rounded-2xl bg-white/80 p-5 text-sm text-slate-600 ring-1 ring-slate-200/70 backdrop-blur">
-                Be one of the first voices — add your agent and start answering,
-                or post a question for the world to weigh in on.
+                Be one of the first signals — add your agent and start
+                answering, or post a question for the world to weigh in on.
               </div>
             )}
           </div>
         </div>
 
-        {/* CTAs — "Add your voice" leads (supply side grows the organ). */}
+        {/* CTAs — "Share your signal" leads (supply side grows the organ). */}
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
           <button
             type="button"
             onClick={() => setEarnOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-gradient px-6 py-3 text-base font-semibold text-white shadow-glow transition hover:opacity-95"
           >
-            <MicIcon /> Add your voice
+            <SignalIcon /> Share your signal
           </button>
           <Link
             href="/ask"
@@ -225,19 +225,19 @@ export function PulseHero({
           <Pillar
             icon={<CheckBadge />}
             title="Verified human"
-            body="One real person, one voice — proven with Self. No bots, no troll farms."
+            body="One real person, one signal — proven with Self. No bots, no troll farms."
           />
           <Pillar
             icon={<MaskIcon />}
-            title="Always anonymous"
-            body="The world only ever sees totals. Your individual answer is never shown."
+            title="Only the signal leaves"
+            body="Your conversation stays yours. Just the anonymized answer is shared — never the chat."
           />
           <Pillar
             icon={<CoinIcon />}
-            title="Paid for your voice"
+            title="Paid for your signal"
             body={
               <>
-                You&apos;ll earn for every answer your agent gives. Today it
+                You&apos;ll earn for every signal your agent shares. Today it
                 earns the right to ask.{" "}
                 <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
                   payouts coming
@@ -302,7 +302,7 @@ function LiveResult({
         })}
       </div>
       <p className="mt-3 text-[11px] text-slate-400">
-        {total.toLocaleString()} answered · grouped by region
+        {total.toLocaleString()} signals · grouped by region
       </p>
     </div>
   );
@@ -332,15 +332,16 @@ function Pillar({
 
 /* ---------- icons ---------- */
 
-function MicIcon() {
+function SignalIcon() {
+  // A waveform — the "signal" extracted from a conversation.
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
-      <rect x="7.5" y="2.5" width="5" height="9" rx="2.5" fill="currentColor" />
       <path
-        d="M5 9a5 5 0 0 0 10 0M10 14v3.5M7.5 17.5h5"
+        d="M2 10h2.5L7 4l3.2 12L13 8l1.6 2H18"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1.7"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
