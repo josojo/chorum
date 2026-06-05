@@ -96,8 +96,26 @@ export function registerAskersRoutes(
     // Effective admin = static env allowlist ∪ the live DB list (asker_admins,
     // §14.2). The env set is the in-memory break-glass; the DB list is the
     // operator-managed one the admin CLI writes, picked up without a restart.
-    const isAdmin =
-      admins.has(uniqueIdentifier) || (await q.isAskerAdmin(db, uniqueIdentifier));
+    //
+    // The DB lookup is a bypass valve, not a security gate — admins only SKIP the
+    // unlock threshold. So a failure here (e.g. a missing GRANT on asker_admins on
+    // a freshly bootstrapped DB) must NOT 500 the whole eligibility response and
+    // strand the asker on a dead "Waiting for scan…" dialog with no score. Degrade
+    // to non-admin and still return the contribution stats: fail-closed for the
+    // privilege (deny admin), fail-open for the score. Logged loudly because an
+    // unreadable asker_admins is a real misconfiguration to fix, not noise.
+    const envAdmin = admins.has(uniqueIdentifier);
+    let dbAdmin = false;
+    if (!envAdmin) {
+      try {
+        dbAdmin = await q.isAskerAdmin(db, uniqueIdentifier);
+      } catch (exc) {
+        app.log.error(
+          `asker admin lookup failed (treating as non-admin): ${String(exc)}`,
+        );
+      }
+    }
+    const isAdmin = envAdmin || dbAdmin;
     const result = evaluateAskerEligibility({
       counts,
       thresholds: { requiredTotal, requiredSignal },

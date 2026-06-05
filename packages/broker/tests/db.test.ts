@@ -765,6 +765,41 @@ describe("asker Sign in with Self (login + session, §14.2)", () => {
     expect(res.json()).toMatchObject({ status: "failed" });
   });
 
+  it("login/status survives an unreadable asker_admins — degrades to non-admin, still returns the score", async (ctx) => {
+    if (!pg) return ctx.skip();
+    // Regression: a missing GRANT on asker_admins (prod RDS bootstrap order) made
+    // isAskerAdmin's SELECT throw, 500-ing the whole status request → the asker
+    // sat on a dead "Waiting for scan…" dialog with no score. The admin list is a
+    // bypass valve, not a gate, so the lookup failing must degrade to non-admin
+    // and still return the stats. Simulate the failure by hiding the table so the
+    // SELECT throws a PostgresError, exactly as the missing grant did.
+    const uid = "self:admin-table-down";
+    await seedAnswers(uid, { total: 3, signal: 1 });
+    selfStatusImpl = async () => ({
+      found: true,
+      status: "complete",
+      verified: true,
+      uniqueIdentifier: uid,
+      registryConfirmed: true,
+    });
+    await db.execute(sql`ALTER TABLE asker_admins RENAME TO asker_admins__hidden`);
+    try {
+      const res = await app.inject({ method: "GET", url: "/v1/askers/login/req-1/status" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        status: "complete",
+        eligibility: {
+          authorized: true,
+          unique_identifier: uid,
+          is_admin: false,
+          total_answers: 3,
+        },
+      });
+    } finally {
+      await db.execute(sql`ALTER TABLE asker_admins__hidden RENAME TO asker_admins`);
+    }
+  });
+
   it("session/verify gates an identity below threshold (can_ask false)", async (ctx) => {
     if (!pg) return ctx.skip();
     const uid = "self:login-fresh";
