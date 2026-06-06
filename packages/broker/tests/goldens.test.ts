@@ -149,6 +149,36 @@ describe("answer classification + aggregation", () => {
     expect(classifyAnswer("Pizza — crust", ["pizza", "pasta", "sushi"])).toBe("pizza");
   });
 
+  it("classifies multi-word options the agent signed (regression for #110)", () => {
+    const options = [
+      "personal assistant",
+      "business partner",
+      "coding assistant",
+      "swarm intelligence",
+      "other",
+    ];
+    // Exact multi-word label — previously rejected as ANSWER_UNCLASSIFIED because
+    // only the leading word ("personal") was matched against full labels.
+    expect(classifyAnswer("personal assistant", options)).toBe("personal assistant");
+    // Case-insensitive + trailing LLM elaboration still resolves to the label.
+    expect(classifyAnswer("Coding Assistant, mostly for refactors", options)).toBe(
+      "coding assistant",
+    );
+    // A single-word option still works.
+    expect(classifyAnswer("other", options)).toBe("other");
+  });
+
+  it("requires a word boundary and prefers the longest matching label", () => {
+    // No boundary: a leading "otherwise" must not select "other".
+    expect(classifyAnswer("otherwise", ["other", "no"])).toBeNull();
+    // Longest full-label prefix wins over a shorter shared prefix.
+    expect(classifyAnswer("coding assistant", ["coding", "coding assistant"])).toBe(
+      "coding assistant",
+    );
+    // Genuinely unrelated answer stays unclassified.
+    expect(classifyAnswer("maybe later", ["personal assistant", "other"])).toBeNull();
+  });
+
   it("matches the Python by_predicate tally", () => {
     expect(
       computeByPredicate(
