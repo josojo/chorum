@@ -1,22 +1,15 @@
 # Hermes plugin manifest (hermes-agent >= 0.14).
 #
-# Canonical install:
-#   1. pip-install hearme-skill into the same venv as the Hermes gateway:
-#        /path/to/gateway-venv/bin/python -m pip install \
-#          'git+https://github.com/josojo/hearme.git#subdirectory=packages/skill'
-#   2. Drop this manifest + a tiny shim under ~/.hermes/plugins/hearme/:
-#        hearme-skill install-plugin     # writes the dir + restarts the gateway
-#      Equivalent by hand:
-#        mkdir -p ~/.hermes/plugins/hearme && cp this-file ~/.hermes/plugins/hearme/
-#        printf 'from hearme_skill.plugin import register\n' \
-#          > ~/.hermes/plugins/hearme/__init__.py
-#        systemctl --user restart hermes-gateway
+# You don't write this file by hand — the `hearme-skill` binary drops it (plus a
+# generated stdlib-only subprocess shim) into ~/.hermes/plugins/hearme/:
 #
-# `hermes plugins install owner/repo` is NOT the install path: it clones the
-# monorepo root and looks for plugin.yaml there, missing this subdirectory.
-# pyproject.toml advertises the `hermes_agent.plugins` entry point as well, but
-# Hermes' entry-point auto-discovery is lazy and version-dependent — the
-# directory drop-in above is the deterministic path that loads at gateway boot.
+#   hearme-skill install          # both hosts; or `install-plugin` for Hermes only
+#
+# That's the whole install: no Python package to pip-install, no second codebase.
+# The shim shells out to the binary for every tool call and self-registers the
+# answering cron once a delegation token exists. The directory drop-in is the
+# deterministic load path at gateway boot (`hermes plugins install owner/repo`
+# does NOT work — it clones the monorepo root and misses this subdirectory).
 name: hearme
 version: 0.0.1
 description: >-
