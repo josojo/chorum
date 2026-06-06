@@ -1,4 +1,4 @@
-// Behavior test for the "Share your signal" supply-side explainer/simulator.
+// Behavior test for the "Share your voice" supply-side explainer/simulator.
 //
 // Covers: it does NOT auto-open (only "How it works" does), the trigger opens
 // it, Next/Back walk the four steps (Self first, then add the skill), and the
@@ -23,7 +23,7 @@ describe("EarnExplainer", () => {
     render(<EarnExplainer />);
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /share your signal/i }));
+    fireEvent.click(screen.getByRole("button", { name: /share your voice/i }));
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(screen.getByText("Verify once with Self")).toBeTruthy();
     expect(screen.getByText(/step 1 of 4/i)).toBeTruthy();
@@ -31,7 +31,7 @@ describe("EarnExplainer", () => {
 
   it("walks all four steps to the Get-the-skill CTA", () => {
     render(<EarnExplainer />);
-    fireEvent.click(screen.getByRole("button", { name: /share your signal/i }));
+    fireEvent.click(screen.getByRole("button", { name: /share your voice/i }));
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByText("Add hearme to your agent")).toBeTruthy();
@@ -51,7 +51,7 @@ describe("EarnExplainer", () => {
 
   it("Back returns to the previous step", () => {
     render(<EarnExplainer />);
-    fireEvent.click(screen.getByRole("button", { name: /share your signal/i }));
+    fireEvent.click(screen.getByRole("button", { name: /share your voice/i }));
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByText("Add hearme to your agent")).toBeTruthy();
 

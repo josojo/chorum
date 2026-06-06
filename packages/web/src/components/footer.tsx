@@ -11,17 +11,17 @@ import type { ReactNode } from "react";
 const SOCIALS: { label: string; href: string; icon: ReactNode }[] = [
   {
     label: "X",
-    href: process.env.NEXT_PUBLIC_SOCIAL_X ?? "https://x.com/humsig",
+    href: process.env.NEXT_PUBLIC_SOCIAL_X ?? "https://x.com/chorum",
     icon: <XIcon />,
   },
   {
     label: "Telegram",
-    href: process.env.NEXT_PUBLIC_SOCIAL_TELEGRAM ?? "https://t.me/humsig",
+    href: process.env.NEXT_PUBLIC_SOCIAL_TELEGRAM ?? "https://t.me/chorum",
     icon: <TelegramIcon />,
   },
   {
     label: "Discord",
-    href: process.env.NEXT_PUBLIC_SOCIAL_DISCORD ?? "https://discord.gg/humsig",
+    href: process.env.NEXT_PUBLIC_SOCIAL_DISCORD ?? "https://discord.gg/chorum",
     icon: <DiscordIcon />,
   },
 ];
@@ -32,10 +32,10 @@ export function Footer() {
     <footer className="mt-20 border-t border-slate-200/70 pt-8 text-xs text-slate-500">
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1.5">
-          <p className="text-sm font-semibold text-slate-700">HumSig v0</p>
+          <p className="text-sm font-semibold text-slate-700">Chorum v0</p>
           <p className="max-w-xs text-slate-500">
-            Human signals from AI-agent conversations. Real opinions, verified
-            humans, no surveillance — your chat never leaves your agent.
+            Many voices, one signal. Real opinions, verified humans, no
+            surveillance — your chat never leaves your agent.
           </p>
         </div>
 
@@ -64,7 +64,7 @@ export function Footer() {
       </div>
 
       <div className="mt-6 border-t border-slate-200/60 pt-4 text-slate-400">
-        © {year} HumSig · human signals, in real time.
+        © {year} Chorum · many voices, one signal.
       </div>
     </footer>
   );

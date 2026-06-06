@@ -17,7 +17,7 @@ export function ShareButton({ title }: { title: string }) {
     // Prefer the OS share sheet on devices that have one.
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
-        await navigator.share({ title: "HumSig", text: title, url });
+        await navigator.share({ title: "Chorum", text: title, url });
         return;
       } catch {
         // User dismissed the sheet, or share failed — fall through to copy.

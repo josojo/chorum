@@ -1,6 +1,6 @@
 "use client";
 
-// "How it works" — a small click-through that explains HumSig in three steps,
+// "How it works" — a small click-through that explains Chorum in three steps,
 // modeled on the onboarding popover found on prediction-market sites. Renders
 // its own trigger button (drop it anywhere) plus the modal it opens.
 //
@@ -185,7 +185,7 @@ function ScopeChip({
       className={
         "flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] font-medium " +
         (active
-          ? "bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white"
+          ? "bg-gradient-to-br from-violet-600 to-rose-600 text-white"
           : "bg-slate-100 text-slate-600")
       }
     >
@@ -203,7 +203,7 @@ function AnswerIllustration() {
       {/* The everyday chat the agent infers the answer from. */}
       <div className="rounded-2xl bg-white p-3 shadow-md ring-1 ring-slate-200/70">
         <div className="mb-2 flex items-center gap-1.5 text-[10px] font-medium text-slate-400">
-          <span className="h-4 w-4 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500" />
+          <span className="h-4 w-4 rounded-full bg-gradient-to-br from-violet-500 to-rose-500" />
           your daily chat
         </div>
         <div className="flex justify-end">
@@ -294,7 +294,7 @@ function ResultsIllustration() {
             </div>
             <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600"
+                className="h-full rounded-full bg-gradient-to-r from-violet-600 to-rose-600"
                 style={{ width: `${b.pct}%` }}
               />
             </div>

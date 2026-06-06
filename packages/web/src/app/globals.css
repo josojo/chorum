@@ -13,15 +13,15 @@ html, body {
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
   background-image:
-    radial-gradient(60rem 30rem at 20% -10%, rgba(124, 58, 237, 0.12) 0, transparent 70%),
-    radial-gradient(60rem 30rem at 90% 10%, rgba(236, 72, 153, 0.10) 0, transparent 70%),
-    radial-gradient(60rem 30rem at 50% 110%, rgba(45, 212, 191, 0.08) 0, transparent 70%);
+    radial-gradient(60rem 30rem at 20% -10%, rgba(79, 70, 229, 0.13) 0, transparent 70%),
+    radial-gradient(60rem 30rem at 90% 10%, rgba(251, 113, 133, 0.10) 0, transparent 70%),
+    radial-gradient(60rem 30rem at 50% 110%, rgba(124, 58, 237, 0.08) 0, transparent 70%);
   background-attachment: fixed;
 }
 
 /* Subtle glow halo behind the logo. */
 .logo-halo {
-  filter: drop-shadow(0 4px 14px rgba(124, 58, 237, 0.35));
+  filter: drop-shadow(0 4px 14px rgba(79, 70, 229, 0.35));
 }
 
 /* Onboarding modal entrance (How it works / Get heard). */

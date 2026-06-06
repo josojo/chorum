@@ -5,7 +5,7 @@ import { ImageResponse } from "next/og";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "HumSig — human signals from AI-agent conversations";
+export const alt = "Chorum — many voices, one signal";
 
 export default function Image() {
   return new ImageResponse(
@@ -20,7 +20,7 @@ export default function Image() {
           gap: "28px",
           padding: "72px",
           background:
-            "linear-gradient(135deg, #7c3aed 0%, #c026d3 50%, #ec4899 100%)",
+            "linear-gradient(135deg, #4f46e5 0%, #7c3aed 48%, #fb7185 100%)",
           color: "white",
           fontFamily: "sans-serif",
         }}
@@ -38,10 +38,10 @@ export default function Image() {
               fontSize: "44px",
             }}
           >
-            📡
+            🎙️
           </div>
           <div style={{ fontSize: "48px", fontWeight: 700, letterSpacing: "-1px" }}>
-            HumSig
+            Chorum
           </div>
         </div>
         <div
@@ -53,10 +53,10 @@ export default function Image() {
             letterSpacing: "-2px",
           }}
         >
-          Where humanity thinks out loud.
+          Many voices. One clear signal.
         </div>
         <div style={{ display: "flex", fontSize: "34px", opacity: 0.92, maxWidth: "900px" }}>
-          Your agent shares just the signal from the AI conversations you already
+          Your agent adds just your voice from the AI conversations you already
           have — verified human, anonymous, aggregated live by geography and age.
         </div>
       </div>

@@ -1,12 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
   <defs>
-    <linearGradient id="hm-grad" x1="0" y1="0" x2="48" y2="48">
-      <stop offset="0%" stop-color="#7c3aed" />
-      <stop offset="55%" stop-color="#c026d3" />
-      <stop offset="100%" stop-color="#ec4899" />
+    <linearGradient id="ch-grad" x1="0" y1="0" x2="48" y2="48">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="48%" stop-color="#7c3aed" />
+      <stop offset="100%" stop-color="#fb7185" />
     </linearGradient>
   </defs>
-  <rect width="48" height="48" rx="12" fill="url(#hm-grad)" />
-  <path d="M12 14h24a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H22l-7 6v-6h-3a3 3 0 0 1-3-3V17a3 3 0 0 1 3-3z" fill="white" opacity="0.16" />
-  <path d="M14 23h3l2.5-6 3.5 12 3-9 2.5 6 2-3h6" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <rect width="48" height="48" rx="12" fill="url(#ch-grad)" />
+  <g stroke="white" stroke-width="2" stroke-linecap="round">
+    <line x1="24" y1="9" x2="24" y2="16" opacity="0.95" transform="rotate(0 24 24)" />
+    <line x1="24" y1="11" x2="24" y2="16" opacity="0.6" transform="rotate(30 24 24)" />
+    <line x1="24" y1="10" x2="24" y2="16" opacity="0.8" transform="rotate(60 24 24)" />
+    <line x1="24" y1="12" x2="24" y2="16" opacity="0.55" transform="rotate(90 24 24)" />
+    <line x1="24" y1="9" x2="24" y2="16" opacity="0.95" transform="rotate(120 24 24)" />
+    <line x1="24" y1="11" x2="24" y2="16" opacity="0.6" transform="rotate(150 24 24)" />
+    <line x1="24" y1="10" x2="24" y2="16" opacity="0.8" transform="rotate(180 24 24)" />
+    <line x1="24" y1="12" x2="24" y2="16" opacity="0.55" transform="rotate(210 24 24)" />
+    <line x1="24" y1="9" x2="24" y2="16" opacity="0.95" transform="rotate(240 24 24)" />
+    <line x1="24" y1="11" x2="24" y2="16" opacity="0.6" transform="rotate(270 24 24)" />
+    <line x1="24" y1="10" x2="24" y2="16" opacity="0.8" transform="rotate(300 24 24)" />
+    <line x1="24" y1="12" x2="24" y2="16" opacity="0.55" transform="rotate(330 24 24)" />
+  </g>
+  <circle cx="24" cy="24" r="3.4" fill="white" />
 </svg>
