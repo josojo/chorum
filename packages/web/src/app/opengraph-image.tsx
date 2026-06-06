@@ -53,11 +53,11 @@ export default function Image() {
             letterSpacing: "-2px",
           }}
         >
-          Human signals.
+          Where humanity thinks out loud.
         </div>
         <div style={{ display: "flex", fontSize: "34px", opacity: 0.92, maxWidth: "900px" }}>
-          From everyday AI-agent conversations — verified, anonymous, and
-          aggregated live by geography and age.
+          Your agent shares just the signal from the AI conversations you already
+          have — verified human, anonymous, aggregated live by geography and age.
         </div>
       </div>
     ),
