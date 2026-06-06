@@ -31,6 +31,38 @@ export type AggregateChartProps = {
 type GroupedEntry = { value: string; tally: OptionTally };
 type Grouped = Record<string, GroupedEntry[]>;
 
+/**
+ * The overall option distribution across ALL answers, derived from the
+ * per-bucket `by_predicate` map. The broker stores no standalone overall tally,
+ * but every signal answer discloses all of its dimensions (region, country,
+ * age_band), so summing the buckets of any one fully-disclosed dimension
+ * reproduces the grand option tally. We sum each dimension independently and
+ * return whichever has the most responses — the widest-disclosed dimension,
+ * which is the truest overall. Empty when no predicate data exists yet.
+ *
+ * Without this the headline result of a multi-option poll is invisible: the page
+ * would only show per-dimension breakdown bars, never "here's what everyone said".
+ */
+export function overallTally(byPredicate: ByPredicate): OptionTally {
+  const grouped = groupByDimension(byPredicate);
+  let best: OptionTally = {};
+  let bestTotal = 0;
+  for (const entries of Object.values(grouped)) {
+    const combined: OptionTally = {};
+    for (const { tally } of entries) {
+      for (const [opt, n] of Object.entries(tally)) {
+        combined[opt] = (combined[opt] ?? 0) + n;
+      }
+    }
+    const total = tallyTotal(combined);
+    if (total > bestTotal) {
+      bestTotal = total;
+      best = combined;
+    }
+  }
+  return best;
+}
+
 export function groupByDimension(byPredicate: ByPredicate): Grouped {
   const out: Grouped = {};
   for (const [k, raw] of Object.entries(byPredicate)) {

@@ -8,7 +8,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QuestionDetail } from "../src/components/question-detail";
-import { groupByDimension } from "../src/components/aggregate-chart";
+import { groupByDimension, overallTally } from "../src/components/aggregate-chart";
 
 // The detail view embeds <LiveRefresh/>, which calls useRouter — no provider
 // exists in the test env, so stub next/navigation.
@@ -152,6 +152,46 @@ describe("QuestionDetail rendering", () => {
     expect(screen.getByText("No formed view")).toBeTruthy();
   });
 
+  it("shows an Overall result block with each option's share", () => {
+    // A multi-option poll whose only disclosed dimension is region: without an
+    // overall roll-up the actual answers would never appear as a single result.
+    render(
+      <QuestionDetail
+        question={{
+          ...baseQuestion,
+          text: "Favourite food?",
+          options: ["pizza", "pasta", "sushi"],
+        }}
+        totalAnswers={45}
+        byPredicate={{
+          "region:EU": { pizza: 20, pasta: 10, sushi: 5 },
+          "region:AS": { pizza: 2, pasta: 3, sushi: 5 },
+        }}
+      />,
+    );
+
+    // The Overall section names every option (legend also lists them, so
+    // expect >= 1) and shows the rolled-up counts: pizza 22, pasta 13, sushi 10.
+    expect(screen.getByText("Overall")).toBeTruthy();
+    expect(screen.getByText("45 responses")).toBeTruthy();
+    expect(screen.getAllByText("pizza").length).toBeGreaterThan(0);
+    expect(screen.getByText("22")).toBeTruthy();
+    expect(screen.getByText("13")).toBeTruthy();
+  });
+
+  it("does not render the Overall block when there is no signal data", () => {
+    render(
+      <QuestionDetail
+        question={baseQuestion}
+        totalAnswers={3}
+        byPredicate={{}}
+        noSignalTotal={3}
+        noSignalByPredicate={{ "region:EU": 3 }}
+      />,
+    );
+    expect(screen.queryByText("Overall")).toBeNull();
+  });
+
   it("places Geography above Age in the DOM order", () => {
     const { container } = render(
       <QuestionDetail
@@ -208,5 +248,31 @@ describe("groupByDimension", () => {
     });
     expect(grouped.region.map((e) => e.value)).toEqual(["EU", "AS"]);
     expect(grouped.region[0].tally).toEqual({ pizza: 22, pasta: 14, sushi: 9 });
+  });
+});
+
+describe("overallTally", () => {
+  it("sums the buckets of a fully-disclosed dimension", () => {
+    // region and age_band each cover all answers; summing either gives the
+    // grand option tally. The function returns whichever has the most.
+    const overall = overallTally({
+      "region:EU": { yes: 30, no: 12 },
+      "region:non-EU": { yes: 6, no: 12 },
+      "age_band:25-34": { yes: 20, no: 10 },
+      "age_band:35-44": { yes: 16, no: 14 },
+    });
+    expect(overall).toEqual({ yes: 36, no: 24 });
+  });
+
+  it("works for N-option polls", () => {
+    const overall = overallTally({
+      "region:EU": { pizza: 22, pasta: 14, sushi: 9 },
+      "region:AS": { pizza: 3, pasta: 5, sushi: 18 },
+    });
+    expect(overall).toEqual({ pizza: 25, pasta: 19, sushi: 27 });
+  });
+
+  it("returns an empty tally when there is no predicate data", () => {
+    expect(overallTally({})).toEqual({});
   });
 });
