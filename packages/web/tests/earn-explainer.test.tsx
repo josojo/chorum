@@ -1,8 +1,8 @@
-// Behavior test for the "Get heard" supply-side explainer/simulator.
+// Behavior test for the "Share your signal" supply-side explainer/simulator.
 //
 // Covers: it does NOT auto-open (only "How it works" does), the trigger opens
-// it, Next/Back walk the four steps, and the final step exposes the external
-// "Get the skill" CTA pointing at the skill docs.
+// it, Next/Back walk the four steps (Self first, then add the skill), and the
+// final step exposes the external "Get the skill" CTA pointing at the skill docs.
 //
 // Fake timers keep the per-step simulation interval from firing mid-assertion.
 
@@ -23,18 +23,18 @@ describe("EarnExplainer", () => {
     render(<EarnExplainer />);
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /get heard/i }));
+    fireEvent.click(screen.getByRole("button", { name: /share your signal/i }));
     expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(screen.getByText("Add hearme to your agent")).toBeTruthy();
+    expect(screen.getByText("Verify once with Self")).toBeTruthy();
     expect(screen.getByText(/step 1 of 4/i)).toBeTruthy();
   });
 
   it("walks all four steps to the Get-the-skill CTA", () => {
     render(<EarnExplainer />);
-    fireEvent.click(screen.getByRole("button", { name: /get heard/i }));
+    fireEvent.click(screen.getByRole("button", { name: /share your signal/i }));
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Verify once with Self")).toBeTruthy();
+    expect(screen.getByText("Add hearme to your agent")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByText("Your agent answers for you")).toBeTruthy();
@@ -51,11 +51,11 @@ describe("EarnExplainer", () => {
 
   it("Back returns to the previous step", () => {
     render(<EarnExplainer />);
-    fireEvent.click(screen.getByRole("button", { name: /get heard/i }));
+    fireEvent.click(screen.getByRole("button", { name: /share your signal/i }));
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Verify once with Self")).toBeTruthy();
+    expect(screen.getByText("Add hearme to your agent")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(screen.getByText("Add hearme to your agent")).toBeTruthy();
+    expect(screen.getByText("Verify once with Self")).toBeTruthy();
   });
 });
