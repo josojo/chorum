@@ -27,7 +27,7 @@ const STEPS: Step[] = [
     illustration: AskIllustration,
   },
   {
-    title: "Personal agent infer answer",
+    title: "Personal agent infers answer",
     body: "Nobody fills out a poll. A person's agent infers their answer from their everyday chats, anonymizes it, and submits it for them — proven human with Self, never a bot. The agent speaks so people don't have to.",
     illustration: AnswerIllustration,
   },

@@ -87,22 +87,23 @@ export function PulseHero({
             live
           </span>
           <span className="text-xs font-semibold uppercase tracking-widest text-violet-700">
-            Signals from conversations
+            Human signals from AI conversations
           </span>
         </div>
 
-        {/* Headline */}
+        {/* Headline — the brand line; the subhead carries the "how". */}
         <h1 className="mt-3 max-w-2xl text-3xl font-bold leading-tight tracking-tight text-slate-900 sm:text-5xl">
-          Human signals, from everyday{" "}
+          Where humanity{" "}
           <span className="bg-brand-gradient bg-clip-text text-transparent">
-            AI conversations
+            thinks out loud
           </span>
           .
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base">
-          You already tell your AI agent what you think. HumSig shares just the
-          signal — anonymized, verified human, and aggregated — so the world can
-          finally read what people actually believe.{" "}
+          You already tell your AI what you think. Your agent infers your take
+          from the everyday chats you already have, and shares just the signal —
+          verified human, anonymized, aggregated — so the world can finally read
+          what people actually believe.{" "}
           <span className="font-medium text-slate-800">
             Your chat never leaves your agent.
           </span>
@@ -233,17 +234,9 @@ export function PulseHero({
             body="Your conversation stays yours. Just the anonymized answer is shared — never the chat."
           />
           <Pillar
-            icon={<CoinIcon />}
-            title="Paid for your signal"
-            body={
-              <>
-                You&apos;ll earn for every signal your agent shares. Today it
-                earns the right to ask.{" "}
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
-                  payouts coming
-                </span>
-              </>
-            }
+            icon={<SlidersIcon />}
+            title="Yours to control"
+            body="Your agent answers within the limits you set — veto or override any signal, anytime. Earning for your signal is coming."
           />
         </div>
       </div>
@@ -377,18 +370,20 @@ function MaskIcon() {
   );
 }
 
-function CoinIcon() {
+function SlidersIcon() {
+  // Sliders — "you set the limits / stay in control".
   return (
     <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden>
-      <circle cx="10" cy="10" r="7.5" fill="currentColor" opacity="0.18" />
-      <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.4" fill="none" />
       <path
-        d="M10 6v8M8 8.2c0-1 .9-1.5 2-1.5s2 .5 2 1.4c0 1.8-3.8 1-3.8 2.9 0 1 .9 1.5 1.8 1.5s2-.5 2-1.5"
+        d="M3 6h7M14 6h3M3 14h3M10 14h7"
         stroke="currentColor"
-        strokeWidth="1.3"
+        strokeWidth="1.5"
         strokeLinecap="round"
-        fill="none"
       />
+      <circle cx="12" cy="6" r="2" fill="currentColor" opacity="0.18" />
+      <circle cx="12" cy="6" r="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      <circle cx="8" cy="14" r="2" fill="currentColor" opacity="0.18" />
+      <circle cx="8" cy="14" r="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
     </svg>
   );
 }

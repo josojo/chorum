@@ -36,7 +36,7 @@ describe("HowItWorks", () => {
     expect(screen.getByText(/Step 1 of 3/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Personal agent infer answer")).toBeTruthy();
+    expect(screen.getByText("Personal agent infers answer")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByText("Watch live, private results")).toBeTruthy();
@@ -54,7 +54,7 @@ describe("HowItWorks", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /how it works/i }));
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Personal agent infer answer")).toBeTruthy();
+    expect(screen.getByText("Personal agent infers answer")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByText("Ask anyone, anywhere")).toBeTruthy();
