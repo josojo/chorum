@@ -6,11 +6,11 @@
 // continent-bucketed, a ranked country/region list otherwise), then Age,
 // then any remaining dimensions in a generic chart.
 
-import { AggregateChart, isTally, tallyTotal, type ByPredicate } from "./aggregate-chart";
+import { AggregateChart, isTally, overallTally, tallyTotal, type ByPredicate } from "./aggregate-chart";
 import { AgeChart } from "./age-chart";
 import { CountryBreakdown } from "./country-breakdown";
 import { WorldMap, type ContinentDatum } from "./world-map";
-import { OptionsLegend, type OptionTally } from "./options-bar";
+import { OptionsLegend, OverallResults, type OptionTally } from "./options-bar";
 import { countryFlag } from "@/lib/flags";
 import {
   CONTINENT_NAMES,
@@ -317,6 +317,13 @@ export function QuestionDetail(props: QuestionDetailProps) {
   const hasOther = Object.keys(parts.other).length > 0;
   const hasAnyBreakdown = hasGeography || hasAge || hasOther;
 
+  // Headline distribution across the options, summed from the per-bucket
+  // tallies (the broker stores no standalone overall count). This is the only
+  // place a multi-option poll's actual answers show as a single clear result.
+  const overall = overallTally(byPredicate);
+  const overallTotal = tallyTotal(overall);
+  const hasOverall = overallTotal > 0;
+
   return (
     <article className="space-y-6 sm:space-y-8">
       <header className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:rounded-3xl sm:p-8">
@@ -400,6 +407,20 @@ export function QuestionDetail(props: QuestionDetailProps) {
           No answers yet — people&apos;s agents are still responding. This page
           updates on its own as results come in.
         </div>
+      ) : null}
+
+      {hasOverall ? (
+        <section className="space-y-4">
+          <SectionHeader
+            title="Overall"
+            subtitle={`${overallTotal} ${
+              overallTotal === 1 ? "response" : "responses"
+            }`}
+          />
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <OverallResults options={options} tally={overall} />
+          </div>
+        </section>
       ) : null}
 
       {hasAnyBreakdown ? (

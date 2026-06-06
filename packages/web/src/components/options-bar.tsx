@@ -125,6 +125,51 @@ export function OptionsCount({
   );
 }
 
+/**
+ * Headline per-option result bars — the overall distribution across all answers.
+ * One full-width bar per option (label · count · %), each in the option's own
+ * palette colour so it reads against the legend and the breakdown bars. Bars are
+ * ordered by share (winner first) but keep their declared-index colour. This is
+ * the "what did everyone say" view a multi-option poll otherwise lacks.
+ */
+export function OverallResults({
+  options,
+  tally,
+}: {
+  options: readonly string[];
+  tally: OptionTally;
+}) {
+  const total = tallyTotal(tally);
+  const fills = paletteFor(options);
+  const rows = options
+    .map((opt, i) => ({ opt, n: tally[opt] ?? 0, fill: fills[i] }))
+    .sort((a, b) => b.n - a.n);
+  return (
+    <ul className="space-y-3">
+      {rows.map(({ opt, n, fill }) => {
+        const pct = total === 0 ? 0 : Math.round((n / total) * 100);
+        return (
+          <li key={opt}>
+            <div className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="font-medium text-slate-800">{opt}</span>
+              <span className="shrink-0 tabular-nums text-slate-500">
+                <span className="font-semibold text-slate-900">{n}</span>
+                <span className="ml-1.5">{pct}%</span>
+              </span>
+            </div>
+            <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/60">
+              <div
+                className="h-full rounded-full transition-[width] duration-300"
+                style={{ width: `${pct}%`, background: fill }}
+              />
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /** Legend explaining the colour coding for this question's options. */
 export function OptionsLegend({ options }: { options: readonly string[] }) {
   const fills = paletteFor(options);
