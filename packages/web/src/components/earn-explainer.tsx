@@ -1,9 +1,9 @@
 "use client";
 
-// "Get heard" — the supply-side explainer/simulator. Where "How it works"
-// pitches askers, this walks a would-be respondent through plugging the hearme
-// add-on into the agent they already run (Openclaw, Hermes, …), verifying once
-// with Self, and then earning as their agent answers polls on their behalf.
+// "Share your signal" — the supply-side explainer/simulator. Where "How it
+// works" pitches askers, this walks a would-be respondent through verifying once
+// with Self, plugging the hearme add-on into the agent they already run (Hermes,
+// OpenClaw, …), and then earning as their agent answers polls on their behalf.
 //
 // Split in two:
 //   • EarnExplainerDialog — the controlled walkthrough (open/onClose). Reused by
@@ -24,23 +24,31 @@ import {
 
 // The setup guide lives with the skill package on GitHub.
 const SKILL_DOCS_URL = "https://github.com/josojo/hearme/tree/main/packages/skill";
+// Self (self.xyz) — download the app + read how verification works.
+const SELF_APP_URL = "https://self.xyz";
 
 type Step = {
   title: string;
   body: string;
   illustration: (tick: number) => JSX.Element;
+  /** Optional call-to-action / instructions rendered under the body copy. */
+  extra?: () => JSX.Element;
 };
 
+// Self first: the onboarding command in step 2 links your agent to the Self
+// check, so the app has to be on your phone before you run it.
 const STEPS: Step[] = [
   {
-    title: "Add hearme to your agent",
-    body: "Drop the hearme add-on into the agent you already run — Openclaw, Hermes, or any open runtime. One command wires it in.",
-    illustration: TerminalIllustration,
+    title: "Verify once with Self",
+    body: "First, get Self (self.xyz) on your phone — it's free and takes a minute. You'll scan your ID once so a zero-knowledge proof can confirm you're a unique human. Your passport never leaves your phone, and nobody — not even us — learns who you are.",
+    illustration: VerifyIllustration,
+    extra: SelfAppLink,
   },
   {
-    title: "Verify once with Self",
-    body: "Scan your ID with Self (self.xyz). A zero-knowledge proof confirms you're a unique human — your passport never leaves your phone, and nobody learns who you are.",
-    illustration: VerifyIllustration,
+    title: "Add hearme to your agent",
+    body: "Now drop the hearme add-on into the agent you already run — Hermes, OpenClaw, or any open runtime. Three commands wire it in and link it to the Self check you just set up. Take your time — you can paste these straight into your terminal.",
+    illustration: TerminalIllustration,
+    extra: SkillInstall,
   },
   {
     title: "Your agent answers for you",
@@ -105,6 +113,8 @@ export function EarnExplainerDialog({
         {current.body}
       </p>
 
+      {current.extra?.()}
+
       <StepNav
         step={step}
         count={STEPS.length}
@@ -136,7 +146,8 @@ export function EarnExplainerDialog({
   );
 }
 
-// Header trigger: the "Get heard" chip plus the dialog it opens.
+// Header trigger: the "Share your signal" pill plus the dialog it opens. Same
+// gradient treatment + signal icon as the home hero's CTA, sized for the nav.
 export function EarnExplainer() {
   const [open, setOpen] = useState(false);
 
@@ -145,10 +156,10 @@ export function EarnExplainer() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3 py-1.5 font-medium text-violet-700 transition hover:bg-violet-100"
+        className="inline-flex items-center gap-1 rounded-full bg-brand-gradient px-3 py-1.5 font-medium text-white shadow-glow transition hover:opacity-95 sm:gap-1.5 sm:px-4 sm:py-2"
       >
-        <MicIcon />
-        <span className="hidden sm:inline">Get heard</span>
+        <SignalIcon />
+        <span className="hidden sm:inline">Share your signal</span>
       </button>
 
       <EarnExplainerDialog open={open} onClose={() => setOpen(false)} />
@@ -158,15 +169,16 @@ export function EarnExplainer() {
 
 /* ---------- icons ---------- */
 
-function MicIcon() {
+function SignalIcon() {
+  // A waveform — the "signal" extracted from a conversation. Matches the hero.
   return (
     <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden>
-      <rect x="7.5" y="2.5" width="5" height="9" rx="2.5" fill="currentColor" />
       <path
-        d="M5 9a5 5 0 0 0 10 0M10 14v3.5M7.5 17.5h5"
+        d="M2 10h2.5L7 4l3.2 12L13 8l1.6 2H18"
         stroke="currentColor"
-        strokeWidth="1.5"
+        strokeWidth="1.7"
         strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
@@ -183,13 +195,70 @@ function MaskIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+/* ---------- per-step call-to-action / instructions ---------- */
+
+// Step 1 — get the Self app. Real link to self.xyz.
+function SelfAppLink() {
+  return (
+    <a
+      href={SELF_APP_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-100"
+    >
+      <span className="grid h-4 w-4 place-items-center rounded-md bg-gradient-to-br from-violet-600 to-fuchsia-600 text-[8px] font-bold text-white">
+        S
+      </span>
+      Get the Self app <span aria-hidden>↗</span>
+    </a>
+  );
+}
+
+// Step 2 — the real install commands from packages/skill/README.md, plus a link
+// to the full setup guide. Copy-pasteable, against the public deployment.
+function SkillInstall() {
+  const lines = [
+    "$ curl -fsSL https://github.com/josojo/hearme/releases/latest/download/install.sh | sh",
+    "$ hearme-skill install",
+    "$ hearme-skill onboard \\",
+    "    --broker-url https://3-74-46-46.sslip.io \\",
+    "    --bridge-url https://3-74-46-46.sslip.io/self",
+  ];
+  return (
+    <div className="mt-4">
+      <div className="overflow-x-auto rounded-xl bg-slate-900 p-3 font-mono text-[11px] leading-relaxed text-slate-100 ring-1 ring-slate-700/60">
+        {lines.map((l, i) => (
+          <div key={i} className="whitespace-nowrap">
+            {l.startsWith("$ ") ? (
+              <>
+                <span className="select-none text-slate-500">$ </span>
+                {l.slice(2)}
+              </>
+            ) : (
+              <span className="text-slate-300">{l}</span>
+            )}
+          </div>
+        ))}
+      </div>
+      <a
+        href={SKILL_DOCS_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-violet-700 transition hover:text-violet-900"
+      >
+        Full setup guide <span aria-hidden>↗</span>
+      </a>
+    </div>
+  );
+}
+
 /* ---------- per-step simulations ---------- */
 
 const TERMINAL_LINES = [
   { text: "$ hearme-skill onboard", className: "text-slate-100" },
   { text: "✓ agent key generated", className: "text-emerald-400" },
-  { text: "✓ linked to Hermes / Openclaw", className: "text-emerald-400" },
-  { text: "✓ ready to verify", className: "text-emerald-400" },
+  { text: "✓ linked to Hermes / OpenClaw", className: "text-emerald-400" },
+  { text: "✓ verified with Self", className: "text-emerald-400" },
 ];
 
 function TerminalIllustration(tick: number) {
