@@ -224,6 +224,13 @@ function ScanBody({ titleId, bodyId }: { titleId: string; bodyId: string }) {
       <p id={bodyId} className="mt-2 text-sm leading-relaxed text-slate-600">
         A zero-knowledge proof — nothing about who you are is revealed.
       </p>
+      {/* Desktop-only hint. Kept out of the fixed-height QR stage above so it
+          can't push the QR up and clip it; on mobile the stage shows an
+          "Open the Self app" button instead, so this copy doesn't apply. */}
+      <p className="mt-2 hidden text-xs text-slate-500 sm:block">
+        Scan with your phone’s camera, or open this page on your phone to verify
+        without scanning.
+      </p>
       <p className="mt-3 text-xs text-slate-400">
         Trouble scanning? Email{" "}
         <a
@@ -563,12 +570,6 @@ function ScanStage({ onVerified }: { onVerified: (s: StatusResponse) => void }) 
           </div>
         )}
       </div>
-
-      {/* On desktop, hint that the QR is meant for a phone. */}
-      <p className="hidden max-w-[220px] text-center text-xs text-slate-500 sm:block">
-        Scan with your phone’s camera, or open this page on your phone to verify
-        without scanning.
-      </p>
     </div>
   );
 }
