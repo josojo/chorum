@@ -87,17 +87,16 @@ export function PulseHero({
             live
           </span>
           <span className="text-xs font-semibold uppercase tracking-widest text-violet-700">
-            Human signals from AI conversations
+            humanity thinking out loud
           </span>
         </div>
 
-        {/* Headline — the brand line; the subhead carries the "how". */}
+        {/* Headline — says what the product does; the subhead carries the "how". */}
         <h1 className="mt-3 max-w-2xl text-3xl font-bold leading-tight tracking-tight text-slate-900 sm:text-5xl">
-          Where humanity{" "}
           <span className="bg-brand-gradient bg-clip-text text-transparent">
-            thinks out loud
-          </span>
-          .
+            human signal
+          </span>{" "}
+          from AI chats
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base">
           You already tell your AI what you think. Your agent infers your take
