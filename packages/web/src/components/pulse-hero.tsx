@@ -94,7 +94,7 @@ export function PulseHero({
         {/* Headline — says what the product does; the subhead carries the "how". */}
         <h1 className="mt-3 max-w-2xl text-3xl font-bold leading-tight tracking-tight text-slate-900 sm:text-5xl">
           <span className="bg-brand-gradient bg-clip-text text-transparent">
-            human signal
+            Human signal
           </span>{" "}
           from AI chats
         </h1>
