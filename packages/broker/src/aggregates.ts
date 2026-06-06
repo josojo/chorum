@@ -37,17 +37,41 @@ function leadingWord(answer: unknown): string | null {
 }
 
 // Return the option label that `answer` selects, or null. Match strategy:
-// leading-word, case-insensitive — robust to LLM elaboration. For the default
-// ["yes","no"] poll we additionally accept multilingual yes/no synonyms.
+// longest full-label prefix at a word boundary, case-insensitive — robust to LLM
+// elaboration ("coding assistant, mostly" -> "coding assistant"). Unlike a bare
+// leading-word lookup this can also select MULTI-WORD options ("personal
+// assistant"), which matching only the first word never could. It mirrors the
+// skill's match_option (packages/skill/src/tools.rs) so the broker accepts
+// exactly what the skill is willing to sign and send — otherwise a valid
+// multi-word answer is signed locally then rejected here as ANSWER_UNCLASSIFIED.
+// For the default ["yes","no"] poll we additionally accept multilingual yes/no
+// synonyms.
 export function classifyAnswer(answer: unknown, options: readonly string[]): string | null {
-  const word = leadingWord(answer);
-  if (word === null) return null;
-  const byLabel = new Map<string, string>();
-  for (const opt of options) byLabel.set(opt.trim().toLowerCase(), opt);
-  if (byLabel.has(word)) return byLabel.get(word)!;
+  if (typeof answer !== "string") return null;
+  const lower = answer.trim().toLowerCase();
+  if (lower === "") return null;
+
+  // Pick the longest option label the answer begins with, requiring a word
+  // boundary after it so "other" never matches "otherwise" and a longer option
+  // wins over a shorter one it shares a prefix with.
+  let best: string | null = null;
+  let bestLen = -1;
+  for (const opt of options) {
+    const label = opt.trim().toLowerCase();
+    if (label === "" || !lower.startsWith(label)) continue;
+    const next = lower.charAt(label.length); // "" when the answer ends at the label
+    const boundary = next === "" || !/[\p{L}\p{N}]/u.test(next);
+    if (boundary && label.length > bestLen) {
+      best = opt;
+      bestLen = label.length;
+    }
+  }
+  if (best !== null) return best;
+
   if (isYesNo(options)) {
-    if (YES_WORDS.has(word)) return "yes";
-    if (NO_WORDS.has(word)) return "no";
+    const word = leadingWord(answer);
+    if (word !== null && YES_WORDS.has(word)) return "yes";
+    if (word !== null && NO_WORDS.has(word)) return "no";
   }
   return null;
 }
