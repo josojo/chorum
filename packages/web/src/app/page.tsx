@@ -113,7 +113,7 @@ export default async function HomePage({
 
       <WhyBand />
 
-      <section className="space-y-5">
+      <section id="questions" className="scroll-mt-6 space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">

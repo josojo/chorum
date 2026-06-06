@@ -52,7 +52,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <HowItWorks />
               <EarnExplainer />
               <Link
-                href="/"
+                href="/#questions"
                 className="hidden rounded-full px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100 sm:inline-flex"
               >
                 Questions
