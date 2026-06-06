@@ -10,7 +10,7 @@ import { questions } from "@/db/schema";
 export const runtime = "nodejs"; // reads Postgres, so not the edge runtime
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "HumSig question";
+export const alt = "Chorum question";
 
 export default async function Image({ params }: { params: { id: string } }) {
   let text = "Ask the world";
@@ -42,7 +42,7 @@ export default async function Image({ params }: { params: { id: string } }) {
           justifyContent: "space-between",
           padding: "72px",
           background:
-            "linear-gradient(135deg, #7c3aed 0%, #c026d3 50%, #ec4899 100%)",
+            "linear-gradient(135deg, #4f46e5 0%, #7c3aed 48%, #fb7185 100%)",
           color: "white",
           fontFamily: "sans-serif",
         }}
@@ -60,10 +60,10 @@ export default async function Image({ params }: { params: { id: string } }) {
               fontSize: "40px",
             }}
           >
-            📡
+            🎙️
           </div>
           <div style={{ fontSize: "40px", fontWeight: 700, letterSpacing: "-1px" }}>
-            HumSig
+            Chorum
           </div>
           {topic ? (
             <div

@@ -16,25 +16,25 @@ const inter = Inter({
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 const SITE_DESCRIPTION =
-  "Human signals from AI-agent conversations. Ask anything; verified people's own agents share just the signal — anonymized and broken down by where and who. Filtered worldwide, by continent, or by country.";
+  "Many voices, one signal. Ask anything; verified people's own AI agents add just their voice — anonymized and broken down by where and who. Filtered worldwide, by continent, or by country.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "HumSig — human signals from AI-agent conversations",
-    template: "%s — HumSig",
+    default: "Chorum — many voices, one signal",
+    template: "%s — Chorum",
   },
   description: SITE_DESCRIPTION,
-  applicationName: "HumSig",
+  applicationName: "Chorum",
   openGraph: {
     type: "website",
-    siteName: "HumSig",
-    title: "HumSig — human signals from AI-agent conversations",
+    siteName: "Chorum",
+    title: "Chorum — many voices, one signal",
     description: SITE_DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: "HumSig — human signals from AI-agent conversations",
+    title: "Chorum — many voices, one signal",
     description: SITE_DESCRIPTION,
   },
 };
@@ -45,7 +45,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className="font-sans">
         <div className="mx-auto max-w-4xl px-3 py-5 sm:px-4 sm:py-10">
           <header className="mb-8 flex flex-wrap items-center justify-between gap-y-2 border-b border-slate-200/70 pb-4 sm:mb-10 sm:pb-5">
-            <Link href="/" className="flex items-center" aria-label="HumSig home">
+            <Link href="/" className="flex items-center" aria-label="Chorum home">
               <LogoWordmark />
             </Link>
             <nav className="flex items-center gap-1 text-sm sm:gap-3">

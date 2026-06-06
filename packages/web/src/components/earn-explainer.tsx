@@ -57,7 +57,7 @@ const STEPS: Step[] = [
   },
   {
     title: "Get heard — and earn",
-    body: "Every answer gets your signal counted. Today it earns you the right to ask questions of your own; cash payouts are coming. Set your policy once and it runs quietly in the background. Sell your signal — don't give it away.",
+    body: "Every answer adds your voice to the chorus. Today it earns you the right to ask questions of your own; cash payouts are coming. Set your policy once and it runs quietly in the background. Sell your voice — don't give it away.",
     illustration: EarningsIllustration,
   },
 ];
@@ -159,7 +159,7 @@ export function EarnExplainer() {
         className="inline-flex items-center gap-1 rounded-full bg-brand-gradient px-3 py-1.5 font-medium text-white shadow-glow transition hover:opacity-95 sm:gap-1.5 sm:px-4 sm:py-2"
       >
         <SignalIcon />
-        <span className="hidden sm:inline">Share your signal</span>
+        <span className="hidden sm:inline">Share your voice</span>
       </button>
 
       <EarnExplainerDialog open={open} onClose={() => setOpen(false)} />
@@ -206,7 +206,7 @@ function SelfAppLink() {
       rel="noopener noreferrer"
       className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-100"
     >
-      <span className="grid h-4 w-4 place-items-center rounded-md bg-gradient-to-br from-violet-600 to-fuchsia-600 text-[8px] font-bold text-white">
+      <span className="grid h-4 w-4 place-items-center rounded-md bg-gradient-to-br from-violet-600 to-rose-600 text-[8px] font-bold text-white">
         S
       </span>
       Get the Self app <span aria-hidden>↗</span>
@@ -299,7 +299,7 @@ function VerifyIllustration(tick: number) {
       <div className="w-40 rounded-[1.75rem] bg-slate-900 p-2 shadow-xl ring-1 ring-slate-700/60">
         <div className="rounded-[1.4rem] bg-white px-4 py-3">
           <div className="mb-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-slate-700">
-            <span className="grid h-4 w-4 place-items-center rounded-md bg-gradient-to-br from-violet-600 to-fuchsia-600 text-[8px] font-bold text-white">
+            <span className="grid h-4 w-4 place-items-center rounded-md bg-gradient-to-br from-violet-600 to-rose-600 text-[8px] font-bold text-white">
               S
             </span>
             Self
@@ -396,7 +396,7 @@ function EarningsIllustration(tick: number) {
   return (
     <div className="w-64 rounded-2xl bg-white p-5 shadow-xl ring-1 ring-slate-200/70">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-900">Your signal, counted</span>
+        <span className="text-xs font-semibold text-slate-900">Your voice, counted</span>
         <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
           live
@@ -413,7 +413,7 @@ function EarningsIllustration(tick: number) {
       </p>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 transition-all"
+          className="h-full rounded-full bg-gradient-to-r from-violet-600 to-rose-600 transition-all"
           style={{ width: `${Math.min(100, 42 + tick * 6)}%` }}
         />
       </div>

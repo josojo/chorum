@@ -76,7 +76,7 @@ export function PulseHero({
 
   return (
     <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-mesh p-5 shadow-sm sm:p-8">
-      <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-fuchsia-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-rose-200/40 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-28 -left-20 h-64 w-64 rounded-full bg-violet-200/40 blur-3xl" />
 
       <div className="relative">
@@ -87,22 +87,22 @@ export function PulseHero({
             live
           </span>
           <span className="text-xs font-semibold uppercase tracking-widest text-violet-700">
-            humanity thinking out loud
+            humanity, in chorus
           </span>
         </div>
 
         {/* Headline — says what the product does; the subhead carries the "how". */}
         <h1 className="mt-3 max-w-2xl text-3xl font-bold leading-tight tracking-tight text-slate-900 sm:text-5xl">
+          Many voices.{" "}
           <span className="bg-brand-gradient bg-clip-text text-transparent">
-            Human signal
-          </span>{" "}
-          from AI chats
+            One clear signal.
+          </span>
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base">
           You already tell your AI what you think. Your agent infers your take
-          from the everyday chats you already have, and shares just the signal —
-          verified human, anonymized, aggregated — so the world can finally read
-          what people actually believe.{" "}
+          from the everyday chats you already have, and adds just your voice —
+          verified human, anonymized — to a live chorus of millions, so the
+          world can finally read what people actually believe.{" "}
           <span className="font-medium text-slate-800">
             Your chat never leaves your agent.
           </span>
@@ -136,9 +136,9 @@ export function PulseHero({
           ) : (
             <div className="rounded-2xl bg-white/70 p-3 ring-1 ring-slate-200/70 backdrop-blur">
               <p className="mb-2 px-1 text-xs font-medium text-slate-500">
-                The world map fills in as signals arrive.{" "}
+                The world map fills in as voices arrive.{" "}
                 <span className="font-semibold text-slate-800">
-                  No signals yet — share the first one.
+                  No voices yet — add the first one.
                 </span>
               </p>
               {/* Neutral world: every country greys out until real votes land. */}
@@ -156,7 +156,7 @@ export function PulseHero({
             <div className="rounded-2xl bg-white/80 p-5 ring-1 ring-slate-200/70 backdrop-blur">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Signals captured
+                  Voices gathered
                 </p>
                 <LiveRefresh />
               </div>
@@ -181,7 +181,7 @@ export function PulseHero({
                     {questionsAsked === 1 ? "question" : "questions"}
                   </>
                 )}{" "}
-                · anonymized signals, captured in real time
+                · anonymized voices, gathered in real time
               </p>
             </div>
 
@@ -193,21 +193,21 @@ export function PulseHero({
               />
             ) : (
               <div className="rounded-2xl bg-white/80 p-5 text-sm text-slate-600 ring-1 ring-slate-200/70 backdrop-blur">
-                Be one of the first signals — add your agent and start
+                Be one of the first voices — add your agent and start
                 answering, or post a question for the world to weigh in on.
               </div>
             )}
           </div>
         </div>
 
-        {/* CTAs — "Share your signal" leads (supply side grows the organ). */}
+        {/* CTAs — "Share your voice" leads (supply side grows the organ). */}
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
           <button
             type="button"
             onClick={() => setEarnOpen(true)}
             className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-gradient px-6 py-3 text-base font-semibold text-white shadow-glow transition hover:opacity-95"
           >
-            <SignalIcon /> Share your signal
+            <SignalIcon /> Share your voice
           </button>
           <Link
             href="/ask"
@@ -225,17 +225,17 @@ export function PulseHero({
           <Pillar
             icon={<CheckBadge />}
             title="Verified human"
-            body="One real person, one signal — proven with Self. No bots, no troll farms."
+            body="One real person, one voice — proven with Self. No bots, no troll farms."
           />
           <Pillar
             icon={<MaskIcon />}
-            title="Only the signal leaves"
-            body="Your conversation stays yours. Just the anonymized answer is shared — never the chat."
+            title="Only your voice leaves"
+            body="Your conversation stays yours. Just the anonymized answer joins the chorus — never the chat."
           />
           <Pillar
             icon={<SlidersIcon />}
             title="Yours to control"
-            body="Your agent answers within the limits you set — veto or override any signal, anytime. Earning for your signal is coming."
+            body="Your agent answers within the limits you set — veto or override any voice, anytime. Earning for your voice is coming."
           />
         </div>
       </div>
@@ -274,7 +274,7 @@ function LiveResult({
             ? i === 0
               ? "from-emerald-500 to-emerald-600"
               : "from-rose-500 to-rose-600"
-            : "from-violet-600 to-fuchsia-600";
+            : "from-violet-600 to-rose-600";
           return (
             <div key={opt}>
               <div className="flex items-center justify-between text-[13px]">
@@ -294,7 +294,7 @@ function LiveResult({
         })}
       </div>
       <p className="mt-3 text-[11px] text-slate-400">
-        {total.toLocaleString()} signals · grouped by region
+        {total.toLocaleString()} voices · grouped by region
       </p>
     </div>
   );

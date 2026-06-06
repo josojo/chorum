@@ -41,7 +41,7 @@ describe("PulseHero", () => {
     // The map (an svg with role img) is present even with zero data.
     expect(screen.getByRole("img", { name: /world map/i })).toBeTruthy();
     // ...with the neutral, invitational caption rather than a question.
-    expect(screen.getByText(/no signals yet — share the first one/i)).toBeTruthy();
+    expect(screen.getByText(/no voices yet — add the first one/i)).toBeTruthy();
     // No question link when nothing is featured.
     expect(screen.queryByRole("link", { name: /q\// })).toBeNull();
   });
