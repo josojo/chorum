@@ -127,6 +127,13 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgres://hearme_web:${HEARME_PROD_POSTGRES_WEB_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme?sslmode=require
+      # Impressum (German imprint) operator details, rendered from SSM. Optional
+      # (:- empty) so a deploy never fails before they're set; /impressum shows a
+      # placeholder until then. Address is single-line; use "\n" for line breaks.
+      IMPRESSUM_NAME: ${HEARME_PROD_IMPRESSUM_NAME:-}
+      IMPRESSUM_ADDRESS: ${HEARME_PROD_IMPRESSUM_ADDRESS:-}
+      IMPRESSUM_EMAIL: ${HEARME_PROD_IMPRESSUM_EMAIL:-}
+      IMPRESSUM_PHONE: ${HEARME_PROD_IMPRESSUM_PHONE:-}
 
   classifier:
     extends:

@@ -213,14 +213,6 @@ services:
       # web role can't query directly from the broker.
       BROKER_URL: http://broker:8000
       NODE_ENV: production
-      # Impressum (German imprint) — per-deployment operator details. Set the
-      # real values in each box's gitignored `.env`; they stay out of the repo
-      # and the image and are read server-side at request time. Empty default
-      # falls back to the placeholder shown on /impressum.
-      IMPRESSUM_NAME: ${IMPRESSUM_NAME:-}
-      IMPRESSUM_ADDRESS: ${IMPRESSUM_ADDRESS:-}
-      IMPRESSUM_EMAIL: ${IMPRESSUM_EMAIL:-}
-      IMPRESSUM_PHONE: ${IMPRESSUM_PHONE:-}
     # Loopback only — see the note on the postgres service. In prod/staging
     # Caddy serves the web app to the internet via `reverse_proxy web:3000`.
     ports:
