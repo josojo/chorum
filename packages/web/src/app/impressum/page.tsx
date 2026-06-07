@@ -8,9 +8,13 @@
 // IMPORTANT: a legally valid Impressum for an individual operator must show a
 // REAL name and a REAL postal address at which you can be served (a P.O. box is
 // not sufficient), plus a means of fast electronic contact (email). Set these
-// via the NEXT_PUBLIC_IMPRESSUM_* env vars below for each deployment — the
-// placeholder defaults are NOT legally sufficient and must be replaced before
-// the site is reachable by anyone outside your private test circle.
+// per-deployment via the runtime env vars IMPRESSUM_NAME / IMPRESSUM_ADDRESS /
+// IMPRESSUM_EMAIL / IMPRESSUM_PHONE (see docker-compose.yml passthrough). They
+// are read SERVER-SIDE at request time (force-dynamic below) so your real
+// address lives only in each box's gitignored .env — never in the repo, the
+// client bundle, or the Docker image. The placeholder defaults are NOT legally
+// sufficient and must be replaced before the site is reachable outside your
+// private test circle. Newlines in IMPRESSUM_ADDRESS may be written as "\n".
 
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -21,17 +25,25 @@ export const metadata: Metadata = {
   description: "Imprint and responsible operator of Chorum (§ 5 DDG, § 18 MStV).",
 };
 
-const NAME = process.env.NEXT_PUBLIC_IMPRESSUM_NAME ?? "[Your full name]";
-const ADDRESS =
-  process.env.NEXT_PUBLIC_IMPRESSUM_ADDRESS ??
-  "[Street and number]\n[Postal code and city]\nGermany";
-const EMAIL =
-  process.env.NEXT_PUBLIC_IMPRESSUM_EMAIL ??
-  process.env.NEXT_PUBLIC_PRIVACY_CONTACT ??
-  "service@chorum.org";
-const PHONE = process.env.NEXT_PUBLIC_IMPRESSUM_PHONE ?? null;
+// Read server-side at request time so the values come from the running
+// container's env, not from `next build`. Without this the page would be
+// statically prerendered and the address baked in at build time.
+export const dynamic = "force-dynamic";
 
 export default function ImpressumPage() {
+  // `||` (not `??`): the compose passthrough sets these to "" when unset, and an
+  // empty string should fall back to the placeholder, not render blank.
+  const NAME = process.env.IMPRESSUM_NAME || "[Your full name]";
+  const ADDRESS = (
+    process.env.IMPRESSUM_ADDRESS ||
+    "[Street and number]\n[Postal code and city]\nGermany"
+  ).replace(/\\n/g, "\n");
+  const EMAIL =
+    process.env.IMPRESSUM_EMAIL ||
+    process.env.NEXT_PUBLIC_PRIVACY_CONTACT ||
+    "service@chorum.org";
+  const PHONE = process.env.IMPRESSUM_PHONE || null;
+
   return (
     <LegalPage title="Impressum" updated="June 2026">
       <p>
