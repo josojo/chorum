@@ -76,7 +76,7 @@ export function PulseHero({
 
   return (
     <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-mesh p-5 shadow-sm sm:p-8">
-      <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-rose-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-emerald-200/40 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-28 -left-20 h-64 w-64 rounded-full bg-violet-200/40 blur-3xl" />
 
       <div className="relative">
@@ -274,7 +274,7 @@ function LiveResult({
             ? i === 0
               ? "from-emerald-500 to-emerald-600"
               : "from-rose-500 to-rose-600"
-            : "from-violet-600 to-rose-600";
+            : "from-violet-600 to-emerald-500";
           return (
             <div key={opt}>
               <div className="flex items-center justify-between text-[13px]">

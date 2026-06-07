@@ -69,7 +69,7 @@ function ScopePill(props: {
   }
   if (props.scope === "continent" && props.continent) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800">
+      <span className="inline-flex items-center gap-1 rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">
         <span aria-hidden>🗺️</span>
         {CONTINENT_NAMES[props.continent as Continent] ?? props.continent}
       </span>
@@ -329,7 +329,7 @@ export function QuestionDetail(props: QuestionDetailProps) {
       <header className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:rounded-3xl sm:p-8">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 -z-0 bg-gradient-to-br from-violet-50 via-white to-rose-50"
+          className="pointer-events-none absolute inset-0 -z-0 bg-gradient-to-br from-violet-50 via-white to-emerald-50"
         />
         <div className="relative">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-slate-500">

@@ -79,10 +79,10 @@ export function OnboardingDialog({
           </svg>
         </button>
 
-        <div className="relative flex h-56 items-center justify-center overflow-hidden bg-gradient-to-br from-violet-50 via-white to-rose-50">
+        <div className="relative flex h-56 items-center justify-center overflow-hidden bg-gradient-to-br from-violet-50 via-white to-emerald-50">
           <div
             aria-hidden
-            className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-rose-200/40 blur-3xl"
+            className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-emerald-200/40 blur-3xl"
           />
           <div
             aria-hidden

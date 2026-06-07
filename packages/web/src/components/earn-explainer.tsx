@@ -413,7 +413,7 @@ function EarningsIllustration(tick: number) {
       </p>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-violet-600 to-rose-600 transition-all"
+          className="h-full rounded-full bg-gradient-to-r from-violet-600 to-emerald-500 transition-all"
           style={{ width: `${Math.min(100, 42 + tick * 6)}%` }}
         />
       </div>

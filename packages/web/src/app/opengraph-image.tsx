@@ -20,7 +20,7 @@ export default function Image() {
           gap: "28px",
           padding: "72px",
           background:
-            "linear-gradient(135deg, #4f46e5 0%, #7c3aed 48%, #fb7185 100%)",
+            "linear-gradient(135deg, #7c3aed 0%, #0d9488 55%, #10b981 100%)",
           color: "white",
           fontFamily: "sans-serif",
         }}

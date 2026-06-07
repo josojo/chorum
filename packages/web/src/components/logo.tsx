@@ -37,9 +37,9 @@ export function Logo({ size = 32, className }: Props) {
     >
       <defs>
         <linearGradient id="ch-grad" x1="0" y1="0" x2="48" y2="48">
-          <stop offset="0%" stopColor="#4f46e5" />
-          <stop offset="48%" stopColor="#7c3aed" />
-          <stop offset="100%" stopColor="#fb7185" />
+          <stop offset="0%" stopColor="#7c3aed" />
+          <stop offset="55%" stopColor="#0d9488" />
+          <stop offset="100%" stopColor="#10b981" />
         </linearGradient>
       </defs>
       <rect width="48" height="48" rx="12" fill="url(#ch-grad)" />
