@@ -28,7 +28,7 @@ const ADDRESS =
 const EMAIL =
   process.env.NEXT_PUBLIC_IMPRESSUM_EMAIL ??
   process.env.NEXT_PUBLIC_PRIVACY_CONTACT ??
-  "contact@chorum.example";
+  "service@chorum.org";
 const PHONE = process.env.NEXT_PUBLIC_IMPRESSUM_PHONE ?? null;
 
 export default function ImpressumPage() {
