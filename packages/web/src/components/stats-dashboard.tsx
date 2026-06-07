@@ -21,9 +21,9 @@ export function StatsDashboard({ stats }: Props) {
       <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:rounded-3xl sm:p-8">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-violet-50 via-white to-rose-50"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-violet-50 via-white to-emerald-50"
         />
-        <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-rose-200/40 blur-3xl" />
+        <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-emerald-200/40 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-violet-200/40 blur-3xl" />
         <div className="relative space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-4xl">

@@ -403,7 +403,7 @@ export function WorldMap({
       ) : null}
 
       <div className="relative">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-50 via-indigo-50 to-violet-50 p-2 ring-1 ring-slate-200/70">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-50 via-teal-50 to-emerald-50 p-2 ring-1 ring-slate-200/70">
           <svg
             viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
             role="img"

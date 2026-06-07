@@ -30,7 +30,7 @@ function ScopePill(props: {
   }
   if (props.scope === "continent" && props.continent) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">
+      <span className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">
         <span aria-hidden>🗺️</span>
         {CONTINENT_NAMES[props.continent as Continent] ?? props.continent}
       </span>
@@ -52,7 +52,7 @@ export function QuestionCard(props: QuestionCardProps) {
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute left-0 top-0 h-full w-1 origin-top scale-y-0 bg-gradient-to-b from-violet-500 to-rose-500 transition-transform duration-200 group-hover:scale-y-100"
+        className="pointer-events-none absolute left-0 top-0 h-full w-1 origin-top scale-y-0 bg-gradient-to-b from-violet-500 to-emerald-500 transition-transform duration-200 group-hover:scale-y-100"
       />
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-base font-semibold text-slate-900 transition group-hover:text-violet-700">

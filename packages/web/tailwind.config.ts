@@ -15,30 +15,30 @@ const config: Config = {
         ],
       },
       colors: {
-        // Chorum brand: indigo, the anchor of the indigo→violet→rose gradient
-        // (chorus × quorum — many voices, one signal). Violet accents across the
-        // app sit on the gradient's midpoint, so they stay in-family.
+        // Chorum brand: violet, the anchor of the violet→teal→emerald gradient
+        // (many voices, one signal — "hear + earth"). Teal bridges violet→green
+        // so they stop fighting; accents across the app sit on this scale.
         brand: {
-          50: "#eef2ff",
-          100: "#e0e7ff",
-          200: "#c7d2fe",
-          300: "#a5b4fc",
-          400: "#818cf8",
-          500: "#6366f1",
-          600: "#4f46e5",
-          700: "#4338ca",
-          800: "#3730a3",
-          900: "#312e81",
+          50: "#f5f3ff",
+          100: "#ede9fe",
+          200: "#ddd6fe",
+          300: "#c4b5fd",
+          400: "#a78bfa",
+          500: "#8b5cf6",
+          600: "#7c3aed",
+          700: "#6d28d9",
+          800: "#5b21b6",
+          900: "#4c1d95",
         },
       },
       boxShadow: {
-        glow: "0 10px 40px -10px rgb(79 70 229 / 0.45)",
+        glow: "0 10px 40px -10px rgb(13 148 136 / 0.5)",
       },
       backgroundImage: {
         "brand-gradient":
-          "linear-gradient(135deg, #4f46e5 0%, #7c3aed 48%, #fb7185 100%)",
+          "linear-gradient(120deg, #7c3aed 0%, #0d9488 55%, #10b981 100%)",
         "mesh":
-          "radial-gradient(at 20% 0%, rgba(79,70,229,0.15) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(251,113,133,0.12) 0px, transparent 50%), radial-gradient(at 50% 100%, rgba(124,58,237,0.10) 0px, transparent 50%)",
+          "radial-gradient(at 20% 0%, rgba(124,58,237,0.13) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(13,148,136,0.12) 0px, transparent 50%), radial-gradient(at 50% 100%, rgba(16,185,129,0.10) 0px, transparent 50%)",
       },
     },
   },

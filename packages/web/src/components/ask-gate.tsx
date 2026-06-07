@@ -355,7 +355,7 @@ function ProgressRow({
       </div>
       <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-violet-600 to-rose-600 transition-all"
+          className="h-full rounded-full bg-gradient-to-r from-violet-600 to-emerald-500 transition-all"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -689,7 +689,7 @@ function ScoreIllustration({ eligibility }: { eligibility: Eligibility | null })
       </p>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-violet-600 to-rose-600 transition-all"
+          className="h-full rounded-full bg-gradient-to-r from-violet-600 to-emerald-500 transition-all"
           style={{ width: `${cleared ? 100 : pct}%` }}
         />
       </div>

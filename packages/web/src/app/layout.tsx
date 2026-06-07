@@ -50,19 +50,19 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </Link>
             <nav className="flex items-center gap-1 text-sm sm:gap-3">
               <HowItWorks />
-              <EarnExplainer />
               <Link
                 href="/#questions"
                 className="hidden rounded-full px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100 sm:inline-flex"
               >
-                Questions
+                Live questions
               </Link>
               <Link
                 href="/ask"
-                className="inline-flex items-center gap-1 rounded-full bg-brand-gradient px-3 py-1.5 font-medium text-white shadow-glow transition hover:opacity-95 sm:gap-1.5 sm:px-4 sm:py-2"
+                className="hidden rounded-full px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100 sm:inline-flex"
               >
-                <span aria-hidden>+</span> Ask
+                Ask the world
               </Link>
+              <EarnExplainer />
             </nav>
           </header>
           <main>{children}</main>
