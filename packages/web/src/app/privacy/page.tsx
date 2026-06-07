@@ -17,7 +17,7 @@ export const metadata: Metadata = {
     "How Chorum handles your data: verified-human identity, unlinkable answers, IP minimization, retention, and your right to deletion.",
 };
 
-const CONTACT = process.env.NEXT_PUBLIC_PRIVACY_CONTACT ?? "privacy@chorum.example";
+const CONTACT = process.env.NEXT_PUBLIC_PRIVACY_CONTACT ?? "service@chorum.org";
 
 export default function PrivacyPage() {
   return (

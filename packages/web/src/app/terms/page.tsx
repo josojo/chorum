@@ -10,7 +10,7 @@ export const metadata: Metadata = {
     "The terms governing your use of Chorum: eligibility, acceptable use, content, and disclaimers.",
 };
 
-const CONTACT = process.env.NEXT_PUBLIC_PRIVACY_CONTACT ?? "privacy@chorum.example";
+const CONTACT = process.env.NEXT_PUBLIC_PRIVACY_CONTACT ?? "service@chorum.org";
 
 export default function TermsPage() {
   return (
