@@ -3,6 +3,33 @@
 
 export type Continent = "AF" | "AN" | "AS" | "EU" | "NA" | "OC" | "SA";
 
+// Reduce an IP to its network prefix before it leaves our infra (issue #104):
+// IPv4 -> /24 (last octet zeroed), IPv6 -> /48 (first three hextets, rest
+// zeroed). Country resolution is unaffected; the host part — the bit that
+// identifies one device — is dropped. Returns null for anything that doesn't
+// parse as an address. Pure (no server-only deps) so geo.ts and tests share it.
+export function maskIp(ip: string): string | null {
+  if (ip.includes(".") && !ip.includes(":")) {
+    const parts = ip.split(".");
+    if (parts.length !== 4) return null;
+    if (parts.some((p) => !/^\d{1,3}$/.test(p) || Number(p) > 255)) return null;
+    return `${parts[0]}.${parts[1]}.${parts[2]}.0`;
+  }
+  if (ip.includes(":")) {
+    // Expand against "::" once, take the first 3 groups, zero-fill to /48.
+    const [head, tail = ""] = ip.split("::");
+    const headGroups = head ? head.split(":") : [];
+    const tailGroups = tail ? tail.split(":") : [];
+    const missing = 8 - headGroups.length - tailGroups.length;
+    if (missing < 0) return null;
+    const full = [...headGroups, ...Array(Math.max(missing, 0)).fill("0"), ...tailGroups];
+    if (full.length !== 8) return null;
+    if (full.some((g) => !/^[0-9a-fA-F]{1,4}$/.test(g))) return null;
+    return `${full[0]}:${full[1]}:${full[2]}::`;
+  }
+  return null;
+}
+
 export const CONTINENT_NAMES: Record<Continent, string> = {
   AF: "Africa",
   AN: "Antarctica",

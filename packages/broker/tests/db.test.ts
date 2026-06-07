@@ -18,6 +18,7 @@ import {
   issueAskerSession,
 } from "../src/verify/askerSession";
 import { voterTagIfLive } from "../src/voterTag";
+import { delegationHash } from "../src/verify/canonical";
 import {
   destroyExpiredQuestionSecrets,
   getQuestionSecretKeyIfLive,
@@ -506,6 +507,101 @@ describe("POST /v1/envelopes/revoke (override is sacred)", () => {
       payload: makeRevocation(tok, { questionId: question.id }),
     });
     expect(await q.askerAnswerCounts(db, uid)).toEqual({ total: 0, signal: 0 });
+  });
+});
+
+describe("POST /v1/account/delete (right-to-erasure, #104)", () => {
+  it("erases registration + live answers, revokes the token, blocks re-auth", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:del-1";
+    const tok = await devToken({ uid });
+    const question = await insertQuestion({});
+    await app.inject({
+      method: "POST",
+      url: "/v1/envelopes",
+      payload: makeEnvelope(tok, { questionId: question.id, answer: "yes", nonce: question.nonce }),
+    });
+    expect(await totalAnswers(question.id)).toBe(1);
+    expect(await q.getRegistration(db, uid)).not.toBeNull();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/account/delete",
+      payload: { delegation_token: tok },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      deleted: true,
+      registration_deleted: true,
+      deleted_answers: 1,
+      affected_questions: 1,
+    });
+
+    // Registration gone, the answer gone (aggregate rebuilt away), token revoked.
+    expect(await q.getRegistration(db, uid)).toBeNull();
+    expect(await totalAnswers(question.id)).toBeNull();
+    expect(await q.isRevoked(db, delegationHash(tok))).toBe(true);
+
+    // A second attempt with the same token fails auth (no registration backs it).
+    const again = await app.inject({
+      method: "POST",
+      url: "/v1/account/delete",
+      payload: { delegation_token: tok },
+    });
+    expect(again.statusCode).toBe(401);
+  });
+
+  it("authenticates via a browser asker session too", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:del-asker";
+    await devToken({ uid }); // create the registration to erase
+    const now = Date.now();
+    const session = issueAskerSession({
+      unique_identifier: uid,
+      issued_at: new Date(now - 1000),
+      expires_at: new Date(now + ASKER_SESSION_TTL_MS),
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/account/delete",
+      payload: { asker_session: session },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ deleted: true, registration_deleted: true });
+    expect(await q.getRegistration(db, uid)).toBeNull();
+  });
+
+  it("leaves answers on closed, secret-destroyed questions (irreversibly anon)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const uid = "self:del-closed";
+    const tok = await devToken({ uid });
+    const question = await insertQuestion({});
+    await app.inject({
+      method: "POST",
+      url: "/v1/envelopes",
+      payload: makeEnvelope(tok, { questionId: question.id, answer: "yes", nonce: question.nonce }),
+    });
+    // Close the question long ago and reap its secret — the tag can no longer be
+    // reproduced, so deleteAccount cannot match (and must not delete) the answer.
+    await getSecretsDb()`
+      UPDATE question_secrets SET closes_at = now() - make_interval(days => 1)
+      WHERE question_id = ${question.id}
+    `;
+    expect(await destroyExpiredQuestionSecrets(0)).toBe(1);
+
+    const result = await q.deleteAccount(db, uid);
+    expect(result.registrationDeleted).toBe(true);
+    expect(result.deletedEnvelopes).toBe(0);
+    const rows = (await db.execute(
+      sql`SELECT count(*)::int AS n FROM envelopes WHERE question_id = ${question.id}`,
+    )) as unknown as Array<{ n: number }>;
+    expect(Number(rows[0].n)).toBe(1);
+  });
+
+  it("rejects a request with neither credential", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const res = await app.inject({ method: "POST", url: "/v1/account/delete", payload: {} });
+    expect(res.statusCode).toBe(422);
   });
 });
 

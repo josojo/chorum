@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   COUNTRY_TO_CONTINENT,
   CONTINENT_NAMES,
+  maskIp,
   type Continent,
 } from "../src/lib/geo-data";
 import { countryFlag } from "../src/lib/flags";
@@ -24,6 +25,25 @@ describe("COUNTRY_TO_CONTINENT", () => {
     for (const c of Object.values(COUNTRY_TO_CONTINENT)) {
       expect(CONTINENT_NAMES[c as Continent]).toBeTruthy();
     }
+  });
+});
+
+describe("maskIp (issue #104 — never send a full IP to the third party)", () => {
+  it("zeroes the last octet of an IPv4 address (/24)", () => {
+    expect(maskIp("203.0.113.42")).toBe("203.0.113.0");
+    expect(maskIp("8.8.8.8")).toBe("8.8.8.0");
+  });
+
+  it("truncates an IPv6 address to its first three hextets (/48)", () => {
+    expect(maskIp("2001:db8:abcd:1234:5678:9abc:def0:1234")).toBe("2001:db8:abcd::");
+    expect(maskIp("2001:db8::1")).toBe("2001:db8:0::");
+  });
+
+  it("rejects garbage", () => {
+    expect(maskIp("not-an-ip")).toBeNull();
+    expect(maskIp("999.1.1.1")).toBeNull();
+    expect(maskIp("1.2.3")).toBeNull();
+    expect(maskIp("")).toBeNull();
   });
 });
 

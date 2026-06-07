@@ -146,6 +146,16 @@ export async function isRevoked(db: Executor, delegationHashHex: string): Promis
   return rows.length > 0;
 }
 
+// Kill a DelegationToken immediately by listing its hash in the revocation list.
+// Idempotent. Used by account deletion so a still-valid 90-day token can't keep
+// answering after the user has erased their account.
+export async function addRevocation(db: Executor, delegationHashHex: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO revocations (delegation_hash) VALUES (${delegationHashHex})
+    ON CONFLICT (delegation_hash) DO NOTHING
+  `);
+}
+
 // ----- registrations (nullifier registry) --------------------------------
 
 // Atomically bind unique_identifier (nullifier) to agent_key.
@@ -231,6 +241,24 @@ export interface InvalidationResult {
   affectedQuestions: number;
 }
 
+// Delete the envelopes carrying any of `tags` (per-question voter tags) and
+// return the question_id of each deleted row (one per envelope — the composite
+// PK guarantees one envelope per (question, tag), so the ids are unique). We
+// bind the tags as an IN-list via sql.join rather than `= ANY($1::text[])`:
+// drizzle interpolates a JS array as a single text parameter, which Postgres
+// then rejects ("malformed array literal") when cast to text[].
+async function deleteEnvelopesByVoterTags(tx: Executor, tags: string[]): Promise<string[]> {
+  if (tags.length === 0) return [];
+  const list = sql.join(
+    tags.map((t) => sql`${t}`),
+    sql`, `,
+  );
+  const rows = (await tx.execute(sql`
+    DELETE FROM envelopes WHERE unique_identifier IN (${list}) RETURNING question_id
+  `)) as unknown as Rows<{ question_id: string }>;
+  return rows.map((r) => r.question_id);
+}
+
 // Apply a Self on-chain invalidation for one Hearme nullifier: record it, revoke
 // the registration, delete its accepted envelopes, and recompute every affected
 // aggregate — all in one transaction.
@@ -285,15 +313,8 @@ export async function invalidateRegistrationAndVotes(
       const tag = await voterTagIfLive(r.question_id, args.uniqueIdentifier);
       if (tag !== null) tags.push(tag);
     }
-    const affectedRows =
-      tags.length === 0
-        ? []
-        : ((await tx.execute(sql`
-            DELETE FROM envelopes
-            WHERE unique_identifier = ANY(${tags}::text[])
-            RETURNING question_id
-          `)) as unknown as Rows<{ question_id: string }>);
-    const affectedQuestionIds = [...new Set(affectedRows.map((r) => r.question_id))].sort();
+    const deletedQuestionIds = await deleteEnvelopesByVoterTags(tx, tags);
+    const affectedQuestionIds = [...new Set(deletedQuestionIds)].sort();
 
     for (const questionId of affectedQuestionIds) {
       await recomputeAggregate(tx, questionId);
@@ -302,7 +323,7 @@ export async function invalidateRegistrationAndVotes(
     return {
       recorded: insertedRows.length > 0,
       registrationRevoked: revokedRows.length > 0,
-      deletedEnvelopes: affectedRows.length,
+      deletedEnvelopes: deletedQuestionIds.length,
       affectedQuestions: affectedQuestionIds.length,
     };
   });
@@ -346,6 +367,84 @@ export async function invalidateFirstMatchingRegistrationAndVotes(
     return { recorded: true, registrationRevoked: false, deletedEnvelopes: 0, affectedQuestions: 0 };
   }
   return invalidateRegistrationAndVotes(db, { ...args, uniqueIdentifier });
+}
+
+export interface AccountDeletionResult {
+  registrationDeleted: boolean;
+  deletedEnvelopes: number;
+  affectedQuestions: number;
+}
+
+// Right-to-erasure: a user, having re-proven their live Self identity, asks the
+// broker to delete their account (issue #104). Unlike a Self on-chain
+// invalidation (invalidateRegistrationAndVotes — which TOMBSTONES the nullifier
+// so it can never re-register), a voluntary deletion HARD-DELETES every
+// nullifier-keyed PII row and leaves NO record of the nullifier, so the same
+// human may freely come back later with a fresh registration.
+//
+// What gets erased, all in one transaction:
+//   - the user's own answers on LIVE questions (per-question voter tags are
+//     recomputed from the nullifier + the still-live question secret, then the
+//     matching envelopes are deleted and each affected aggregate is rebuilt).
+//     Answers on questions whose secret was already destroyed (closed past grace,
+//     ADR-098) are irreversibly anonymous already and cannot be matched — they
+//     stay as pure aggregate, no longer personal data.
+//   - the registration (nullifier -> agent_key binding, demographics, counters).
+//   - the reputation rollup, the referral graph edges that name this nullifier
+//     (as referee OR referrer), any referral codes it minted, and its board seat.
+//   - the asker link on any questions it authored is NULLed (the public question
+//     text stays, unlinked from the person).
+//
+// The caller separately revokes the live DelegationToken (addRevocation) so the
+// token dies the moment the account is gone.
+export async function deleteAccount(
+  db: Db,
+  uniqueIdentifier: string,
+): Promise<AccountDeletionResult> {
+  return db.transaction(async (tx) => {
+    // Delete this identity's envelopes via per-question voter tags (§1.4), then
+    // rebuild every affected aggregate — same mechanism as an invalidation.
+    const answered = (await tx.execute(sql`
+      SELECT DISTINCT question_id FROM envelopes
+    `)) as unknown as Rows<{ question_id: string }>;
+    const tags: string[] = [];
+    for (const r of answered) {
+      const tag = await voterTagIfLive(r.question_id, uniqueIdentifier);
+      if (tag !== null) tags.push(tag);
+    }
+    const deletedQuestionIds = await deleteEnvelopesByVoterTags(tx, tags);
+    const affectedQuestionIds = [...new Set(deletedQuestionIds)].sort();
+    for (const questionId of affectedQuestionIds) {
+      await recomputeAggregate(tx, questionId);
+    }
+
+    // Hard-delete every nullifier-keyed identity row. referrals is hit twice: the
+    // edge where this person is the referee, and edges where they are someone
+    // else's referrer (both name the nullifier).
+    await tx.execute(sql`DELETE FROM reputation WHERE unique_identifier = ${uniqueIdentifier}`);
+    await tx.execute(sql`DELETE FROM board_members WHERE unique_identifier = ${uniqueIdentifier}`);
+    await tx.execute(sql`DELETE FROM asker_admins WHERE unique_identifier = ${uniqueIdentifier}`);
+    await tx.execute(sql`DELETE FROM referral_codes WHERE referrer_nullifier = ${uniqueIdentifier}`);
+    await tx.execute(
+      sql`DELETE FROM referrals WHERE referee_nullifier = ${uniqueIdentifier} OR referrer_nullifier = ${uniqueIdentifier}`,
+    );
+    // Unlink (don't delete) authored questions: the public question content stays,
+    // but the asker row no longer points back to the person.
+    await tx.execute(
+      sql`UPDATE askers SET unique_identifier = NULL WHERE unique_identifier = ${uniqueIdentifier}`,
+    );
+
+    const deletedReg = (await tx.execute(sql`
+      DELETE FROM registrations WHERE unique_identifier = ${uniqueIdentifier}
+      RETURNING 1 AS deleted
+    `)) as unknown as Rows<unknown>;
+
+    return {
+      registrationDeleted: deletedReg.length > 0,
+      deletedEnvelopes: deletedQuestionIds.length,
+      affectedQuestions: affectedQuestionIds.length,
+    };
+  });
 }
 
 export async function isSelfNullifierInvalidated(

@@ -44,6 +44,8 @@ export function Footer() {
             <FooterLink href="/">Questions</FooterLink>
             <FooterLink href="/ask">Ask</FooterLink>
             <FooterLink href="/stats">Stats</FooterLink>
+            <FooterLink href="/privacy">Privacy</FooterLink>
+            <FooterLink href="/terms">Terms</FooterLink>
           </nav>
           <div className="flex items-center gap-2">
             {SOCIALS.map((s) => (

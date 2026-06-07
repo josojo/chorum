@@ -30,6 +30,7 @@ import { registerStatsRoutes } from "./routes/stats";
 import { registerAskersRoutes } from "./routes/askers";
 import { registerReferralsRoutes } from "./routes/referrals";
 import { registerBoardRoutes } from "./routes/board";
+import { registerAccountRoutes } from "./routes/account";
 import { registerDevRoutes } from "./routes/dev";
 
 export interface BuildAppOptions {
@@ -86,6 +87,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   // Referral incentive + reputation/board (REFERRALS.md).
   registerReferralsRoutes(app, { settings });
   registerBoardRoutes(app, { settings });
+  registerAccountRoutes(app, { settings });
 
   // DANGER: testing-only synthetic-identity registration. Off unless explicitly
   // enabled; never mount in production (see routes/dev.ts and startupChecks.ts).

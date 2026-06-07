@@ -210,6 +210,20 @@ export type ReferralCreateRequest = z.infer<typeof referralCreateRequestSchema>;
 export const referralStatsRequestSchema = referralCreateRequestSchema;
 export type ReferralStatsRequest = z.infer<typeof referralStatsRequestSchema>;
 
+// POST /v1/account/delete body — just the credential (the account to erase is
+// whoever the credential resolves to). Right-to-erasure, issue #104.
+export const accountDeleteRequestSchema = referralCreateRequestSchema;
+export type AccountDeleteRequest = z.infer<typeof accountDeleteRequestSchema>;
+
+// Receipt returned after a successful deletion — a count of what was erased, with
+// no identifiers (so the receipt itself carries nothing linkable).
+export interface AccountDeleteResponse {
+  deleted: boolean;
+  registration_deleted: boolean;
+  deleted_answers: number;
+  affected_questions: number;
+}
+
 // POST /v1/board/claim body — credential + a FRESH client-generated governance
 // public key (base64 Ed25519, REFERRALS.md §6.1). The credential is bound to
 // gov_key, never to the nullifier, so board actions don't link to answers.

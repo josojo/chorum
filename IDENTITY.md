@@ -131,6 +131,8 @@ After successful passport verification, a Hearme identity consists of:
 
 8. **Privacy of demographic disclosures.** Even age band + region can be deanonymizing in small populations. For low-population regions or rare demographic intersections, Hearme should aggregate or suppress breakdowns below a minimum cohort size.
 
+9. **Right-to-deletion, IP handling & retention — resolved.** See **[docs/PRIVACY.md](docs/PRIVACY.md)** for the data-subject deletion flow (`POST /v1/account/delete`, re-prove identity → erase nullifier-keyed PII + live-question answers), the IP minimization policy (masked third-party geo lookup, no raw IPs in logs), and retention windows. User-facing copy is published at `/privacy` and `/terms`.
+
 
 ---
 

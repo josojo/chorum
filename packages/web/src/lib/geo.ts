@@ -9,12 +9,22 @@
 //      These are zero-cost and always trusted.
 //   3. Free public lookup against ipwho.is, cached in-process for IP_TTL.
 //   4. DEFAULT_LOCATION (US/NA) so the UI always has something to show.
+//
+// Privacy (issue #104): the raw client IP is PII. We never log it and never
+// persist it — it lives only transiently in this process. Before step 3 sends an
+// address to the third party (ipwho.is), we MASK it to the network prefix (IPv4
+// /24, IPv6 /48): country-level geo is unchanged, but a fully-identifying address
+// never leaves our infra. Steps 1–2 (override + edge geo headers) require no
+// third-party call at all, so a deployment behind Vercel/Cloudflare/Fly leaks
+// nothing. Set HEARME_GEO_DISABLE_IP_LOOKUP=1 to drop step 3 entirely and rely
+// only on edge headers + the default.
 
 import { headers } from "next/headers";
 import {
   CONTINENT_NAMES,
   COUNTRY_NAMES,
   COUNTRY_TO_CONTINENT,
+  maskIp,
   type Continent,
 } from "./geo-data";
 
@@ -23,6 +33,7 @@ export {
   CONTINENT_NAMES,
   COUNTRY_NAMES,
   COUNTRY_TO_CONTINENT,
+  maskIp,
   type Continent,
 };
 
@@ -98,7 +109,13 @@ function countryNameFor(country: string): string {
   return COUNTRY_NAMES[country.toUpperCase()] ?? country.toUpperCase();
 }
 
-async function lookupIp(ip: string): Promise<Omit<Location, "source"> | null> {
+function ipLookupEnabled(): boolean {
+  return process.env.HEARME_GEO_DISABLE_IP_LOOKUP !== "1";
+}
+
+async function lookupIp(rawIp: string): Promise<Omit<Location, "source"> | null> {
+  const ip = maskIp(rawIp);
+  if (!ip) return null;
   const now = Date.now();
   const cached = ipCache.get(ip);
   if (cached && cached.expires > now) return cached.loc;
@@ -193,7 +210,7 @@ export async function resolveLocation(
   if (fromHeaders) return fromHeaders;
 
   const ip = clientIp();
-  if (ip && !isPrivateIp(ip)) {
+  if (ip && !isPrivateIp(ip) && ipLookupEnabled()) {
     const looked = await lookupIp(ip);
     if (looked) return { ...looked, source: "lookup" };
   }

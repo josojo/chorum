@@ -11,6 +11,11 @@
 //      "warn" to quiet a noisy prod box or "debug" to chase an incident.
 //   3. Redaction of credential-bearing request headers, so an Authorization or
 //      Cookie value can never be serialized into a log line.
+//   4. A request serializer that DROPS the client IP (issue #104). Fastify's
+//      default `req` serializer logs `remoteAddress`/`remotePort`, which is PII;
+//      we keep only method/url/id so request logs never persist a raw IP. IPs are
+//      still read transiently in-process for rate limiting (ratelimit.ts), but
+//      they are never written to the log stream.
 //
 // buildApp() passes this to Fastify unless logging is disabled (tests pass
 // `logger: false`).
@@ -31,6 +36,14 @@ export function buildLoggerConfig(settings: Settings): LoggerConfig {
     redact: {
       paths: ["req.headers.authorization", "req.headers.cookie"],
       remove: true,
+    },
+    serializers: {
+      // Override Fastify's default req serializer to omit remoteAddress/
+      // remotePort (the client IP). Keep just the routing fields a log backend
+      // needs to correlate a request.
+      req(req: { id?: string; method?: string; url?: string }) {
+        return { id: req.id, method: req.method, url: req.url };
+      },
     },
   };
 }
