@@ -21,6 +21,19 @@ export default function TermsPage() {
         Service.
       </p>
 
+      <Section heading="Experimental beta — please read">
+        <p>
+          Chorum is an <strong>early experimental beta</strong>, currently open
+          to invited test users only and operated on a non-commercial basis. It
+          is provided for testing and evaluation. We make{" "}
+          <strong>no guarantee of availability, accuracy, security, or data
+          preservation</strong>: the Service may change, break, or be
+          discontinued, and your data may be reset or lost at any time without
+          notice. By using the Service you acknowledge its experimental nature
+          and accept these risks.
+        </p>
+      </Section>
+
       <Section heading="Eligibility">
         <p>
           The Service is for verified individual humans. You must be of the age
@@ -71,11 +84,33 @@ export default function TermsPage() {
       <Section heading="Disclaimers and liability">
         <p>
           The Service is provided &ldquo;as is&rdquo; and &ldquo;as
-          available,&rdquo; without warranties of any kind. Aggregated results are
-          informational and may not be representative; do not rely on them as
-          professional, legal, or financial advice. To the maximum extent
-          permitted by law, Chorum is not liable for any indirect, incidental, or
-          consequential damages arising from your use of the Service.
+          available,&rdquo; without warranties of any kind, express or implied,
+          including any warranty of merchantability, fitness for a particular
+          purpose, availability, uninterrupted operation, security, or
+          preservation of your data. Aggregated results are informational and may
+          not be representative; do not rely on them as professional, legal,
+          medical, or financial advice.
+        </p>
+        <p>
+          To the maximum extent permitted by applicable law, the operator of
+          Chorum (see the <Link href="/impressum">Impressum</Link>) shall not be
+          liable for any indirect, incidental, special, consequential, or
+          punitive damages, or for any loss of data, profits, or goodwill,
+          arising from or related to your use of (or inability to use) the
+          Service. Nothing in these terms excludes or limits liability that
+          cannot be excluded or limited under applicable law — including
+          liability for injury to life, body, or health, for intent or gross
+          negligence, or under mandatory consumer-protection or product-liability
+          law.
+        </p>
+      </Section>
+
+      <Section heading="Governing law">
+        <p>
+          These terms are governed by the laws of the Federal Republic of
+          Germany, excluding its conflict-of-law rules and the UN Convention on
+          Contracts for the International Sale of Goods. Mandatory consumer
+          protections of your country of residence remain unaffected.
         </p>
       </Section>
 
