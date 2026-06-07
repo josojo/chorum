@@ -49,6 +49,13 @@ fi
 
 printf '%s\n' "$out" | while IFS=$'\t' read -r name value; do
   [ -n "$name" ] || continue
+  # Single-quote the value so the rendered .env is safe to `source` in bash —
+  # the deploy/rollback/bootstrap paths do `set -a; . ./.env`, which would
+  # otherwise choke on any value containing spaces or shell metacharacters
+  # (e.g. the Impressum name/address). docker compose's dotenv parser strips
+  # the surrounding single quotes too, so both consumers agree. Embedded single
+  # quotes are escaped the POSIX way: ' -> '\''
+  esc=${value//\'/\'\\\'\'}
   # Leaf segment of the SSM path is the exact env var name.
-  printf '%s=%s\n' "${name##*/}" "$value"
+  printf "%s='%s'\n" "${name##*/}" "$esc"
 done
