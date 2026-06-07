@@ -49,6 +49,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <LogoWordmark />
             </Link>
             <nav className="flex items-center gap-1 text-sm sm:gap-3">
+              <HowItWorks />
               <Link
                 href="/#questions"
                 className="hidden rounded-full px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100 sm:inline-flex"
@@ -61,7 +62,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               >
                 Ask the world
               </Link>
-              <HowItWorks />
               <EarnExplainer />
             </nav>
           </header>
