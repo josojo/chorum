@@ -1,7 +1,7 @@
 // Behavior test for the AskGate login wall in front of /ask.
 //
 // Covers: local/demo mode renders the form directly; gated mode auto-opens the
-// explain step and hides the form; "Verify with Self" advances to the QR scan;
+// explain step and hides the form; "Sign in with Self" advances to the QR scan;
 // Cancel closes to the locked placeholder. The network/poll path (start →
 // status) is covered by the broker integration tests and asker-auth tests; we
 // stub fetch here only so the scan step can mount without erroring.
@@ -41,9 +41,11 @@ describe("AskGate", () => {
     render(<AskGate authRequired={true} />);
     // Form is not revealed yet.
     expect(screen.queryByTestId("ask-form")).toBeNull();
-    // Dialog auto-opens on the explain step.
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(screen.getByText(/Verify you're a unique human/i)).toBeTruthy();
+    // Dialog auto-opens on the explain step. ("Asking is earned" also titles the
+    // locked placeholder behind it, so scope the heading check to the dialog.)
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeTruthy();
+    expect(within(dialog).getByText(/Asking is earned/i)).toBeTruthy();
     expect(screen.getByText(/step 1 of 3/i)).toBeTruthy();
     // The email fallback is offered.
     expect(screen.getByText("newquestions@humsig.org")).toBeTruthy();
@@ -51,10 +53,10 @@ describe("AskGate", () => {
 
   it("advances to the Self scan step", () => {
     render(<AskGate authRequired={true} />);
-    // The dialog's own primary button (the placeholder behind it also has a
-    // "Verify with Self" button — scope to the dialog).
+    // The dialog's own primary button (the placeholder behind it has a
+    // "How asking works" button — scope to the dialog).
     const dialog = screen.getByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: /verify with self/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /sign in with self/i }));
     expect(screen.getByText(/Scan the code with the Self app/i)).toBeTruthy();
     expect(screen.getByText(/step 2 of 3/i)).toBeTruthy();
   });
@@ -64,7 +66,7 @@ describe("AskGate", () => {
     fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
     expect(screen.queryByRole("dialog")).toBeNull();
     // The placeholder lets the asker reopen the flow.
-    expect(screen.getByText(/Verify to ask a question/i)).toBeTruthy();
+    expect(screen.getByText(/Asking is earned/i)).toBeTruthy();
     expect(screen.queryByTestId("ask-form")).toBeNull();
   });
 });
