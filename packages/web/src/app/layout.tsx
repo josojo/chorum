@@ -7,6 +7,7 @@ import { LogoWordmark } from "@/components/logo";
 import { HowItWorks } from "@/components/how-it-works";
 import { EarnExplainer } from "@/components/earn-explainer";
 import { Footer } from "@/components/footer";
+import { BetaBanner } from "@/components/beta-banner";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
       <body className="font-sans">
+        <BetaBanner />
         <div className="mx-auto max-w-4xl px-3 py-5 sm:px-4 sm:py-10">
           <header className="mb-8 flex flex-wrap items-center justify-between gap-y-2 border-b border-slate-200/70 pb-4 sm:mb-10 sm:pb-5">
             <Link href="/" className="flex items-center" aria-label="Chorum home">

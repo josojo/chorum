@@ -7,6 +7,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage, Section } from "@/components/legal-page";
 
+// Hosting / infrastructure sub-processor, shown in the privacy policy and named
+// for GDPR transparency. Override per deployment if the host changes.
+const HOST = process.env.NEXT_PUBLIC_HOSTING_PROVIDER ?? "Amazon Web Services (AWS), eu-central-1 (Frankfurt, Germany)";
+
 export const metadata: Metadata = {
   title: "Privacy Policy",
   description:
@@ -25,6 +29,34 @@ export default function PrivacyPage() {
         designed to be unlinkable to you. This policy explains exactly what we do
         and don&apos;t hold.
       </p>
+
+      <p>
+        Chorum is an experimental beta open to invited test users only; see our{" "}
+        <Link href="/terms">Terms of Service</Link>.
+      </p>
+
+      <Section heading="Who is responsible (controller)">
+        <p>
+          The controller for the processing described here is the operator of
+          Chorum, whose name and contact details are set out in the{" "}
+          <Link href="/impressum">Impressum</Link>. You can reach us about any
+          data matter at <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
+        </p>
+      </Section>
+
+      <Section heading="Legal basis (GDPR)">
+        <p>
+          For users in the EU/EEA, we process the limited data described below on
+          the basis of your <strong>consent</strong> (Art. 6(1)(a) GDPR), which
+          you give by verifying and participating, and which you can withdraw at
+          any time by deleting your account (see below). Where we process data to
+          provide the Service you requested, we also rely on contractual
+          necessity (Art. 6(1)(b)) and, for security and abuse-prevention, our
+          legitimate interests (Art. 6(1)(f)). You have the rights of access,
+          rectification, erasure, restriction, portability, and objection, and
+          may lodge a complaint with a supervisory authority.
+        </p>
+      </Section>
 
       <Section heading="What we collect">
         <ul>
@@ -136,6 +168,9 @@ export default function PrivacyPage() {
               ipwho.is
             </a>{" "}
             — IP geolocation, called only with a masked network prefix.
+          </li>
+          <li>
+            <strong>{HOST}</strong> — hosting and infrastructure for the Service.
           </li>
         </ul>
       </Section>
