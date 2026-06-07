@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { AskForm } from "./ask-form";
+import { EarnExplainerDialog } from "./earn-explainer";
 import {
   OnboardingDialog,
   StepNav,
@@ -80,6 +81,9 @@ export function AskGate({
   const [open, setOpen] = useState(authRequired);
   const [step, setStep] = useState<Step>("intro");
   const [ready, setReady] = useState(false);
+  // The "Share your signal" walkthrough, opened from the intro so a new visitor
+  // who hasn't earned access yet can set up their agent without leaving /ask.
+  const [earnOpen, setEarnOpen] = useState(false);
 
   const [session, setSession] = useState<string | null>(null);
   const [eligibility, setEligibility] = useState<Eligibility | null>(null);
@@ -146,7 +150,11 @@ export function AskGate({
         }
       >
         {step === "intro" ? (
-          <IntroBody titleId={titleId} bodyId={bodyId} />
+          <IntroBody
+            titleId={titleId}
+            bodyId={bodyId}
+            onSetup={() => setEarnOpen(true)}
+          />
         ) : step === "scan" ? (
           <ScanBody titleId={titleId} bodyId={bodyId} />
         ) : (
@@ -166,6 +174,10 @@ export function AskGate({
           }}
         />
       </OnboardingDialog>
+
+      {/* Opened from the intro's "Set up your agent" link. Stacks over the gate
+          so closing it drops the visitor back where they were. */}
+      <EarnExplainerDialog open={earnOpen} onClose={() => setEarnOpen(false)} />
     </>
   );
 }
@@ -180,7 +192,15 @@ function StepLabel({ n }: { n: number }) {
   );
 }
 
-function IntroBody({ titleId, bodyId }: { titleId: string; bodyId: string }) {
+function IntroBody({
+  titleId,
+  bodyId,
+  onSetup,
+}: {
+  titleId: string;
+  bodyId: string;
+  onSetup: () => void;
+}) {
   return (
     <>
       <StepLabel n={1} />
@@ -188,24 +208,45 @@ function IntroBody({ titleId, bodyId }: { titleId: string; bodyId: string }) {
         id={titleId}
         className="mt-1 text-xl font-semibold tracking-tight text-slate-900"
       >
-        Verify you&apos;re a unique human
+        Asking is earned
       </h2>
       <p id={bodyId} className="mt-2 text-sm leading-relaxed text-slate-600">
-        Asking is earned. Sign in with{" "}
-        <span className="font-medium text-slate-800">Self (self.xyz)</span> — a
-        quick passport scan that proves you&apos;re one real person and lets us
-        check your contribution score. No account, and your passport never leaves
-        your phone.
+        hearme runs on contribution. Before you can post a question, your
+        personal agent has to be set up with hearme and answer a handful of
+        questions on your behalf — that&apos;s what earns you the right to ask.
       </p>
-      <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
-        Not set up with Self yet? Email{" "}
-        <a
-          href={`mailto:${TEAM_EMAIL}`}
-          className="font-medium text-violet-700 underline-offset-2 hover:underline"
-        >
-          {TEAM_EMAIL}
-        </a>{" "}
-        and the team will get you in.
+
+      <div className="mt-3 space-y-1.5 rounded-xl bg-violet-50/70 px-3 py-2.5 text-xs leading-relaxed text-slate-600">
+        <p>
+          <span className="font-semibold text-slate-800">New here?</span>{" "}
+          <button
+            type="button"
+            onClick={onSetup}
+            className="font-semibold text-violet-700 underline-offset-2 hover:underline"
+          >
+            Set up your agent and share your signal
+          </button>{" "}
+          first — it takes a few minutes, then your agent earns access as it
+          answers.
+        </p>
+        <p>
+          Can&apos;t run an agent? Email{" "}
+          <a
+            href={`mailto:${TEAM_EMAIL}`}
+            className="font-semibold text-violet-700 underline-offset-2 hover:underline"
+          >
+            {TEAM_EMAIL}
+          </a>{" "}
+          and the team will help you get access.
+        </p>
+      </div>
+
+      <p className="mt-3 text-sm leading-relaxed text-slate-600">
+        Already contributing? Sign in with{" "}
+        <span className="font-medium text-slate-800">Self (self.xyz)</span> — a
+        quick passport scan that proves you&apos;re one real person and pulls up
+        your contribution score. No account, and your passport never leaves your
+        phone.
       </p>
     </>
   );
@@ -348,7 +389,7 @@ function GateNav({
   if (step === "intro") {
     primary = (
       <button type="button" onClick={onStartScan} className={primaryButtonClass}>
-        Verify with Self <span aria-hidden>→</span>
+        Sign in with Self <span aria-hidden>→</span>
       </button>
     );
   } else if (step === "scan") {
@@ -436,18 +477,19 @@ function LockedPlaceholder({
         <LockIcon />
       </div>
       <h2 className="mt-3 text-base font-semibold text-slate-900">
-        Verify to ask a question
+        Asking is earned
       </h2>
       <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-        Sign in with Self to prove you&apos;re a unique human and check your
-        contribution score.
+        First, your agent sets up with hearme and answers a few questions — that
+        earns you the right to ask. Already contributing? Sign in with Self to
+        check your score.
       </p>
       <button
         type="button"
         onClick={onOpen}
         className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-brand-gradient px-5 py-2.5 text-sm font-semibold text-white shadow-glow transition hover:opacity-95"
       >
-        {verified ? "Continue" : "Verify with Self"} <span aria-hidden>→</span>
+        {verified ? "Continue" : "How asking works"} <span aria-hidden>→</span>
       </button>
     </div>
   );
