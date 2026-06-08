@@ -87,6 +87,11 @@ services:
       IMPRESSUM_ADDRESS: ${HEARME_STAGING_IMPRESSUM_ADDRESS:-}
       IMPRESSUM_EMAIL: ${HEARME_STAGING_IMPRESSUM_EMAIL:-}
       IMPRESSUM_PHONE: ${HEARME_STAGING_IMPRESSUM_PHONE:-}
+      # Optional invite-only login (HTTP Basic Auth on the web UI). Set BOTH in
+      # SSM to require login; leave unset/empty to keep the site public. Toggles
+      # the gate without touching the Caddyfile or restarting Caddy.
+      SITE_GATE_USER: ${HEARME_STAGING_SITE_GATE_USER:-}
+      SITE_GATE_PASSWORD: ${HEARME_STAGING_SITE_GATE_PASSWORD:-}
 
   classifier:
     environment:
