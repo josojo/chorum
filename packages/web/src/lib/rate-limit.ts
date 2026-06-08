@@ -15,7 +15,7 @@
 // shipped to a client bundle. The module is intentionally framework-free
 // (no `next/headers` import) so it can be unit-tested without Next.
 
-const DEFAULT_LIMIT = Number(process.env.HEARME_WEB_RATELIMIT_QUESTIONS_PER_HOUR ?? 5);
+const DEFAULT_LIMIT = Number(process.env.CHORUM_WEB_RATELIMIT_QUESTIONS_PER_HOUR ?? 5);
 const WINDOW_SECONDS = 3600;
 
 type Window = number[]; // unix-seconds timestamps within the window
@@ -65,14 +65,14 @@ export function checkRateLimit(
  * (Caddy in the v0 deployment) the immediate connection is the proxy,
  * so we honor `x-real-ip` then the first hop in `x-forwarded-for`.
  *
- * When `HEARME_WEB_TRUST_PROXY_HEADERS=false` we fall back to a literal
+ * When `CHORUM_WEB_TRUST_PROXY_HEADERS=false` we fall back to a literal
  * "unknown" — which collapses every direct caller to a single bucket. That
  * is the right failure mode for "we don't know the IP": a flood from one
  * unauthenticated source still gets limited, at the cost of false-positive
  * blocks under genuine concurrent traffic. Don't deploy that way.
  */
 export function clientIdFromHeaders(h: Headers): string {
-  const trustProxy = (process.env.HEARME_WEB_TRUST_PROXY_HEADERS ?? "true") !== "false";
+  const trustProxy = (process.env.CHORUM_WEB_TRUST_PROXY_HEADERS ?? "true") !== "false";
   if (trustProxy) {
     const real = h.get("x-real-ip");
     if (real) return real.trim();

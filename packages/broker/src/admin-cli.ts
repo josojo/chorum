@@ -3,7 +3,7 @@
 // Admins bypass the answer-credit unlock threshold and may always ask. The list
 // lives in the `asker_admins` table (broker-owned) and the broker reads it live,
 // so grants/revokes take effect WITHOUT a restart — unlike the static
-// HEARME_BROKER_ASKER_ADMIN_IDENTIFIERS env allowlist, which this complements.
+// CHORUM_BROKER_ASKER_ADMIN_IDENTIFIERS env allowlist, which this complements.
 //
 // Identities are Self nullifiers (`unique_identifier`) — opaque, never shown to
 // the user. `grant --name` resolves a nullifier from the display name an identity
@@ -16,7 +16,7 @@
 //   npm run admin -- grant --name "Alice"
 //   npm run admin -- revoke --id self:abc123
 // The `--` is required so npm forwards the flags to the script rather than eating
-// them. DATABASE_URL / HEARME_BROKER_* env vars select the target database.
+// them. DATABASE_URL / CHORUM_BROKER_* env vars select the target database.
 
 import { closeDb, getDb, initDb } from "./db";
 import * as q from "./queries";

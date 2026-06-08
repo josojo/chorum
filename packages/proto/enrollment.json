@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://hearme.network/proto/enrollment.json",
+  "$id": "https://chorum.network/proto/enrollment.json",
   "title": "EnrollmentBundle",
-  "description": "Install-only payload the skill POSTs to the broker's POST /v1/register. Carries the Self proofs (one per age threshold, all under scope 'hearme-v1' so they share one nullifier) and the agent_key they are bound to. The broker verifies the proofs ONCE (off-chain SNARK via the self-bridge + a one-time on-chain Celo registry/root check), atomically binds nullifier↔agent_key, and returns a broker-signed DelegationToken (delegation.json). This bundle is never stored and never re-sent. See ARCHITECTURE_V0.md §5/§8.5.",
+  "description": "Install-only payload the skill POSTs to the broker's POST /v1/register. Carries the Self proofs (one per age threshold, all under scope 'chorum-v1' so they share one nullifier) and the agent_key they are bound to. The broker verifies the proofs ONCE (off-chain SNARK via the self-bridge + a one-time on-chain Celo registry/root check), atomically binds nullifier↔agent_key, and returns a broker-signed DelegationToken (delegation.json). This bundle is never stored and never re-sent. See ARCHITECTURE_V0.md §5/§8.5.",
   "type": "object",
   "additionalProperties": false,
   "required": ["self_proofs", "agent_key"],
@@ -11,7 +11,7 @@
       "type": "array",
       "description": "One or more SelfProofBundle objects (self.json). All must verify, share one nullifier, and be bound to agent_key.",
       "minItems": 1,
-      "items": { "$ref": "https://hearme.network/proto/self.json" }
+      "items": { "$ref": "https://chorum.network/proto/self.json" }
     },
     "agent_key": {
       "type": "string",

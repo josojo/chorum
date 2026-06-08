@@ -141,7 +141,7 @@ jobs:
       - name: Wait for healthy
         run: |
           for i in $(seq 1 60); do
-            status=$(docker inspect -f '{{.State.Health.Status}}' hearme-postgres 2>/dev/null || echo starting)
+            status=$(docker inspect -f '{{.State.Health.Status}}' chorum-postgres 2>/dev/null || echo starting)
             if [ "$status" = "healthy" ]; then
               echo "postgres healthy after ${i}s"
               exit 0
@@ -149,13 +149,13 @@ jobs:
             sleep 1
           done
           echo "postgres failed to become healthy:"
-          docker logs hearme-postgres
+          docker logs chorum-postgres
           exit 1
       - name: Verify schema + roles + grant boundaries
         run: scripts/verify-db.sh
       - name: Show postgres logs on failure
         if: failure()
-        run: docker logs hearme-postgres
+        run: docker logs chorum-postgres
       - name: Tear down
         if: always()
         run: docker compose down -v
@@ -164,7 +164,7 @@ jobs:
     name: e2e (clean Hermes agent answers a question)
     runs-on: ubuntu-latest
     # The most lifelike check: spin up the real server stack, install a clean
-    # Hermes agent + the hearme plugin, onboard a fresh identity (phone-free dev
+    # Hermes agent + the chorum plugin, onboard a fresh identity (phone-free dev
     # bypass), and have it answer a seeded question — asserting the broker
     # accepts the signed envelope and the aggregate moves. Everything is real
     # except proof-of-personhood (and, per the model-bypass design, the answer is
@@ -178,7 +178,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/skill
-      - name: Build the hearme-skill binary
+      - name: Build the chorum-skill binary
         working-directory: packages/skill
         run: cargo build --release --locked
 
@@ -201,13 +201,13 @@ jobs:
       - name: Answer a question end-to-end (broker pipeline)
         env:
           BROKER_URL: http://127.0.0.1:8000
-          HEARME_BIN: packages/skill/target/release/hearme-skill
-          HEARME_SKILL_ROOT_DIR: ${{ github.workspace }}/.hermes/hearme
+          CHORUM_BIN: packages/skill/target/release/chorum-skill
+          CHORUM_SKILL_ROOT_DIR: ${{ github.workspace }}/.hermes/chorum
         run: scripts/ci-e2e.sh
 
-      - name: Install the hearme plugin into the clean Hermes agent
+      - name: Install the chorum plugin into the clean Hermes agent
         run: |
-          packages/skill/target/release/hearme-skill install --host hermes --no-restart
+          packages/skill/target/release/chorum-skill install --host hermes --no-restart
 
       - name: Assert Hermes recognizes and enables the plugin
         run: |
@@ -216,30 +216,30 @@ jobs:
           timeout 120 hermes --version </dev/null || true
           echo "-- hermes plugins list (before enable)"
           timeout 120 hermes plugins list </dev/null | tee plugins.txt
-          grep -qi hearme plugins.txt || { echo "FATAL: Hermes did not list the hearme plugin" >&2; exit 1; }
-          timeout 120 hermes plugins enable hearme </dev/null || true
+          grep -qi chorum plugins.txt || { echo "FATAL: Hermes did not list the chorum plugin" >&2; exit 1; }
+          timeout 120 hermes plugins enable chorum </dev/null || true
           echo "-- hermes plugins list (after enable)"
           timeout 120 hermes plugins list </dev/null | tee plugins-after.txt
-          grep -qi hearme plugins-after.txt || { echo "FATAL: hearme missing after enable" >&2; exit 1; }
+          grep -qi chorum plugins-after.txt || { echo "FATAL: chorum missing after enable" >&2; exit 1; }
 
       - name: Answer a question through the plugin's registered tool handler
         # Loads the same shim a gateway loads, then calls the registered
-        # hearme_list_open_questions / hearme_submit_answer handlers against the
+        # chorum_list_open_questions / chorum_submit_answer handlers against the
         # live broker using the identity onboarded above — proving the continuous
-        # path: plugin tool handler -> hearme-skill binary -> broker accepted.
+        # path: plugin tool handler -> chorum-skill binary -> broker accepted.
         env:
-          HEARME_SKILL_ROOT_DIR: ${{ github.workspace }}/.hermes/hearme
-          HEARME_SKILL_BROKER_URL: http://127.0.0.1:8000
-          HEARME_E2E_LIVE_SUBMIT: "1"
+          CHORUM_SKILL_ROOT_DIR: ${{ github.workspace }}/.hermes/chorum
+          CHORUM_SKILL_BROKER_URL: http://127.0.0.1:8000
+          CHORUM_E2E_LIVE_SUBMIT: "1"
         run: |
-          python3 scripts/ci-hermes-plugin-load.py "$HOME/.hermes/plugins/hearme/__init__.py"
+          python3 scripts/ci-hermes-plugin-load.py "$HOME/.hermes/plugins/chorum/__init__.py"
 
       - name: Dump broker + bridge logs on failure
         if: failure()
         run: |
-          echo "=== broker ===";      docker logs hearme-broker      2>&1 | tail -n 200 || true
-          echo "=== self-bridge ==="; docker logs hearme-self-bridge 2>&1 | tail -n 100 || true
-          echo "=== postgres ===";    docker logs hearme-postgres    2>&1 | tail -n 50  || true
+          echo "=== broker ===";      docker logs chorum-broker      2>&1 | tail -n 200 || true
+          echo "=== self-bridge ==="; docker logs chorum-self-bridge 2>&1 | tail -n 100 || true
+          echo "=== postgres ===";    docker logs chorum-postgres    2>&1 | tail -n 50  || true
       - name: Tear down
         if: always()
         run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v

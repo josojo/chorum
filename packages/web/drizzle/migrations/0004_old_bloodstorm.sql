@@ -13,13 +13,13 @@ CREATE TABLE IF NOT EXISTS "asker_admins" (
 -- role-less test harness (tests/pg.ts applies these files raw) stays a no-op.
 DO $$
 BEGIN
-	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_broker') THEN
-		GRANT SELECT, INSERT, DELETE ON "asker_admins" TO hearme_broker;
+	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chorum_broker') THEN
+		GRANT SELECT, INSERT, DELETE ON "asker_admins" TO chorum_broker;
 	END IF;
-	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_web') THEN
-		REVOKE SELECT ON "asker_admins" FROM hearme_web;
+	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chorum_web') THEN
+		REVOKE SELECT ON "asker_admins" FROM chorum_web;
 	END IF;
-	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_classifier') THEN
-		REVOKE SELECT ON "asker_admins" FROM hearme_classifier;
+	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chorum_classifier') THEN
+		REVOKE SELECT ON "asker_admins" FROM chorum_classifier;
 	END IF;
 END $$;

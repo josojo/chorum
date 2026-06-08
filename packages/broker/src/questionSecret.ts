@@ -31,7 +31,7 @@ interface SecretRow {
 function masterKey(): Buffer {
   const key = Buffer.from(getSettings().voterTagMasterKey, "base64");
   if (key.length !== 32) {
-    throw new Error("HEARME_BROKER_VOTER_TAG_MASTER_KEY must be base64 of 32 bytes (AES-256)");
+    throw new Error("CHORUM_BROKER_VOTER_TAG_MASTER_KEY must be base64 of 32 bytes (AES-256)");
   }
   return key;
 }

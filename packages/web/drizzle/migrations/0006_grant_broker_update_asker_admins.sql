@@ -1,4 +1,4 @@
--- Grant hearme_broker UPDATE on asker_admins.
+-- Grant chorum_broker UPDATE on asker_admins.
 --
 -- The admin CLI's `grant` upserts via INSERT ... ON CONFLICT DO UPDATE (so a
 -- re-grant refreshes the label — see grantAskerAdmin in broker queries.ts).
@@ -11,7 +11,7 @@
 -- no-op.
 DO $$
 BEGIN
-	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_broker') THEN
-		GRANT UPDATE ON "asker_admins" TO hearme_broker;
+	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chorum_broker') THEN
+		GRANT UPDATE ON "asker_admins" TO chorum_broker;
 	END IF;
 END $$;

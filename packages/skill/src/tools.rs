@@ -2,7 +2,7 @@
 //!
 //! Plain synchronous functions with no host-framework deps; the SAME core backs
 //! the Hermes subprocess shim and the OpenClaw SKILL.md (both shell out to the
-//! `hearme-skill` binary). Each returns a JSON-friendly value and never panics —
+//! `chorum-skill` binary). Each returns a JSON-friendly value and never panics —
 //! failures come back as structured results the agent can read.
 //!
 //! Privacy invariants are enforced HERE, not in a prompt: the DelegationToken
@@ -70,13 +70,13 @@ pub fn list_open_questions(settings: &Settings) -> Value {
 
 fn list_impl(settings: &Settings) -> Result<Value, Error> {
     // Cost cap: once this calendar month's recorded host-model spend for the
-    // hearme cron reaches the budget, return ZERO questions so the agent does no
+    // chorum cron reaches the budget, return ZERO questions so the agent does no
     // further (paid) answering and stops immediately. We return the SAME minimal
     // shape as a genuinely empty cycle — no prose, no cost numbers — so the
     // answer prompt's "no questions -> [SILENT]" path fires with the fewest
     // possible tokens (a budget-reached cycle should be the cheapest run there
     // is). The `budget_reached` flag is a single boolean for transcript
-    // debuggability; the actual figures live in cost.json + `hearme-skill cost`.
+    // debuggability; the actual figures live in cost.json + `chorum-skill cost`.
     // Fail-open: an unmeasurable cost (no Hermes usage DB, unresolved job id)
     // leaves `over_budget` false and never blocks answering. The guard also
     // refreshes the durable cost.json snapshot each cycle.
@@ -471,9 +471,9 @@ mod tests {
         use crate::contracts::JOB_NAME;
         use rusqlite::Connection;
 
-        // Fake Hermes home: <home>/{state.db, cron/jobs.json}; our root is <home>/hearme.
+        // Fake Hermes home: <home>/{state.db, cron/jobs.json}; our root is <home>/chorum.
         let home = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(home.path().join("hearme")).unwrap();
+        std::fs::create_dir_all(home.path().join("chorum")).unwrap();
         std::fs::create_dir_all(home.path().join("cron")).unwrap();
         std::fs::write(
             home.path().join("cron").join("jobs.json"),
@@ -497,7 +497,7 @@ mod tests {
         .unwrap();
 
         let mut settings = Settings::defaults();
-        settings.root_dir = home.path().join("hearme");
+        settings.root_dir = home.path().join("chorum");
         settings.monthly_budget_usd = 0.5; // recorded $1.00 > $0.50 budget
                                            // A broker that MUST NOT be contacted — if the guard didn't short-circuit,
                                            // fetch_open_questions would surface an {"error": ...} instead.

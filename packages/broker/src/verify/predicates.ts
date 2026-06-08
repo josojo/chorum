@@ -1,4 +1,4 @@
-// Pure predicate derivation: Self disclosures -> Hearme bucketed predicates.
+// Pure predicate derivation: Self disclosures -> Chorum bucketed predicates.
 //
 // The broker is authoritative for disclosed_predicates (ARCHITECTURE_V0.md §5): it
 // derives them from the verified Self outputs, never trusting a client copy.

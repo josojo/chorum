@@ -11,7 +11,7 @@
 # filename, then prunes anything older than $BACKUP_KEEP_DAYS (default 14).
 #
 # Required env:
-#   BACKUP_DIR         where to drop the dump (e.g. /var/lib/hearme-backups)
+#   BACKUP_DIR         where to drop the dump (e.g. /var/lib/chorum-backups)
 #   PGHOST PGUSER PGPASSWORD PGDATABASE — standard libpq env vars (no DSN
 #                                          parsing here; let libpq handle it)
 #
@@ -19,10 +19,10 @@
 #   BACKUP_KEEP_DAYS   prune dumps older than this many days (default 14)
 #
 # Cron example (daily 03:17 UTC):
-#   17 3 * * * BACKUP_DIR=/var/lib/hearme-backups \
-#              PGHOST=db PGUSER=hearme_admin PGDATABASE=hearme \
+#   17 3 * * * BACKUP_DIR=/var/lib/chorum-backups \
+#              PGHOST=db PGUSER=chorum_admin PGDATABASE=chorum \
 #              PGPASSWORD=$(cat /run/secrets/pg-admin-pw) \
-#              /opt/hearme/scripts/backup-db.sh >> /var/log/hearme-backup.log 2>&1
+#              /opt/chorum/scripts/backup-db.sh >> /var/log/chorum-backup.log 2>&1
 #
 # After restoring, run scripts/verify-db.sh against the restored DB before
 # pointing the broker at it.
@@ -40,7 +40,7 @@ KEEP_DAYS="${BACKUP_KEEP_DAYS:-14}"
 mkdir -p "$BACKUP_DIR"
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-out="$BACKUP_DIR/hearme-$stamp.dump"
+out="$BACKUP_DIR/chorum-$stamp.dump"
 tmp="$out.partial"
 
 echo "[backup-db] $(date -uIs) starting $PGDATABASE → $out"
@@ -58,7 +58,7 @@ else
 fi
 
 # Prune. -mtime +N matches files modified MORE than N*24h ago.
-removed=$(find "$BACKUP_DIR" -maxdepth 1 -name 'hearme-*.dump' -type f -mtime "+$KEEP_DAYS" -print -delete | wc -l)
+removed=$(find "$BACKUP_DIR" -maxdepth 1 -name 'chorum-*.dump' -type f -mtime "+$KEEP_DAYS" -print -delete | wc -l)
 if [ "$removed" -gt 0 ]; then
     echo "[backup-db] $(date -uIs) pruned $removed dump(s) older than $KEEP_DAYS days"
 fi

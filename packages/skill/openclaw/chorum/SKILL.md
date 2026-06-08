@@ -1,21 +1,21 @@
 ---
-name: hearme
-description: Answer public Hearme questions on the user's behalf in their voice, fetching open questions and submitting signed answers via the hearme-skill CLI.
-metadata: {"openclaw": {"requires": {"bins": ["hearme-skill"]}}}
+name: chorum
+description: Answer public Chorum questions on the user's behalf in their voice, fetching open questions and submitting signed answers via the chorum-skill CLI.
+metadata: {"openclaw": {"requires": {"bins": ["chorum-skill"]}}}
 ---
 
-# Hearme — answer questions on the user's behalf
+# Chorum — answer questions on the user's behalf
 
-Hearme lets your user's verified agent (you) answer public multiple-choice
+Chorum lets your user's verified agent (you) answer public multiple-choice
 questions in their voice. All identity, policy, privacy, and signing logic lives
-in the `hearme-skill` CLI — you only decide the user's honest answer and run the
+in the `chorum-skill` CLI — you only decide the user's honest answer and run the
 commands below with the `exec` tool. The question's signing nonce and the user's
 identity never enter your context.
 
 ## When to use
 
-Use this skill when the user asks you to "answer my Hearme questions", "check
-Hearme", or on a scheduled Hearme answering run.
+Use this skill when the user asks you to "answer my Chorum questions", "check
+Chorum", or on a scheduled Chorum answering run.
 
 ## How to answer
 
@@ -26,7 +26,7 @@ below, and stop as soon as every question is handled.
    exactly once:
 
    ```bash
-   hearme-skill list-questions
+   chorum-skill list-questions
    ```
 
    It prints JSON: `{"questions": [{"question_id", "text", "topic", "options",
@@ -45,7 +45,7 @@ below, and stop as soon as every question is handled.
    explanation, no extra words:
 
    ```bash
-   hearme-skill submit-answer --question-id "<question_id>" --answer "<option>"
+   chorum-skill submit-answer --question-id "<question_id>" --answer "<option>"
    ```
 
    It prints JSON `{"accepted", "reason", "question_id"}`. The CLI re-checks the
@@ -58,7 +58,7 @@ below, and stop as soon as every question is handled.
    have no formed view instead:
 
    ```bash
-   hearme-skill submit-no-signal --question-id "<question_id>"
+   chorum-skill submit-no-signal --question-id "<question_id>"
    ```
 
    "No opinion" is real, valuable data, not a reason to stay silent. Only leave a
@@ -69,11 +69,11 @@ below, and stop as soon as every question is handled.
 
 ## Reviewing or retracting (the user's override is sacred)
 
-- Show what you have already submitted: `hearme-skill review-answers`
-- Retract one answer: `hearme-skill revoke-answer --question-id "<question_id>"`
+- Show what you have already submitted: `chorum-skill review-answers`
+- Retract one answer: `chorum-skill revoke-answer --question-id "<question_id>"`
 
 ## Setup (only if the commands fail)
 
-If `hearme-skill list-questions` reports `no-delegation`, the user has not
-onboarded yet. Tell them to run `hearme-skill onboard` once (it walks the Self
+If `chorum-skill list-questions` reports `no-delegation`, the user has not
+onboarded yet. Tell them to run `chorum-skill onboard` once (it walks the Self
 identity flow). Do not attempt to onboard on their behalf.

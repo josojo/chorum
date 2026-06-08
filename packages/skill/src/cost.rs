@@ -1,15 +1,15 @@
 //! Host-model cost accounting for the answering cron (transparency + budget cap).
 //!
-//! The hearme addon does no inference of its own — it drives the *host* agent's
+//! The chorum addon does no inference of its own — it drives the *host* agent's
 //! model, so the API cost it creates is the cost of the Hermes cron sessions it
 //! triggers. We don't estimate that: Hermes already prices every session and
 //! records it in `state.db`'s `sessions` table (`estimated_cost_usd`,
-//! `actual_cost_usd`, token counts, `cost_source`). Because the hearme cron runs
+//! `actual_cost_usd`, token counts, `cost_source`). Because the chorum cron runs
 //! ONLY our prompt, each `source='cron'`, `id='cron_<jobid>_*'` row *is* one
 //! answering cycle's cost — so we sum exactly those rows, attributed to our job.
 //!
 //! Two consumers:
-//!   * `hearme-skill cost` — prints month-to-date + lifetime spend (transparency).
+//!   * `chorum-skill cost` — prints month-to-date + lifetime spend (transparency).
 //!   * the budget guard in [`crate::tools::list_open_questions`] — stops handing
 //!     out questions once this month's recorded spend reaches the configured cap.
 //!
@@ -94,9 +94,9 @@ fn current_month() -> String {
     Utc::now().format("%Y-%m").to_string()
 }
 
-/// Resolve the hearme cron job's id by name from Hermes' `cron/jobs.json`.
+/// Resolve the chorum cron job's id by name from Hermes' `cron/jobs.json`.
 /// Precise attribution depends on this — we never fall back to "all cron jobs",
-/// since that would count an unrelated job's spend against the hearme budget.
+/// since that would count an unrelated job's spend against the chorum budget.
 fn resolve_job_id(jobs_path: &Path) -> Option<String> {
     let raw = std::fs::read_to_string(jobs_path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
@@ -238,7 +238,7 @@ pub fn write_snapshot(settings: &Settings, report: &CostReport) {
         "lifetime_runs": report.lifetime_runs,
         "by_month": report.by_month,
         "cost_basis": if report.has_actual_cost { "actual+estimated" } else { "estimated" },
-        "note": "Host-model API spend created by the hearme answering cron, read from Hermes' per-session usage DB.",
+        "note": "Host-model API spend created by the chorum answering cron, read from Hermes' per-session usage DB.",
     });
     if let Ok(body) = serde_json::to_string_pretty(&snapshot) {
         let _ = std::fs::write(settings.cost_snapshot_path(), body);
@@ -261,14 +261,14 @@ mod tests {
 
     fn settings_with(root: &Path, budget: f64) -> Settings {
         let mut s = Settings::defaults();
-        s.root_dir = root.join("hearme");
+        s.root_dir = root.join("chorum");
         s.monthly_budget_usd = budget;
         s
     }
 
     /// Stand up a fake Hermes home: state.db with a sessions table + cron/jobs.json.
     fn fake_home(dir: &Path, job_id: &str) {
-        std::fs::create_dir_all(dir.join("hearme")).unwrap();
+        std::fs::create_dir_all(dir.join("chorum")).unwrap();
         std::fs::create_dir_all(dir.join("cron")).unwrap();
         std::fs::write(
             dir.join("cron").join("jobs.json"),
@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn unavailable_when_no_state_db_and_fails_open() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join("hearme")).unwrap();
+        std::fs::create_dir_all(dir.path().join("chorum")).unwrap();
         let s = settings_with(dir.path(), 5.0);
         let rep = report(&s);
         assert!(!rep.available);

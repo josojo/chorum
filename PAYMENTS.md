@@ -1,4 +1,4 @@
-# Hearme — Payments concept (v0.3, Base Sepolia)
+# Chorum — Payments concept (v0.3, Base Sepolia)
 
 > **Status: concept / design.** No money flows in v0 (ARCHITECTURE_V0.md §11).
 > This document specifies the first real payment path: an asker funds a
@@ -13,7 +13,7 @@
 
 ## 0. What this adds, in one paragraph
 
-Today a question is created by `hearme-web` and immediately becomes answerable;
+Today a question is created by `chorum-web` and immediately becomes answerable;
 the broker accepts envelopes and (per §14) records `payout_entitlements`
 (baseline + at-risk bonus) but **never settles them**. This concept makes
 settlement real. A question is created in an **unfunded** state and is *not*
@@ -92,7 +92,7 @@ each is justified against the existing architecture.
 |---|---|---|
 | **Custody** | **In-contract allocation** — broker never *directly* holds funds | `settle` can only move `escrow[qid] → claimable[agent]`; there is no code path `→ broker`. **But this alone does not stop theft:** the broker chooses the recipient addresses in the Merkle leaves, so it can name *itself* as the "agent" and drain a funded pool (§12.2). Direct custody is removed; honest *allocation* is still trusted, and §12.2 is how that trust is reduced. |
 | **Token** | **Test ERC-20 stablecoin** (mock USDC, 6 decimals) on Base Sepolia | Matches the $-denominated stake model in VISION ("fund a $1,000 stake → fraction-of-a-cent payouts"). Native ETH would force ETH-denominated math and re-pricing of §14 constants. Cost: one `approve()` before funding. |
-| **Reservation** | **Cumulative Merkle distributor, one root per epoch** | Gas-cheap (one `setRoot` tx amortized over all agents) **and** privacy-preserving (the asker→agent payment graph stays off-chain). The simpler `reserve(agent, amount)` ledger would publish exactly the bipartite "who answered what" graph Hearme exists to keep private. |
+| **Reservation** | **Cumulative Merkle distributor, one root per epoch** | Gas-cheap (one `setRoot` tx amortized over all agents) **and** privacy-preserving (the asker→agent payment graph stays off-chain). The simpler `reserve(agent, amount)` ledger would publish exactly the bipartite "who answered what" graph Chorum exists to keep private. |
 
 **Who is trusted for what, after this change:**
 
@@ -169,7 +169,7 @@ trivial `MockUSDC` with a public `mint()` faucet so askers can self-fund test
 balances. On mainnet this slot becomes the real USDC address; nothing else in
 the design changes.
 
-### 4.3 The escrow contract — `HearmeEscrow`
+### 4.3 The escrow contract — `ChorumEscrow`
 
 One contract, two layers:
 
@@ -182,7 +182,7 @@ One contract, two layers:
 ```solidity
 // SPDX-License-Identifier: MIT
 // Solidity ^0.8.24 — illustrative interface, not final code.
-contract HearmeEscrow {
+contract ChorumEscrow {
     IERC20  public immutable token;     // mock USDC on Base Sepolia
     address public broker;              // operator role: settle / closeQuestion ONLY — never moves funds to itself
     uint256 public constant SETTLEMENT_GRACE = 14 days;  // broker's window to settle after a question's closesAt
@@ -283,7 +283,7 @@ owed total. An agent claims the delta `cumulative − withdrawn[agent]`, so:
 - **The broker reserves in O(1) on-chain cost** — one `setRoot`/`settle` per
   epoch regardless of how many agents earned.
 
-This is the well-worn "cumulative Merkle drop" pattern; the only Hearme-specific
+This is the well-worn "cumulative Merkle drop" pattern; the only Chorum-specific
 piece is that the root is *re-published each epoch* with updated totals rather
 than frozen.
 
@@ -394,7 +394,7 @@ Two gates are new and important:
 
 ## 7. Schema additions
 
-Owned by `hearme-web`'s Drizzle migration (the schema is web's, ARCHITECTURE_V0.md
+Owned by `chorum-web`'s Drizzle migration (the schema is web's, ARCHITECTURE_V0.md
 §3), even where only the broker writes the column, to keep one canonical source.
 
 **`questions` — funding state (orthogonal to `status`):**
@@ -462,10 +462,10 @@ CREATE TABLE escrow_chain_cursors (
 **Role grants** (`db/init/02-roles.sh`):
 
 ```sql
-GRANT SELECT, INSERT, UPDATE ON payout_epochs           TO hearme_broker;
-GRANT SELECT, INSERT, UPDATE ON agent_cumulative_owed   TO hearme_broker;
-GRANT SELECT, INSERT         ON payout_reservations      TO hearme_broker;
-GRANT SELECT, INSERT, UPDATE ON escrow_chain_cursors     TO hearme_broker;
+GRANT SELECT, INSERT, UPDATE ON payout_epochs           TO chorum_broker;
+GRANT SELECT, INSERT, UPDATE ON agent_cumulative_owed   TO chorum_broker;
+GRANT SELECT, INSERT         ON payout_reservations      TO chorum_broker;
+GRANT SELECT, INSERT, UPDATE ON escrow_chain_cursors     TO chorum_broker;
 -- broker already has SELECT, UPDATE on questions (README) — covers funding_state/fund_tx.
 -- web writes funding_state='unfunded', funding_token, funding_amount, escrow_qid at creation
 -- (web already has INSERT on questions); the broker flips funding_state to 'funded'.
@@ -481,20 +481,20 @@ web client.
 
 ## 8. Service changes
 
-### 8.1 `hearme-web`
+### 8.1 `chorum-web`
 - **`/ask`**: unchanged form, but `createQuestion` writes `funding_state='unfunded'`,
   the chosen `funding_token`, `funding_amount`, and the derived `escrow_qid`.
 - **`/q/[id]` funding step**: when `funding_state='unfunded'` and the viewer is
   the asker, show a "Fund this question" panel: network (Base Sepolia), the
   escrow address, the amount, and a wallet connect + `approve` + `fundQuestion`
   button (wagmi/viem). Poll until the broker flips `funding_state='funded'`,
-  then reveal the live question. *(Per the "deliver hearme UI work as a PR +
+  then reveal the live question. *(Per the "deliver chorum UI work as a PR +
   preview" note, the funding-step UI ships as a separate PR with a rendered
   preview.)*
 - Home feed labels unfunded questions and omits them from the default "open"
   list.
 
-### 8.2 `hearme-broker`
+### 8.2 `chorum-broker`
 - **`POST /v1/register`**: accept and atomically bind `payout_address` (mirrors
   the `agent_key` bind; reject conflicting rebind).
 - **Funding watcher** (new background task, mirrors the existing Self-revocation
@@ -518,12 +518,12 @@ web client.
   load-bearing** — the same proof is reconstructible from the on-chain
   `Settled.leaves`, so a down broker never blocks a claim (§12.1). Leaks nothing
   the chain doesn't already expose.
-- **New config** (env, prefix `HEARME_BROKER_`): `BASE_RPC_URL`,
+- **New config** (env, prefix `CHORUM_BROKER_`): `BASE_RPC_URL`,
   `ESCROW_ADDRESS`, `ESCROW_TOKEN_ADDRESS`, `CHAIN_ID=84532`,
   `PAYOUT_OPERATOR_KEY` (the EVM secp256k1 operator key — KMS in prod, §13),
   `PAYOUT_EPOCH_SECONDS`, `FUNDING_CONFIRMATIONS`.
 
-### 8.3 `hearme-skill`
+### 8.3 `chorum-skill`
 - At install: generate a secp256k1 payout keypair, store the private key beside
   the Ed25519 agent key (§7.6 `crypto/`), include `payout_address` in the
   `EnrollmentBundle`.
@@ -585,7 +585,7 @@ with the stake "locked in a smart contract *under the hood*." This concept
 builds the *under-the-hood* contract and exercises it with a **crypto-native
 asker** on testnet — the necessary first layer. The card experience is then a
 thin on-ramp on top: a custodial/relayer service takes the card payment and
-calls `fundQuestion` on the asker's behalf. Nothing in `HearmeEscrow` changes;
+calls `fundQuestion` on the asker's behalf. Nothing in `ChorumEscrow` changes;
 only *who signs the funding transaction* does. Building the contract-first path
 now lets us prove the settlement loop before adding fiat plumbing.
 
@@ -652,7 +652,7 @@ bonus is still legitimately escrowed. So:
 
 ```
 SETTLEMENT_GRACE  ≥  max audit/override window (§14.3/§14.5)
-                  +  a few settle epochs (HEARME_BROKER_PAYOUT_EPOCH_SECONDS)
+                  +  a few settle epochs (CHORUM_BROKER_PAYOUT_EPOCH_SECONDS)
                   +  safety margin for broker maintenance/migration
 ```
 
@@ -664,7 +664,7 @@ broker is the only party that knows the correct split (who answered, who passed
 audit, who was clawed). No on-chain mechanism can reconstruct that off-chain
 judgement. This residual is **bounded by the grace window** (a dead broker stops
 accepting new answers too, since dispatch needs it) and is the same "trust the
-operator's honesty *while it is alive*" assumption Hearme already makes for
+operator's honesty *while it is alive*" assumption Chorum already makes for
 aggregation (§1.4). Shrinking it further — e.g. a broker bond slashable for
 provable non-settlement, or a fallback settler — is listed in §16.
 
@@ -786,7 +786,7 @@ trust-minimization endgame that lets value and `β` scale (Phase 3, alongside
 **honest registration code execution** (not "the broker can invent humans" —
 honest code can't), and L3 reduces even that to the §14.4 real-passport-collusion
 residual. This is the same *class* of assumption as the honest-aggregation one
-Hearme already documents (§1.4) — now bounded, detectable, bonded, and on a path
+Chorum already documents (§1.4) — now bounded, detectable, bonded, and on a path
 to provable.
 
 ### 12.3 Trust-minimization is also a *legal* simplification
@@ -931,7 +931,7 @@ is backed, so a bad set can't even be published). Same shape either way —
 
 ### 12.5 Privacy of claim-by-proof — permissionless pooled claims (required)
 
-Claim-by-proof (§12.4) and Hearme's core privacy promise (§1.4, §9 — the public
+Claim-by-proof (§12.4) and Chorum's core privacy promise (§1.4, §9 — the public
 must never learn *which human answered which question*) are in tension, and
 resolving it is **mandatory, not a nicety**. The naive realization is a privacy
 **regression**, so the payout layer **must** use the construction below.
@@ -1174,7 +1174,7 @@ the remaining `Rg` residual after that.
   L0, the test asserts only the *bounds*: a self-deal cannot exceed one pool's
   stake and is fully refundable to the asker after the grace.
 - **End-to-end (`scripts/e2e.sh`):** add a local Base-Sepolia fork (anvil) +
-  deployed `HearmeEscrow` + `MockUSDC`; asker funds, agent answers, broker
+  deployed `ChorumEscrow` + `MockUSDC`; asker funds, agent answers, broker
   settles, agent claims, asker refunds the remainder; **then a "broker goes
   dark" run**: kill the broker after a settle and assert the agent still claims
   and the asker still refunds the rest after the grace. Assert balances and that
@@ -1207,7 +1207,7 @@ requires the operator's allocation role to be non-discretionary
 and per-user-contract burden — not merely to bound theft risk.
 
 1. **Phase 0 (today):** `payout_entitlements` recorded; no chain. *(done in v0)*
-2. **Phase 1 (this concept):** deploy `HearmeEscrow` + `MockUSDC` on Base
+2. **Phase 1 (this concept):** deploy `ChorumEscrow` + `MockUSDC` on Base
    Sepolia; web funding step; broker funding-watcher + settler; skill payout key
    + claim. **Both escape hatches ship in Phase 1** (asker unilateral refund +
    on-chain leaf publishing) — they are core to the trust model, not an

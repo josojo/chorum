@@ -1,6 +1,6 @@
 # Testing Product Market Fit
 
-This document describes the current product-market-fit strategy for Hearme.
+This document describes the current product-market-fit strategy for Chorum.
 The goal is not to prove the full long-term vision immediately. The goal is to
 prove, as fast as possible, that a buyer will pay for fast, AI-assisted,
 human-validated opinion signal from a real respondent group.
@@ -22,7 +22,7 @@ without developer support.
 
 ## 1. Minimum Technical Proof
 
-Before selling serious pilots, Hearme needs a working technical loop that is
+Before selling serious pilots, Chorum needs a working technical loop that is
 simple enough for early users and credible enough for buyers.
 
 The minimum technical proof is:
@@ -38,21 +38,21 @@ The minimum technical proof is:
 
 The onboarding flow must be tested as carefully as the answering loop. A user
 should understand what is being connected, what data stays local, what will be
-sent to Hearme, and how to stop participation. Any confusing step will create
+sent to Chorum, and how to stop participation. Any confusing step will create
 drop-off and will make the PMF test unreliable.
 
 The first integrations should cover three participant paths:
 
 - **OpenClaw agents**: users who already run or want to run an OpenClaw-style
   personal agent.
-- **Hermes agents**: users who can install the Hearme skill into Hermes and let
+- **Hermes agents**: users who can install the Chorum skill into Hermes and let
   it answer through their existing model and memory setup.
 - **ChatGPT export-only agents**: users who do not run a persistent agent yet,
   but can export their ChatGPT history and use that export as the memory source
-  for a lightweight Hearme participant.
+  for a lightweight Chorum participant.
 
 The ChatGPT export path is especially important for PMF because it broadens the
-initial participant pool. If Hearme only works for people already running
+initial participant pool. If Chorum only works for people already running
 Hermes or OpenClaw, the early supply side will be too small.
 
 For this PMF test, the identity requirement should be practical rather than
@@ -163,7 +163,7 @@ One concrete plan:
 
 - give each participant a $10 voucher;
 - the voucher pays for running their Hermes/OpenClaw agent, model usage, or
-  Hearme onboarding experiment;
+  Chorum onboarding experiment;
 - in exchange, the participant connects an agent or ChatGPT export, answers the
   first study, and reviews the agent's answer.
 
@@ -318,7 +318,7 @@ Pause and rethink if:
 
 The core question is simple:
 
-> Can Hearme produce an answer that users recognize as their own and buyers
+> Can Chorum produce an answer that users recognize as their own and buyers
 > trust enough to pay for?
 
 That is the product-market-fit test.

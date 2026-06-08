@@ -1,7 +1,7 @@
-//! Hearme standalone skill — library core.
+//! Chorum standalone skill — library core.
 //!
 //! The production answering path runs *inside* the user's agent host (Hermes or
-//! OpenClaw). Both hosts ultimately shell out to the `hearme-skill` binary, so
+//! OpenClaw). Both hosts ultimately shell out to the `chorum-skill` binary, so
 //! the entire skill is a single Rust crate: a small set of framework-agnostic
 //! functions ([`tools`]) over the broker protocol, plus thin per-host install
 //! adapters ([`hermes`], [`openclaw`]).

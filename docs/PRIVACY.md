@@ -11,7 +11,7 @@ for operators and reviewers. Opened to close issue #104.
   *nullifier* (a per-person pseudonym) plus coarse bucketed predicates. We never
   receive the passport, name, or document number. (`IDENTITY.md`)
 - **Answers are unlinkable at source.** `envelopes.unique_identifier` is a
-  per-question HMAC voter tag — `HMAC(linkage_secret, "hearme-voter-tag-v1" |
+  per-question HMAC voter tag — `HMAC(linkage_secret, "chorum-voter-tag-v1" |
   question_id | nullifier)` — **not** the raw nullifier. The same person across
   two questions yields two unrelated tags, so the answers table alone is not a
   per-person history. Re-linkage requires *both* the `linkage_secret` (broker
@@ -75,7 +75,7 @@ An IP is PII; we minimize it deliberately.
   address is reduced to its network prefix first (IPv4 `/24`, IPv6 `/48`,
   `maskIp()`). Country geo is unchanged; the device-identifying host bits never
   leave our infra.
-- **Disable entirely.** Set `HEARME_GEO_DISABLE_IP_LOOKUP=1` to drop the
+- **Disable entirely.** Set `CHORUM_GEO_DISABLE_IP_LOOKUP=1` to drop the
   third-party lookup and rely only on edge headers + the default.
 - **No raw IP in logs.** The broker's pino config
   (`packages/broker/src/logging.ts`) installs a `req` serializer that omits
@@ -99,7 +99,7 @@ traffic at scale, confirm a DPA / sub-processor terms or self-host a geo DB
 
 ## 5. Env knobs
 
-- `HEARME_GEO_DISABLE_IP_LOOKUP=1` — skip the `ipwho.is` fallback (web).
+- `CHORUM_GEO_DISABLE_IP_LOOKUP=1` — skip the `ipwho.is` fallback (web).
 - `NEXT_PUBLIC_PRIVACY_CONTACT` — contact address shown on `/privacy` and
   `/terms` (defaults to a placeholder; set per deployment).
 

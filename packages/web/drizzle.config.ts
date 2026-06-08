@@ -10,6 +10,6 @@ export default {
   dbCredentials: {
     url:
       process.env.DATABASE_URL ??
-      "postgres://hearme_web:hearme_web_dev@localhost:5432/hearme",
+      "postgres://chorum_web:chorum_web_dev@localhost:5432/chorum",
   },
 } satisfies Config;

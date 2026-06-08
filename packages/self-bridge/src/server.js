@@ -1,4 +1,4 @@
-// hearme self-bridge — the only place real Self (self.xyz) proofs are created
+// chorum self-bridge — the only place real Self (self.xyz) proofs are created
 // and verified. The Python broker and skill talk to it over HTTP because
 // @selfxyz/core (verify) and @selfxyz/qrcode (request creation) are Node-only.
 //
@@ -8,7 +8,7 @@
 //
 // Endpoints:
 //   POST /requests   {agentKey, profile?} -> {requestId, urls[]}
-//       Builds one SelfApp per age threshold (scope hearme-v1, endpoint =
+//       Builds one SelfApp per age threshold (scope chorum-v1, endpoint =
 //       this bridge's /callback, userDefinedData = agentKey). Returns the
 //       universal-link/QR urls; the skill renders each in turn.
 //   POST /callback   (the SelfApp endpoint) — the Self app POSTs a proof here;
@@ -282,7 +282,7 @@ app.post("/requests", async (req, res) => {
       const userId = "0x" + cryptoRandomId();
       byUser.set(normUserId(userId), { requestId, threshold });
       const selfApp = new SelfAppBuilder({
-        appName: "Hearme",
+        appName: "Chorum",
         scope: SCOPE,
         endpoint: ENDPOINT,
         endpointType: ENDPOINT_TYPE,

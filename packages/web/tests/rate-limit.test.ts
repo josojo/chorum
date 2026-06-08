@@ -83,14 +83,14 @@ describe("clientIdFromHeaders", () => {
   });
 
   it("ignores proxy headers when trust is disabled via env", () => {
-    const prev = process.env.HEARME_WEB_TRUST_PROXY_HEADERS;
-    process.env.HEARME_WEB_TRUST_PROXY_HEADERS = "false";
+    const prev = process.env.CHORUM_WEB_TRUST_PROXY_HEADERS;
+    process.env.CHORUM_WEB_TRUST_PROXY_HEADERS = "false";
     try {
       const h = new Headers({ "x-real-ip": "1.1.1.1", "x-forwarded-for": "2.2.2.2" });
       expect(clientIdFromHeaders(h)).toBe("unknown");
     } finally {
-      if (prev === undefined) delete process.env.HEARME_WEB_TRUST_PROXY_HEADERS;
-      else process.env.HEARME_WEB_TRUST_PROXY_HEADERS = prev;
+      if (prev === undefined) delete process.env.CHORUM_WEB_TRUST_PROXY_HEADERS;
+      else process.env.CHORUM_WEB_TRUST_PROXY_HEADERS = prev;
     }
   });
 });

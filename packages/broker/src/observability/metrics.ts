@@ -2,7 +2,7 @@
 //
 // A dedicated registry (not prom-client's global default) holds:
 //   - default Node process metrics (rss, event-loop lag, GC, fd count, ...)
-//   - hearme_broker_* request counters
+//   - chorum_broker_* request counters
 //
 // Exposed at GET /metrics on :8000. INTERNAL-ONLY: the Caddyfile routes only
 // /v1/*, /self/*, and the web default, so /metrics never reaches the public
@@ -26,19 +26,19 @@ collectDefaultMetrics({ register: registry });
 // each series is the per-endpoint throughput the issue asks for (register rate,
 // envelope ingest rate, revoke rate).
 const registerTotal = new Counter({
-  name: "hearme_broker_register_total",
+  name: "chorum_broker_register_total",
   help: "POST /v1/register attempts, by outcome (accepted|rejected).",
   labelNames: ["outcome"],
   registers: [registry],
 });
 const envelopesTotal = new Counter({
-  name: "hearme_broker_envelopes_total",
+  name: "chorum_broker_envelopes_total",
   help: "POST /v1/envelopes attempts, by outcome (accepted|rejected).",
   labelNames: ["outcome"],
   registers: [registry],
 });
 const revokeTotal = new Counter({
-  name: "hearme_broker_revoke_total",
+  name: "chorum_broker_revoke_total",
   help: "POST /v1/envelopes/revoke attempts, by outcome (accepted|rejected).",
   labelNames: ["outcome"],
   registers: [registry],
@@ -48,7 +48,7 @@ const revokeTotal = new Counter({
 // (route, reason) so a spike in, say, self_proof_invalid stands on its own. The
 // reason set is the bounded RejectionReason enum, so cardinality stays small.
 const rejectionsTotal = new Counter({
-  name: "hearme_broker_rejections_total",
+  name: "chorum_broker_rejections_total",
   help: "Rejected requests, by route and RejectionReason.",
   labelNames: ["route", "reason"],
   registers: [registry],
@@ -56,7 +56,7 @@ const rejectionsTotal = new Counter({
 
 // 429 rate (rate-limit pressure), labeled by the limited route.
 const rateLimitedTotal = new Counter({
-  name: "hearme_broker_ratelimited_total",
+  name: "chorum_broker_ratelimited_total",
   help: "Requests rejected by the rate limiter (HTTP 429), by route.",
   labelNames: ["route"],
   registers: [registry],
@@ -70,7 +70,7 @@ const totals: Record<WriteRoute, Counter<"outcome">> = {
 };
 
 // Record one terminal outcome for a write route. `reason` is the TRUE internal
-// reason: record it even when HEARME_BROKER_EXPOSE_REJECTION_REASONS=0 hides it
+// reason: record it even when CHORUM_BROKER_EXPOSE_REJECTION_REASONS=0 hides it
 // from the caller (the whole point is to see internally what callers can't).
 // Pass it for every rejection; omit/null on accept.
 export function recordOutcome(

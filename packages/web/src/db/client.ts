@@ -1,6 +1,6 @@
 // Drizzle client. Uses DATABASE_URL from the environment.
 //
-// IMPORTANT: this connection should be configured to use the `hearme_web`
+// IMPORTANT: this connection should be configured to use the `chorum_web`
 // Postgres role in production — that role can INSERT only `questions` and
 // `askers`, and can read public aggregate data but not raw envelopes (see
 // db/init/02-roles.sh and ARCHITECTURE_V0.md §4). Envelope/aggregate writes
@@ -19,7 +19,7 @@ if (!connectionString) {
   if (process.env.NODE_ENV !== "test") {
     // eslint-disable-next-line no-console
     console.warn(
-      "[hearme-web] DATABASE_URL is not set; database queries will fail.",
+      "[chorum-web] DATABASE_URL is not set; database queries will fail.",
     );
   }
 }

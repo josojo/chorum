@@ -1,4 +1,4 @@
-# hearme — TLS termination + routing.
+# chorum — TLS termination + routing.
 #
 # The site hostname is supplied per-environment via the `CADDY_SITE_HOST`
 # environment variable on the caddy container (set in docker-compose.staging.yml

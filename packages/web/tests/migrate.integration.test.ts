@@ -3,7 +3,7 @@
 // idempotent on re-run.
 //
 // We exercise the migrator MECHANISM with a self-contained fixture migration
-// set (pointed at via HEARME_MIGRATIONS_DIR) rather than the real generated
+// set (pointed at via CHORUM_MIGRATIONS_DIR) rather than the real generated
 // migrations, so the test stays meaningful no matter how many real deltas
 // exist — including zero, right after a baseline regeneration. The fixture
 // baseline creates a `questions` table (the sentinel migrate.mjs uses to
@@ -96,19 +96,19 @@ const skipSuite = !dockerAvailable();
 
     beforeAll(async () => {
       // Write the fixture migration set to a temp dir.
-      migrationsDir = mkdtempSync(join(tmpdir(), "hearme-migtest-"));
+      migrationsDir = mkdtempSync(join(tmpdir(), "chorum-migtest-"));
       writeFileSync(join(migrationsDir, "0000_init.sql"), FIXTURE_BASELINE);
       writeFileSync(join(migrationsDir, "0001_add_color.sql"), FIXTURE_DELTA);
 
       const port = await pickFreePort();
-      containerName = `hearme-migtest-${process.pid}-${Date.now()}`;
+      containerName = `chorum-migtest-${process.pid}-${Date.now()}`;
       execSync(
         `docker run -d --rm --name ${containerName} ` +
-          `-e POSTGRES_PASSWORD=t -e POSTGRES_DB=hearme ` +
+          `-e POSTGRES_PASSWORD=t -e POSTGRES_DB=chorum ` +
           `-p ${port}:5432 postgres:16`,
         { stdio: "ignore" },
       );
-      dsn = `postgres://postgres:t@127.0.0.1:${port}/hearme`;
+      dsn = `postgres://postgres:t@127.0.0.1:${port}/chorum`;
 
       // Wait until Postgres is accepting connections.
       const probe = postgres(dsn, { max: 1, onnotice: () => {} });
@@ -152,7 +152,7 @@ const skipSuite = !dockerAvailable();
         env: {
           ...process.env,
           MIGRATOR_DATABASE_URL: dsn,
-          HEARME_MIGRATIONS_DIR: migrationsDir,
+          CHORUM_MIGRATIONS_DIR: migrationsDir,
         },
         encoding: "utf8",
       });

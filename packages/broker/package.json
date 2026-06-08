@@ -1,9 +1,9 @@
 {
-  "name": "hearme-broker",
+  "name": "chorum-broker",
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Hearme v0 dispatcher and envelope verifier (ARCHITECTURE_V0.md §5). TypeScript port of the broker: Fastify + Drizzle (reusing packages/web schema.ts) + tweetnacl Ed25519.",
+  "description": "Chorum v0 dispatcher and envelope verifier (ARCHITECTURE_V0.md §5). TypeScript port of the broker: Fastify + Drizzle (reusing packages/web schema.ts) + tweetnacl Ed25519.",
   "main": "dist/server.js",
   "engines": {
     "node": ">=20"

@@ -9,12 +9,12 @@
 # Used by .github/workflows/db.yml and by hand locally.
 set -euo pipefail
 
-CONTAINER=${CONTAINER:-hearme-postgres}
+CONTAINER=${CONTAINER:-chorum-postgres}
 
-admin()      { docker exec "$CONTAINER" psql -U hearme_admin -d hearme -tAc "$1"; }
-web()        { docker exec -e PGPASSWORD=hearme_web_dev        "$CONTAINER" psql -h localhost -U hearme_web        -d hearme -tAc "$1"; }
-broker()     { docker exec -e PGPASSWORD=hearme_broker_dev     "$CONTAINER" psql -h localhost -U hearme_broker     -d hearme -tAc "$1"; }
-classifier() { docker exec -e PGPASSWORD=hearme_classifier_dev "$CONTAINER" psql -h localhost -U hearme_classifier -d hearme -tAc "$1"; }
+admin()      { docker exec "$CONTAINER" psql -U chorum_admin -d chorum -tAc "$1"; }
+web()        { docker exec -e PGPASSWORD=chorum_web_dev        "$CONTAINER" psql -h localhost -U chorum_web        -d chorum -tAc "$1"; }
+broker()     { docker exec -e PGPASSWORD=chorum_broker_dev     "$CONTAINER" psql -h localhost -U chorum_broker     -d chorum -tAc "$1"; }
+classifier() { docker exec -e PGPASSWORD=chorum_classifier_dev "$CONTAINER" psql -h localhost -U chorum_classifier -d chorum -tAc "$1"; }
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "PASS: $*"; }
@@ -27,30 +27,30 @@ actual=$(admin "SELECT string_agg(tablename, ' ' ORDER BY tablename) FROM pg_tab
 pass "schema applied — 8 tables"
 
 # 2. Writer roles exist.
-for role in hearme_web hearme_broker hearme_classifier; do
+for role in chorum_web chorum_broker chorum_classifier; do
   [ "$(admin "SELECT 1 FROM pg_roles WHERE rolname='$role';")" = "1" ] || fail "role $role missing"
 done
 pass "writer roles created"
 
-# 3. hearme_web blocked from envelopes (boundary check).
+# 3. chorum_web blocked from envelopes (boundary check).
 if web "INSERT INTO envelopes(question_id, unique_identifier, answer, disclosed_predicates, agent_signature, delegation_hash) VALUES (gen_random_uuid(),'x','y','{}','z','w');" 2>/dev/null; then
-  fail "hearme_web should be denied INSERT on envelopes"
+  fail "chorum_web should be denied INSERT on envelopes"
 fi
-pass "hearme_web denied INSERT envelopes"
+pass "chorum_web denied INSERT envelopes"
 
-# 3b. hearme_web blocked from raw envelopes reads (public pages use aggregates).
+# 3b. chorum_web blocked from raw envelopes reads (public pages use aggregates).
 if web "SELECT COUNT(*) FROM envelopes;" 2>/dev/null; then
-  fail "hearme_web should be denied SELECT on envelopes"
+  fail "chorum_web should be denied SELECT on envelopes"
 fi
-pass "hearme_web denied SELECT envelopes"
+pass "chorum_web denied SELECT envelopes"
 
-# 4. hearme_broker blocked from questions (boundary check).
+# 4. chorum_broker blocked from questions (boundary check).
 if broker "INSERT INTO questions(text, closes_at) VALUES ('x', now());" 2>/dev/null; then
-  fail "hearme_broker should be denied INSERT on questions"
+  fail "chorum_broker should be denied INSERT on questions"
 fi
-pass "hearme_broker denied INSERT questions"
+pass "chorum_broker denied INSERT questions"
 
-# 4b. hearme_classifier boundaries — can SELECT and update topic, but
+# 4b. chorum_classifier boundaries — can SELECT and update topic, but
 #     nothing else. A compromise of these credentials must NOT enable reading
 #     envelopes / registrations or editing any other question column.
 web "INSERT INTO questions(text, closes_at) VALUES ('classifier-bound', now() + interval '1 hour');" > /dev/null
@@ -59,28 +59,28 @@ classifier_qid=$(web "SELECT id FROM questions WHERE text='classifier-bound' ORD
 
 # 4b.i — can SELECT.
 [ "$(classifier "SELECT count(*) FROM questions WHERE id='$classifier_qid';")" = "1" ] \
-  || fail "hearme_classifier should be able to SELECT questions"
+  || fail "chorum_classifier should be able to SELECT questions"
 # 4b.ii — can UPDATE topic.
 classifier "UPDATE questions SET topic='ai' WHERE id='$classifier_qid';" > /dev/null
 [ "$(admin "SELECT topic FROM questions WHERE id='$classifier_qid';")" = "ai" ] \
-  || fail "hearme_classifier UPDATE topic did not stick"
+  || fail "chorum_classifier UPDATE topic did not stick"
 # 4b.iii — CANNOT update any other column.
 if classifier "UPDATE questions SET text='hijacked' WHERE id='$classifier_qid';" 2>/dev/null; then
-  fail "hearme_classifier should be denied UPDATE on questions.text"
+  fail "chorum_classifier should be denied UPDATE on questions.text"
 fi
 # 4b.iv — CANNOT insert.
 if classifier "INSERT INTO questions(text, closes_at) VALUES ('x', now() + interval '1 hour');" 2>/dev/null; then
-  fail "hearme_classifier should be denied INSERT on questions"
+  fail "chorum_classifier should be denied INSERT on questions"
 fi
 # 4b.v — CANNOT read envelopes / registrations.
 if classifier "SELECT 1 FROM envelopes LIMIT 1;" 2>/dev/null; then
-  fail "hearme_classifier should be denied SELECT on envelopes"
+  fail "chorum_classifier should be denied SELECT on envelopes"
 fi
 if classifier "SELECT 1 FROM registrations LIMIT 1;" 2>/dev/null; then
-  fail "hearme_classifier should be denied SELECT on registrations"
+  fail "chorum_classifier should be denied SELECT on registrations"
 fi
 admin "DELETE FROM questions WHERE id='$classifier_qid';" > /dev/null
-pass "hearme_classifier scoped to SELECT + UPDATE(topic) only"
+pass "chorum_classifier scoped to SELECT + UPDATE(topic) only"
 
 # 5. Composite PK rejects duplicate Sybil writes.
 web "INSERT INTO questions(text, closes_at) VALUES ('ci-test?', now() + interval '1 hour');" > /dev/null

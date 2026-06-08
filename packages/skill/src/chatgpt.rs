@@ -180,7 +180,7 @@ impl Drop for TempDir {
 }
 
 fn tempdir_extract(zip_path: &Path) -> Result<TempDir, Error> {
-    let base = std::env::temp_dir().join(format!("hearme-chatgpt-{}", std::process::id()));
+    let base = std::env::temp_dir().join(format!("chorum-chatgpt-{}", std::process::id()));
     std::fs::create_dir_all(&base)?;
     let file = std::fs::File::open(zip_path)?;
     let mut archive = zip::ZipArchive::new(file)?;

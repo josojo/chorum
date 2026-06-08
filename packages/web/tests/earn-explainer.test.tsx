@@ -34,7 +34,7 @@ describe("EarnExplainer", () => {
     fireEvent.click(screen.getByRole("button", { name: /share your voice/i }));
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Add hearme to your agent")).toBeTruthy();
+    expect(screen.getByText("Add chorum to your agent")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByText("Your agent answers for you")).toBeTruthy();
@@ -53,7 +53,7 @@ describe("EarnExplainer", () => {
     render(<EarnExplainer />);
     fireEvent.click(screen.getByRole("button", { name: /share your voice/i }));
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Add hearme to your agent")).toBeTruthy();
+    expect(screen.getByText("Add chorum to your agent")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByText("Verify once with Self")).toBeTruthy();

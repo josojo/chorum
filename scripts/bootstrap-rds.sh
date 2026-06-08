@@ -22,39 +22,39 @@
 # reach RDS from the host's ENI (the source the DB security group allows).
 #
 # Usage:
-#   scripts/bootstrap-rds.sh [path-to-.env]      # default: ~/hearme/.env
+#   scripts/bootstrap-rds.sh [path-to-.env]      # default: ~/chorum/.env
 set -euo pipefail
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
-ENV_FILE="${1:-$HOME/hearme/.env}"
+ENV_FILE="${1:-$HOME/chorum/.env}"
 [ -f "$ENV_FILE" ] || die "no env file at ${ENV_FILE} — render it from SSM first (scripts/render-secrets-env.sh prod)"
 
-# Load the rendered prod env (HEARME_PROD_POSTGRES_HOST + the role passwords).
+# Load the rendered prod env (CHORUM_PROD_POSTGRES_HOST + the role passwords).
 set -a
 # shellcheck disable=SC1090
 . "$ENV_FILE"
 set +a
 
-: "${HEARME_PROD_POSTGRES_HOST:?missing in ${ENV_FILE}}"
-: "${HEARME_PROD_POSTGRES_ADMIN_PASSWORD:?missing in ${ENV_FILE}}"
-: "${HEARME_PROD_POSTGRES_WEB_PASSWORD:?missing in ${ENV_FILE}}"
-: "${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?missing in ${ENV_FILE}}"
-: "${HEARME_PROD_POSTGRES_CLASSIFIER_PASSWORD:?missing in ${ENV_FILE}}"
+: "${CHORUM_PROD_POSTGRES_HOST:?missing in ${ENV_FILE}}"
+: "${CHORUM_PROD_POSTGRES_ADMIN_PASSWORD:?missing in ${ENV_FILE}}"
+: "${CHORUM_PROD_POSTGRES_WEB_PASSWORD:?missing in ${ENV_FILE}}"
+: "${CHORUM_PROD_POSTGRES_BROKER_PASSWORD:?missing in ${ENV_FILE}}"
+: "${CHORUM_PROD_POSTGRES_CLASSIFIER_PASSWORD:?missing in ${ENV_FILE}}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PG_IMAGE="postgres:16"
-PGHOST="$HEARME_PROD_POSTGRES_HOST"
+PGHOST="$CHORUM_PROD_POSTGRES_HOST"
 
 # psql in a throwaway container, connecting to RDS over TLS as the master role.
 psql_admin() {
   docker run --rm --network host \
-    -e PGPASSWORD="$HEARME_PROD_POSTGRES_ADMIN_PASSWORD" \
+    -e PGPASSWORD="$CHORUM_PROD_POSTGRES_ADMIN_PASSWORD" \
     -e PGSSLMODE=require \
     -v "$REPO_ROOT/db/init:/init:ro" \
     "$PG_IMAGE" \
     psql -v ON_ERROR_STOP=1 \
-      -h "$PGHOST" -U hearme_admin -d hearme "$@"
+      -h "$PGHOST" -U chorum_admin -d chorum "$@"
 }
 
 echo "[bootstrap-rds] 1/4 ensuring pgcrypto extension on ${PGHOST}"
@@ -66,31 +66,31 @@ docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/docker-compose.prod.yml" \
 
 echo "[bootstrap-rds] 3/4 applying roles + grants (db/init/roles.sql)"
 psql_admin \
-  -v web_password="$HEARME_PROD_POSTGRES_WEB_PASSWORD" \
-  -v broker_password="$HEARME_PROD_POSTGRES_BROKER_PASSWORD" \
-  -v classifier_password="$HEARME_PROD_POSTGRES_CLASSIFIER_PASSWORD" \
+  -v web_password="$CHORUM_PROD_POSTGRES_WEB_PASSWORD" \
+  -v broker_password="$CHORUM_PROD_POSTGRES_BROKER_PASSWORD" \
+  -v classifier_password="$CHORUM_PROD_POSTGRES_CLASSIFIER_PASSWORD" \
   -f /init/roles.sql
 
 # ADR-098: the per-question voter-tag secrets live in a broker-OWNED database,
 # co-located on this same RDS instance (the broker has only USAGE on the shared
-# schema, so it can't create the table in `hearme`). Owned by hearme_broker, so
+# schema, so it can't create the table in `chorum`). Owned by chorum_broker, so
 # the broker's CREATE TABLE IF NOT EXISTS (secretsDb.ts) succeeds at startup.
-echo "[bootstrap-rds] 4/4 ensuring broker-owned hearme_secrets database (ADR-098)"
-if [ "$(psql_admin -tAc "SELECT 1 FROM pg_database WHERE datname='hearme_secrets'")" != "1" ]; then
-  psql_admin -c 'CREATE DATABASE hearme_secrets OWNER hearme_broker;'
-  echo "[bootstrap-rds]   created hearme_secrets"
+echo "[bootstrap-rds] 4/4 ensuring broker-owned chorum_secrets database (ADR-098)"
+if [ "$(psql_admin -tAc "SELECT 1 FROM pg_database WHERE datname='chorum_secrets'")" != "1" ]; then
+  psql_admin -c 'CREATE DATABASE chorum_secrets OWNER chorum_broker;'
+  echo "[bootstrap-rds]   created chorum_secrets"
 else
-  echo "[bootstrap-rds]   hearme_secrets already present — skipping"
+  echo "[bootstrap-rds]   chorum_secrets already present — skipping"
 fi
 
 cat <<'EOF'
 [bootstrap-rds] done. RDS now has: pgcrypto, the full schema, the three
-scoped roles (hearme_web / hearme_broker / hearme_classifier), and the
-broker-owned hearme_secrets database (ADR-098).
+scoped roles (chorum_web / chorum_broker / chorum_classifier), and the
+broker-owned chorum_secrets database (ADR-098).
 
 Verify the grant boundary held (optional but recommended) by spot-checking that
-hearme_web cannot read envelopes:
-  psql "postgres://hearme_web:<web-pw>@<host>:5432/hearme?sslmode=require" \
+chorum_web cannot read envelopes:
+  psql "postgres://chorum_web:<web-pw>@<host>:5432/chorum?sslmode=require" \
     -c 'SELECT count(*) FROM envelopes;'        # expect: permission denied
 
 Then bring the stack up:

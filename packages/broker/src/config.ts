@@ -1,35 +1,35 @@
 // Broker runtime configuration.
 //
-// Environment-driven (prefix HEARME_BROKER_). The DATABASE_URL points at the
-// shared Postgres using the `hearme_broker` role (see db/init/02-roles.sh).
+// Environment-driven (prefix CHORUM_BROKER_). The DATABASE_URL points at the
+// shared Postgres using the `chorum_broker` role (see db/init/02-roles.sh).
 // Defaults match the docker-compose dev environment so a fresh `dev-up.sh` can
 // boot straight out of the box. Mirrors the Python config.py one-for-one.
 
 import { resolveScope } from "./verify/scope";
 
 // Dev-only Ed25519 seed for the broker signing key (base64 of 32 bytes).
-// Production MUST override HEARME_BROKER_SIGNING_KEY with a secret-managed key;
+// Production MUST override CHORUM_BROKER_SIGNING_KEY with a secret-managed key;
 // a stable key is required so DelegationTokens survive broker restarts.
-// b"BROKER-SIGNING-KEY-HEARME-DEV32B"
+// b"BROKER-SIGNING-KEY-CHORUM-DEV32B"
 export const DEV_BROKER_SIGNING_KEY = "QlJPS0VSLVNJR05JTkctS0VZLUhFQVJNRS1ERVYzMkI=";
 
 // Dev default for the per-question linkage-secret store DSN (ADR-098). The
-// secrets live in a broker-OWNED database (`hearme_secrets`) so the broker can
+// secrets live in a broker-OWNED database (`chorum_secrets`) so the broker can
 // create/destroy rows there (it has only USAGE, not CREATE, on the shared
 // schema). In production this is co-located on the SAME RDS instance as the main
 // DB (a separate database on it), which is why the at-rest secret is WRAPPED
 // (below) — a dump of that instance then yields only ciphertext.
 export const DEV_SECRETS_DATABASE_URL =
-  "postgres://hearme_broker:hearme_broker_dev@localhost:5432/hearme_secrets";
+  "postgres://chorum_broker:chorum_broker_dev@localhost:5432/chorum_secrets";
 
 // Dev-only master key (base64 of 32 bytes) that WRAPS each question's secret
 // `s_q` at rest (AES-256-GCM, questionSecret.ts). Production MUST override
-// HEARME_BROKER_VOTER_TAG_MASTER_KEY with a secret-managed key. Forward secrecy
+// CHORUM_BROKER_VOTER_TAG_MASTER_KEY with a secret-managed key. Forward secrecy
 // comes from DESTROYING a question's wrapped secret at close, not from this key:
 // the master key can't decrypt a row that's been nulled, so a closed question's
 // answers stay unlinkable even to a holder of the master key (ADR-098). It must
 // stay stable — rotating it orphans the still-live wrapped secrets.
-// b"HEARME-VOTER-TAG-SECRET-DEV-32B!"
+// b"CHORUM-VOTER-TAG-SECRET-DEV-32B!"
 export const DEV_VOTER_TAG_MASTER_KEY = "SEVBUk1FLVZPVEVSLVRBRy1TRUNSRVQtREVWLTMyQiE=";
 
 export interface Settings {
@@ -71,12 +71,12 @@ export interface Settings {
   // The identity scope stamped into every DelegationToken / asker-session and
   // checked against incoming credentials (verify/scope.ts). FROZEN, and must
   // equal the self-bridge's SELF_SCOPE. In production it is pinned to
-  // PRODUCTION_SCOPE in code and HEARME_BROKER_SELF_SCOPE is ignored (GH #97);
-  // staging sets it to "staging-hearme-v1".
+  // PRODUCTION_SCOPE in code and CHORUM_BROKER_SELF_SCOPE is ignored (GH #97);
+  // staging sets it to "staging-chorum-v1".
   selfScope: string;
 
   // Per-question linkage-secret store (ADR-098, §1.4). A broker-owned database
-  // (`hearme_secrets`) holding the `question_secrets` table; co-located on the
+  // (`chorum_secrets`) holding the `question_secrets` table; co-located on the
   // main RDS instance in production (secretsDb.ts).
   secretsDatabaseUrl: string;
 
@@ -166,11 +166,11 @@ function envBool(name: string, def: boolean): boolean {
 }
 
 export function getSettings(overrides: Partial<Settings> = {}): Settings {
-  const P = "HEARME_BROKER_";
+  const P = "CHORUM_BROKER_";
   const settings: Settings = {
     databaseUrl: envStr(
       `${P}DATABASE_URL`,
-      "postgres://hearme_broker:hearme_broker_dev@localhost:5432/hearme",
+      "postgres://chorum_broker:chorum_broker_dev@localhost:5432/chorum",
     ),
     dbPoolMinSize: envNum(`${P}DB_POOL_MIN_SIZE`, 1),
     dbPoolMaxSize: envNum(`${P}DB_POOL_MAX_SIZE`, 10),
@@ -195,7 +195,7 @@ export function getSettings(overrides: Partial<Settings> = {}): Settings {
 
     brokerSigningKey: envStr(`${P}SIGNING_KEY`, DEV_BROKER_SIGNING_KEY),
 
-    // Frozen in prod (HEARME_BROKER_SELF_SCOPE ignored, pinned in code); env-
+    // Frozen in prod (CHORUM_BROKER_SELF_SCOPE ignored, pinned in code); env-
     // selectable elsewhere. resolveScope mirrors the self-bridge (GH #97).
     selfScope: resolveScope({
       productionMode: envBool(`${P}PRODUCTION_MODE`, false),

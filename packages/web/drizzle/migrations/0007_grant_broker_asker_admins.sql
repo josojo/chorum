@@ -1,7 +1,7 @@
--- Re-grant hearme_broker its full privilege set on asker_admins (self-heal).
+-- Re-grant chorum_broker its full privilege set on asker_admins (self-heal).
 --
 -- 0004 (SELECT, INSERT, DELETE) and 0006 (UPDATE) guard their GRANTs on
--- `hearme_broker` existing at apply time. On a DB where those migrations were
+-- `chorum_broker` existing at apply time. On a DB where those migrations were
 -- applied/baselined BEFORE the role was created — prod RDS: bootstrap-rds.sh
 -- creates the roles, but the baseline schema and the recorded migration
 -- versions landed first — the GRANTs silently no-op'd. Because 0004/0006 are
@@ -18,7 +18,7 @@
 -- this makes the existing fleet self-heal regardless.
 DO $$
 BEGIN
-	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_broker') THEN
-		GRANT SELECT, INSERT, UPDATE, DELETE ON "asker_admins" TO hearme_broker;
+	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chorum_broker') THEN
+		GRANT SELECT, INSERT, UPDATE, DELETE ON "asker_admins" TO chorum_broker;
 	END IF;
 END $$;

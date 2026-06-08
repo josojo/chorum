@@ -1,4 +1,4 @@
--- Demo seed data for hearme v0.
+-- Demo seed data for chorum v0.
 --
 -- Populates yes/no questions across three scopes (worldwide / continent /
 -- country), envelopes with varied disclosed predicates, and matching

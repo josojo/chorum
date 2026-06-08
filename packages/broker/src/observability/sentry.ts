@@ -8,7 +8,7 @@
 // the "unhandled exceptions" the issue asks to track; per-request Fastify errors
 // are forwarded by the onError hook in server.ts.
 //
-// Config is the conventional SENTRY_* env namespace (NOT HEARME_BROKER_*), so the
+// Config is the conventional SENTRY_* env namespace (NOT CHORUM_BROKER_*), so the
 // same names work for the web / self-bridge / classifier services in follow-ups.
 
 import * as Sentry from "@sentry/node";
@@ -25,7 +25,7 @@ export function initSentry(): boolean {
       process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || "development",
     // Pin the release to the deployed git SHA when the deploy provides it (§7),
     // so an error groups to the exact build that produced it.
-    release: process.env.SENTRY_RELEASE || process.env.HEARME_DEPLOY_SHA,
+    release: process.env.SENTRY_RELEASE || process.env.CHORUM_DEPLOY_SHA,
     // Error tracking only by default; opt into tracing via the env var.
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || "0"),
   });

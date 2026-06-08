@@ -1,7 +1,7 @@
-# hearme-skill
+# chorum-skill
 
 **An add-on for your AI agent.** Once installed, your agent gains one ability:
-it answers public Hearme questions *in your voice*, using **its own model and its
+it answers public Chorum questions *in your voice*, using **its own model and its
 own memory of you** — no second API key, no separate brain to feed. The agent
 fetches the open questions your policy allows, decides how *you* would answer,
 signs each answer with your Ed25519 agent key, and submits it to the broker. Your
@@ -17,14 +17,14 @@ agent is participating; from then on it answers on a schedule, unattended.
 ## Install
 
 ```bash
-# 1. Get the binary (Linux x86_64 / aarch64) → ~/.local/bin/hearme-skill
-curl -fsSL https://github.com/josojo/hearme/releases/latest/download/install.sh | sh
+# 1. Get the binary (Linux x86_64 / aarch64) → ~/.local/bin/chorum-skill
+curl -fsSL https://github.com/josojo/chorum/releases/latest/download/install.sh | sh
 
 # 2. Plug it into your agent (auto-detects Hermes and/or OpenClaw)
-hearme-skill install
+chorum-skill install
 
 # 3. One-time identity setup (Self verify-once, on your phone)
-hearme-skill onboard \
+chorum-skill onboard \
   --broker-url https://3-74-46-46.sslip.io \
   --bridge-url https://3-74-46-46.sslip.io/self
 ```
@@ -51,14 +51,14 @@ than the default `~/.hermes/`, target it with the **global** `--hermes-profile`
 flag, which must come **before** the subcommand:
 
 ```bash
-hearme-skill --hermes-profile <name> install
-hearme-skill --hermes-profile <name> onboard \
+chorum-skill --hermes-profile <name> install
+chorum-skill --hermes-profile <name> onboard \
   --broker-url https://3-74-46-46.sslip.io \
   --bridge-url https://3-74-46-46.sslip.io/self
 ```
 
-This installs the add-on into `~/.hermes/profiles/<name>/plugins/hearme/` instead
-of `~/.hermes/plugins/hearme/`. Without the flag, the active `$HERMES_HOME` is
+This installs the add-on into `~/.hermes/profiles/<name>/plugins/chorum/` instead
+of `~/.hermes/plugins/chorum/`. Without the flag, the active `$HERMES_HOME` is
 used, else the default `~/.hermes`. If your profile lives off the beaten path, use
 `--hermes-home <path>` instead — it's also global, must precede the subcommand,
 and overrides both `--hermes-profile` and any inherited `$HERMES_HOME`.
@@ -66,9 +66,9 @@ and overrides both `--hermes-profile` and any inherited `$HERMES_HOME`.
 > **Two unrelated `--profile` flags.** `--hermes-profile` (global, selects the
 > agent home) is **not** the same as `onboard --profile` (a subcommand flag that
 > selects the Self **identity tier**, e.g. `minimal`/`standard`). So
-> `hearme-skill --profile <name> install` is wrong on both counts — there is no
+> `chorum-skill --profile <name> install` is wrong on both counts — there is no
 > global `--profile`. They can legitimately co-occur:
-> `hearme-skill --hermes-profile work onboard … --profile=minimal`.
+> `chorum-skill --hermes-profile work onboard … --profile=minimal`.
 
 When named profiles exist and you run a bare `install`/`onboard` without scoping
 to one, the CLI warns that it's targeting the *default* profile, so the add-on
@@ -81,17 +81,17 @@ signing. Both supported hosts run the **same binary** — only the thin adapter
 differs.
 
 - **Hermes** — `install` writes a two-file directory drop-in at
-  `~/.hermes/plugins/hearme/`: `plugin.yaml` (manifest) and `__init__.py`, a
+  `~/.hermes/plugins/chorum/`: `plugin.yaml` (manifest) and `__init__.py`, a
   generated stdlib-only Python subprocess shim. The gateway needs no extra
-  package — the shim registers the `hearme_list_open_questions` /
-  `hearme_submit_answer` / `hearme_submit_no_signal` tools, shells out to the
+  package — the shim registers the `chorum_list_open_questions` /
+  `chorum_submit_answer` / `chorum_submit_no_signal` tools, shells out to the
   binary for each call, and self-schedules the answering cron once a delegation
   token exists. The tool schemas + answering prompt are baked in from
   [`src/contracts.rs`](src/contracts.rs) so they cannot drift.
-- **OpenClaw** — `install` drops a `SKILL.md` at `~/.openclaw/skills/hearme/`
+- **OpenClaw** — `install` drops a `SKILL.md` at `~/.openclaw/skills/chorum/`
   telling the agent to run the binary via OpenClaw's `exec` tool, and registers a
   daily answering cron. The committed
-  [`openclaw/hearme/SKILL.md`](openclaw/hearme/SKILL.md) is embedded into the
+  [`openclaw/chorum/SKILL.md`](openclaw/chorum/SKILL.md) is embedded into the
   binary verbatim (`include_str!`), so the installed file and the source file are
   the same bytes by construction.
 
@@ -104,14 +104,14 @@ the host's env file (`~/.hermes/.env` or `~/.openclaw/.env`) so the scheduled ru
 
 | command | what it does |
 |---------|--------------|
-| `hearme-skill install [--host auto\|hermes\|openclaw\|both]` | detect host(s) and install the add-on for each |
-| `hearme-skill onboard --broker-url U --bridge-url U` | Self verify-once: agent key, QR codes, register, store token, wire up host(s) |
-| `hearme-skill list-questions` | JSON list of open questions the policy permits answering |
-| `hearme-skill submit-answer --question-id ID --answer "<option>"` | sign + submit one answer |
-| `hearme-skill submit-no-signal --question-id ID` | record that the user has no formed view (§1.14) |
-| `hearme-skill review-answers` | JSON of the user's own submitted answers (local ledger read) |
-| `hearme-skill revoke-answer --question-id ID` | retract one answer (§1.12) |
-| `hearme-skill cost [--json]` | host-model API spend this add-on's answering cron has created (month-to-date + lifetime) and the monthly budget |
+| `chorum-skill install [--host auto\|hermes\|openclaw\|both]` | detect host(s) and install the add-on for each |
+| `chorum-skill onboard --broker-url U --bridge-url U` | Self verify-once: agent key, QR codes, register, store token, wire up host(s) |
+| `chorum-skill list-questions` | JSON list of open questions the policy permits answering |
+| `chorum-skill submit-answer --question-id ID --answer "<option>"` | sign + submit one answer |
+| `chorum-skill submit-no-signal --question-id ID` | record that the user has no formed view (§1.14) |
+| `chorum-skill review-answers` | JSON of the user's own submitted answers (local ledger read) |
+| `chorum-skill revoke-answer --question-id ID` | retract one answer (§1.12) |
+| `chorum-skill cost [--json]` | host-model API spend this add-on's answering cron has created (month-to-date + lifetime) and the monthly budget |
 
 `install-plugin` / `install-openclaw` install a single host explicitly;
 `install` covers both. `schedule` exists for surface-compatibility but is a no-op
@@ -121,7 +121,7 @@ so `install` + `onboard` is all you need.
 ## Sample `policy.yaml`
 
 ```yaml
-# ~/.hermes/hearme/policy.yaml
+# ~/.hermes/chorum/policy.yaml
 topic_allowlist:
   - coffee
   - travel
@@ -141,14 +141,14 @@ IT/software, hobbies, entertainment) are answered unattended. Sensitive topics
 (`ai agents` matches `ai`, but `fair` does not). Set `auto_answer_topics: []` to
 disable the default.
 
-## Configuration (env vars, prefix `HEARME_SKILL_`)
+## Configuration (env vars, prefix `CHORUM_SKILL_`)
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `HEARME_SKILL_BROKER_URL` | `http://localhost:8000` | Where to find the broker. For the public deployment, use `https://3-74-46-46.sslip.io`. |
-| `HEARME_SKILL_SELF_BRIDGE_URL` | `http://localhost:8787` | self-bridge, used only during onboarding. For the public deployment, use `https://3-74-46-46.sslip.io/self`. |
-| `HEARME_SKILL_ROOT_DIR` | `~/.hermes/hearme/` | Where the agent key, ledger, token, and policy live. |
-| `HEARME_SKILL_MONTHLY_BUDGET_USD` | `5.0` | Soft cap on the host-model API spend the answering cron may incur per calendar month. Once month-to-date spend reaches it, `list-questions` returns no questions so the agent stops; on Hermes the shim then parks the cron on a once-a-month schedule until the budget resets (restored to daily automatically on the first run of the new month). See `cost`. |
+| `CHORUM_SKILL_BROKER_URL` | `http://localhost:8000` | Where to find the broker. For the public deployment, use `https://3-74-46-46.sslip.io`. |
+| `CHORUM_SKILL_SELF_BRIDGE_URL` | `http://localhost:8787` | self-bridge, used only during onboarding. For the public deployment, use `https://3-74-46-46.sslip.io/self`. |
+| `CHORUM_SKILL_ROOT_DIR` | `~/.hermes/chorum/` | Where the agent key, ledger, token, and policy live. |
+| `CHORUM_SKILL_MONTHLY_BUDGET_USD` | `5.0` | Soft cap on the host-model API spend the answering cron may incur per calendar month. Once month-to-date spend reaches it, `list-questions` returns no questions so the agent stops; on Hermes the shim then parks the cron on a once-a-month schedule until the budget resets (restored to daily automatically on the first run of the new month). See `cost`. |
 
 Idempotency comes from the ledger (`has_submission`), not a polling cursor — a
 question the agent skips reappears next cycle.
@@ -166,7 +166,7 @@ honeypot — the policy gate never inspects question text (§1.7).
 
 The DelegationToken and signing nonce never leave the crate: `list-questions`
 deliberately omits the nonce, and the token is read only by the envelope/builder
-path. The local audit trail in `~/.hermes/hearme/ledger.sqlite` is the only
+path. The local audit trail in `~/.hermes/chorum/ledger.sqlite` is the only
 persistence.
 
 ## Optional: seed memory from a ChatGPT export
@@ -176,20 +176,20 @@ on, you can optionally seed a local fallback memory DB from a ChatGPT data expor
 you download yourself (it never touches the running ChatGPT app):
 
 ```bash
-hearme-skill chatgpt-import ~/Downloads/chatgpt-export.zip   # ZIP, dir, or conversations.json
-hearme-skill chatgpt-query "Do I like espresso?" --topic coffee
+chorum-skill chatgpt-import ~/Downloads/chatgpt-export.zip   # ZIP, dir, or conversations.json
+chorum-skill chatgpt-query "Do I like espresso?" --topic coffee
 ```
 
-Set `HEARME_SKILL_MEMORY_BACKEND=chatgpt-export` to have the answering path read
+Set `CHORUM_SKILL_MEMORY_BACKEND=chatgpt-export` to have the answering path read
 it. Indexes only user-authored messages by default (`--include-assistant` adds
-replies); the DB lives at `~/.hermes/hearme/chatgpt_memory.sqlite` unless `--db`
+replies); the DB lives at `~/.hermes/chorum/chatgpt_memory.sqlite` unless `--db`
 is given.
 
 ## Build from source
 
 ```bash
 cd packages/skill
-cargo build --release        # -> target/release/hearme-skill (stripped)
+cargo build --release        # -> target/release/chorum-skill (stripped)
 cargo test                   # unit tests, incl. broker golden vectors
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check

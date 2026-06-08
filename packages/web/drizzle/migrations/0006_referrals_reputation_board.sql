@@ -48,22 +48,22 @@ CREATE INDEX IF NOT EXISTS "referrals_referrer_idx" ON "referrals" USING btree (
 -- role-less test harness (tests/pg.ts applies these files raw) stays a no-op.
 DO $$
 BEGIN
-	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_broker') THEN
-		GRANT SELECT, INSERT, UPDATE ON "referral_codes" TO hearme_broker;
-		GRANT SELECT, INSERT, UPDATE ON "referrals"      TO hearme_broker;
-		GRANT SELECT, INSERT, UPDATE ON "reputation"     TO hearme_broker;
-		GRANT SELECT, INSERT, UPDATE ON "board_members"  TO hearme_broker;
+	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chorum_broker') THEN
+		GRANT SELECT, INSERT, UPDATE ON "referral_codes" TO chorum_broker;
+		GRANT SELECT, INSERT, UPDATE ON "referrals"      TO chorum_broker;
+		GRANT SELECT, INSERT, UPDATE ON "reputation"     TO chorum_broker;
+		GRANT SELECT, INSERT, UPDATE ON "board_members"  TO chorum_broker;
 	END IF;
-	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_web') THEN
-		REVOKE SELECT ON "referral_codes" FROM hearme_web;
-		REVOKE SELECT ON "referrals"      FROM hearme_web;
-		REVOKE SELECT ON "reputation"     FROM hearme_web;
-		REVOKE SELECT ON "board_members"  FROM hearme_web;
+	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chorum_web') THEN
+		REVOKE SELECT ON "referral_codes" FROM chorum_web;
+		REVOKE SELECT ON "referrals"      FROM chorum_web;
+		REVOKE SELECT ON "reputation"     FROM chorum_web;
+		REVOKE SELECT ON "board_members"  FROM chorum_web;
 	END IF;
-	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_classifier') THEN
-		REVOKE SELECT ON "referral_codes" FROM hearme_classifier;
-		REVOKE SELECT ON "referrals"      FROM hearme_classifier;
-		REVOKE SELECT ON "reputation"     FROM hearme_classifier;
-		REVOKE SELECT ON "board_members"  FROM hearme_classifier;
+	IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chorum_classifier') THEN
+		REVOKE SELECT ON "referral_codes" FROM chorum_classifier;
+		REVOKE SELECT ON "referrals"      FROM chorum_classifier;
+		REVOKE SELECT ON "reputation"     FROM chorum_classifier;
+		REVOKE SELECT ON "board_members"  FROM chorum_classifier;
 	END IF;
 END $$;

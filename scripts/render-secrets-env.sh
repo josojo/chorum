@@ -3,20 +3,20 @@
 # Render an environment's secrets from AWS SSM Parameter Store as `KEY=VALUE`
 # lines on stdout — the `.env` that docker compose consumes. SSM is the single
 # source of truth (see docs/DEPLOYMENT.md §1); this reconstructs the file the
-# staging/prod overlays reference as ${HEARME_<ENV>_*}.
+# staging/prod overlays reference as ${CHORUM_<ENV>_*}.
 #
-# Each parameter lives at /hearme/<env>/<EXACT_ENV_VAR_NAME>; the leaf name is
+# Each parameter lives at /chorum/<env>/<EXACT_ENV_VAR_NAME>; the leaf name is
 # emitted verbatim, so the compose overlays need zero changes. Secrets are
 # stored as SecureString and public values (hostnames/URLs) as String;
 # --with-decryption covers both.
 #
 # Requires AWS creds (default region) with:
-#   ssm:GetParametersByPath  on  arn:aws:ssm:<region>:<acct>:parameter/hearme/<env>/*
+#   ssm:GetParametersByPath  on  arn:aws:ssm:<region>:<acct>:parameter/chorum/<env>/*
 #   kms:Decrypt              on  the key SSM used (alias/aws/ssm by default)
 #
 # Usage:
 #   scripts/render-secrets-env.sh staging > .env
-#   scripts/render-secrets-env.sh prod | ssh prod 'umask 077; cat > ~/hearme/.env'
+#   scripts/render-secrets-env.sh prod | ssh prod 'umask 077; cat > ~/chorum/.env'
 set -euo pipefail
 
 env_name="${1:-}"
@@ -28,7 +28,7 @@ case "$env_name" in
     ;;
 esac
 
-prefix="/hearme/${env_name}"
+prefix="/chorum/${env_name}"
 
 # --output text yields one "Name<TAB>Value" row per parameter. Our values are
 # all single-line (passwords / base64 seeds / API keys / hostnames), so

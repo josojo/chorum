@@ -2,7 +2,7 @@
 
 Bootstrap incentive: let verified humans **refer** other humans, earn **reputation**
 when those referees become active, and let reputation tiers grant a **board**
-role with more say in hearme's future — **without ever publishing a nullifier**.
+role with more say in chorum's future — **without ever publishing a nullifier**.
 
 Status: IMPLEMENTED in the broker (steps 1–6 + 8 of §8 below; the web "invite a
 friend" UI, step 7, is still to do). It builds on ARCHITECTURE_V0.md (verify-once,
@@ -15,7 +15,7 @@ Implemented surface:
   an optional `referral_code`.
 - Tables: `referral_codes`, `referrals`, `reputation`, `board_members`
   (migration `0006_referrals_reputation_board.sql`, broker-private grants).
-- Config (`HEARME_BROKER_*`): `REFERRAL_MAX_ACTIVE_CODES` (20),
+- Config (`CHORUM_BROKER_*`): `REFERRAL_MAX_ACTIVE_CODES` (20),
   `REFERRAL_CODE_TTL_DAYS` (90), `REP_PER_ACTIVE_REFERRAL` (1),
   `REP_BOARD_THRESHOLD` (10), `BOARD_CREDENTIAL_TTL_DAYS` (180).
 
@@ -26,7 +26,7 @@ Implemented surface:
 The Self nullifier (`registrations.unique_identifier`) is the most sensitive value
 in the system. It is:
 
-- **deterministic** per `(passport, scope="hearme-v1")`, so it is a permanent,
+- **deterministic** per `(passport, scope="chorum-v1")`, so it is a permanent,
   scope-wide correlator for a single human;
 - the **primary key** of `registrations` — one human, one row;
 - deliberately **kept out of `envelopes`** (answers carry per-question voter tags
@@ -200,7 +200,7 @@ linking that action to their passport nullifier or their answer history**.
 ```ts
 type BoardCredential = {
   version: 1;
-  scope: "hearme-gov-v1";   // separate scope from answers
+  scope: "chorum-gov-v1";   // separate scope from answers
   gov_key: string;          // base64 Ed25519 pubkey, caller-generated
   tier: "board";
   issued_at: string;
@@ -229,9 +229,9 @@ to answers.
 
 Replace §6.1 issuance with: board members are leaves in a Merkle tree of
 commitments; a vote is a ZK proof of membership + a per-vote nullifier under
-`hearme-gov-v1`. Then not even the broker can link a vote to a member, and votes
+`chorum-gov-v1`. Then not even the broker can link a vote to a member, and votes
 are publicly verifiable on-chain (Celo, alongside Self). Out of scope for v0.1; the
-`scope: "hearme-gov-v1"` separation above is chosen so this migration doesn't
+`scope: "chorum-gov-v1"` separation above is chosen so this migration doesn't
 disturb the answer-scope identity.
 
 ---

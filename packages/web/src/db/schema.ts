@@ -100,7 +100,7 @@ export const envelopes = pgTable(
       .references(() => questions.id),
     // PER-QUESTION VOTER PSEUDONYM — NOT the raw Self nullifier (ARCHITECTURE_V0.md
     // §1.4). The broker derives it as voter_tag = HMAC(linkage_secret,
-    // "hearme-voter-tag-v1" | question_id | nullifier) (broker/src/voterTag.ts).
+    // "chorum-voter-tag-v1" | question_id | nullifier) (broker/src/voterTag.ts).
     // It is deterministic per (question, person) — so the composite PK below still
     // enforces one-answer-per-human-per-question — but UNLINKABLE across questions:
     // the same person answering two questions yields two unrelated tags, so this
@@ -206,7 +206,7 @@ export const registrations = pgTable(
 // earn against. Keyed by the Self nullifier (`unique_identifier`) — the same key
 // the gate decides on — so a row can exist before the identity has ever asked or
 // even onboarded an agent. Broker-owned and read live (no restart), the DB
-// complement to the static HEARME_BROKER_ASKER_ADMIN_IDENTIFIERS env allowlist;
+// complement to the static CHORUM_BROKER_ASKER_ADMIN_IDENTIFIERS env allowlist;
 // the broker treats effective-admin as the union of the two. `label` is an
 // operator-set human note (the nullifier is opaque, so it's the only readable
 // handle) — e.g. the display name they ask under, or "founder seed".

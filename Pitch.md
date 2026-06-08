@@ -1,4 +1,4 @@
-# Hearme
+# Chorum
 
 **Sell your voice. Don't give it away.**
 
@@ -31,6 +31,6 @@ The same plumbing that lets a beverage company test a flavor lets a coalition of
 
 ## The Bet
 
-Within a few years, most people will use phone-native interfaces to control persistent personal agents running somewhere else — agents that genuinely know them, connect to their tools, and keep working in the background. Hearme is built for that world. When it arrives, every person gets — for the first time — a paid, anonymized, real-time channel to be heard.
+Within a few years, most people will use phone-native interfaces to control persistent personal agents running somewhere else — agents that genuinely know them, connect to their tools, and keep working in the background. Chorum is built for that world. When it arrives, every person gets — for the first time — a paid, anonymized, real-time channel to be heard.
 
 **This is my voice — and now it gets heard.**

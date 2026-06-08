@@ -12,15 +12,15 @@
 // never change in prod" and IDENTITY.md (GH #97).
 //
 // PRODUCTION_SCOPE is the permanent mainnet value. In production
-// (HEARME_BROKER_PRODUCTION_MODE=1) the effective scope is ALWAYS this constant —
-// HEARME_BROKER_SELF_SCOPE is ignored — so a config change can never silently
+// (CHORUM_BROKER_PRODUCTION_MODE=1) the effective scope is ALWAYS this constant —
+// CHORUM_BROKER_SELF_SCOPE is ignored — so a config change can never silently
 // re-label every credential or weaken the cross-environment barrier (fail-safe,
-// mirroring the self-bridge). Outside prod, HEARME_BROKER_SELF_SCOPE selects the
-// scope (staging pins "staging-hearme-v1") so it matches that env's bridge scope.
-export const PRODUCTION_SCOPE = "hearme-v1";
+// mirroring the self-bridge). Outside prod, CHORUM_BROKER_SELF_SCOPE selects the
+// scope (staging pins "staging-chorum-v1") so it matches that env's bridge scope.
+export const PRODUCTION_SCOPE = "chorum-v1";
 
 // Resolve the effective broker scope. Returns the scope and, when prod is
-// overriding an explicit HEARME_BROKER_SELF_SCOPE, the value it chose to ignore
+// overriding an explicit CHORUM_BROKER_SELF_SCOPE, the value it chose to ignore
 // so the caller can warn loudly. Pure — safe to unit-test.
 export function resolveScope({
   productionMode,

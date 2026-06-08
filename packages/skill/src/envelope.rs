@@ -93,10 +93,10 @@ mod tests {
     fn token() -> DelegationToken {
         DelegationToken::from_value(json!({
             "version": 2,
-            "scope": "hearme-v1",
+            "scope": "chorum-v1",
             "unique_identifier": "self:test",
             "disclosed_predicates": { "region": "EU" },
-            "agent_key": "vG256kFHAI/bBigaiiQjfTdhkr6dz3ul4zMK9ZQPPMk=",
+            "agent_key": "CzdPHjqsN4fbFaBvAgcfkgbC2o383njYoniN5c0pBro=",
             "issued_at": "2026-01-01T00:00:00Z",
             "expires_at": "2026-12-31T00:00:00Z",
             "broker_signature": "AAAA",
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn no_signal_envelope_has_the_canonical_six_field_shape() {
-        let kp = Keypair::from_seed(b"AGENT-KEY-FOR-HEARME-TESTING-32B");
+        let kp = Keypair::from_seed(b"AGENT-KEY-FOR-CHORUM-TESTING-32B");
         let env = build_no_signal_envelope(
             "11111111-2222-3333-4444-555555555555",
             "nonce-abc",
@@ -135,7 +135,7 @@ mod tests {
     fn no_signal_does_not_change_the_signing_input() {
         // no_signal is UNSIGNED metadata: its signature must equal a normal
         // envelope's signature for the same (question_id, "", nonce, token).
-        let kp = Keypair::from_seed(b"AGENT-KEY-FOR-HEARME-TESTING-32B");
+        let kp = Keypair::from_seed(b"AGENT-KEY-FOR-CHORUM-TESTING-32B");
         let t = token();
         let ns = build_no_signal_envelope("q-1", "nonce-1", &t, &kp);
         let normal = build_envelope("q-1", "", "nonce-1", &t, &kp);

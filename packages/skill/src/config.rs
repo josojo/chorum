@@ -1,8 +1,8 @@
 //! Skill runtime configuration.
 //!
 //! Defaults assume the broker runs locally (docker-compose). All file paths sit
-//! under `~/.hermes/hearme/` by default; override via env vars with the
-//! `HEARME_SKILL_` prefix (mirroring the Python `pydantic-settings` model).
+//! under `~/.hermes/chorum/` by default; override via env vars with the
+//! `CHORUM_SKILL_` prefix (mirroring the Python `pydantic-settings` model).
 
 use std::path::PathBuf;
 
@@ -17,7 +17,7 @@ pub struct Settings {
     /// Soft cap on the host-model API spend the answering cron may incur per
     /// calendar month (USD). The cost guard in [`crate::tools::list_open_questions`]
     /// stops handing out questions once this month's recorded spend reaches it.
-    /// Default 5.0; override via `HEARME_SKILL_MONTHLY_BUDGET_USD`.
+    /// Default 5.0; override via `CHORUM_SKILL_MONTHLY_BUDGET_USD`.
     pub monthly_budget_usd: f64,
 }
 
@@ -38,7 +38,7 @@ pub fn default_root() -> PathBuf {
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".hermes")
         });
-    hermes_home.join("hearme")
+    hermes_home.join("chorum")
 }
 
 impl Settings {
@@ -54,17 +54,17 @@ impl Settings {
         }
     }
 
-    /// Load settings, applying `HEARME_SKILL_*` env overrides over the defaults.
+    /// Load settings, applying `CHORUM_SKILL_*` env overrides over the defaults.
     pub fn load() -> Self {
         let d = Self::defaults();
         Self {
-            broker_url: env("HEARME_SKILL_BROKER_URL").unwrap_or(d.broker_url),
-            self_bridge_url: env("HEARME_SKILL_SELF_BRIDGE_URL").unwrap_or(d.self_bridge_url),
-            root_dir: env("HEARME_SKILL_ROOT_DIR")
+            broker_url: env("CHORUM_SKILL_BROKER_URL").unwrap_or(d.broker_url),
+            self_bridge_url: env("CHORUM_SKILL_SELF_BRIDGE_URL").unwrap_or(d.self_bridge_url),
+            root_dir: env("CHORUM_SKILL_ROOT_DIR")
                 .map(PathBuf::from)
                 .unwrap_or(d.root_dir),
-            memory_backend: env("HEARME_SKILL_MEMORY_BACKEND").unwrap_or(d.memory_backend),
-            monthly_budget_usd: env("HEARME_SKILL_MONTHLY_BUDGET_USD")
+            memory_backend: env("CHORUM_SKILL_MEMORY_BACKEND").unwrap_or(d.memory_backend),
+            monthly_budget_usd: env("CHORUM_SKILL_MONTHLY_BUDGET_USD")
                 .and_then(|v| v.parse::<f64>().ok())
                 .filter(|v| *v >= 0.0)
                 .unwrap_or(d.monthly_budget_usd),
@@ -87,7 +87,7 @@ impl Settings {
         self.root_dir.join("chatgpt_memory.sqlite")
     }
 
-    /// The active Hermes home — the parent of our data root (`<home>/hearme`).
+    /// The active Hermes home — the parent of our data root (`<home>/chorum`).
     /// `None` only if `root_dir` has no parent (a degenerate path).
     pub fn hermes_home(&self) -> Option<PathBuf> {
         self.root_dir.parent().map(|p| p.to_path_buf())

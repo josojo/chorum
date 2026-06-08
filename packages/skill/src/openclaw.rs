@@ -10,16 +10,16 @@ use std::process::Command;
 
 use crate::Error;
 
-pub const SKILL_NAME: &str = "hearme";
-pub const CRON_NAME: &str = "hearme-answer-cycle";
+pub const SKILL_NAME: &str = "chorum";
+pub const CRON_NAME: &str = "chorum-answer-cycle";
 pub const DEFAULT_SCHEDULE: &str = "0 9 * * *";
 pub const CRON_MESSAGE: &str =
-    "Answer any open Hearme questions on my behalf using the hearme skill, then stop.";
+    "Answer any open Chorum questions on my behalf using the chorum skill, then stop.";
 
 /// Canonical SKILL.md — embedded from the committed copy so the file
 /// `openclaw skills install ./...` reads and the file the installer writes can
 /// never drift (they are the same bytes by construction).
-pub const SKILL_MD: &str = include_str!("../openclaw/hearme/SKILL.md");
+pub const SKILL_MD: &str = include_str!("../openclaw/chorum/SKILL.md");
 
 pub fn openclaw_root() -> PathBuf {
     dirs::home_dir()
@@ -152,23 +152,23 @@ mod tests {
     #[test]
     fn skill_md_frontmatter_shape() {
         assert!(SKILL_MD.starts_with("---\n"));
-        assert!(SKILL_MD.contains("\nname: hearme\n"));
+        assert!(SKILL_MD.contains("\nname: chorum\n"));
         let meta_line = SKILL_MD
             .lines()
             .find(|l| l.starts_with("metadata:"))
             .unwrap();
         let json_part = meta_line.trim_start_matches("metadata:").trim();
         let _: serde_json::Value = serde_json::from_str(json_part).unwrap();
-        assert!(SKILL_MD.contains("hearme-skill list-questions"));
-        assert!(SKILL_MD.contains("hearme-skill submit-answer"));
-        assert!(SKILL_MD.contains("hearme-skill submit-no-signal"));
+        assert!(SKILL_MD.contains("chorum-skill list-questions"));
+        assert!(SKILL_MD.contains("chorum-skill submit-answer"));
+        assert!(SKILL_MD.contains("chorum-skill submit-no-signal"));
     }
 
     #[test]
     fn install_writes_skill_md() {
         let dir = tempfile::tempdir().unwrap();
         let target = install_openclaw_skill(Some(dir.path())).unwrap();
-        assert_eq!(target, dir.path().join("hearme"));
+        assert_eq!(target, dir.path().join("chorum"));
         assert_eq!(
             std::fs::read_to_string(target.join("SKILL.md")).unwrap(),
             SKILL_MD

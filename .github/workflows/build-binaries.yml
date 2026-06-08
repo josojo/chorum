@@ -1,6 +1,6 @@
 name: build-binaries
 
-# Build the standalone `hearme-skill` binary (Rust) for Linux x86_64 and
+# Build the standalone `chorum-skill` binary (Rust) for Linux x86_64 and
 # aarch64, smoke-test it, upload it as a CI artifact, and — on a version tag —
 # attach both binaries plus install.sh to the GitHub Release. Each arch is built
 # natively on a runner of that arch and targets musl so release binaries do not
@@ -61,19 +61,19 @@ jobs:
 
       - name: Smoke-test the binary
         run: |
-          ./target/${{ matrix.target }}/release/hearme-skill --help
+          ./target/${{ matrix.target }}/release/chorum-skill --help
           # list-questions never raises: with no broker reachable it prints a
           # JSON {"error": ...} and exits 0. Confirms the built binary works.
-          ./target/${{ matrix.target }}/release/hearme-skill list-questions
+          ./target/${{ matrix.target }}/release/chorum-skill list-questions
 
       - name: Rename for release
-        run: mv "target/${{ matrix.target }}/release/hearme-skill" "target/${{ matrix.target }}/release/hearme-skill-linux-${{ matrix.arch }}"
+        run: mv "target/${{ matrix.target }}/release/chorum-skill" "target/${{ matrix.target }}/release/chorum-skill-linux-${{ matrix.arch }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: hearme-skill-linux-${{ matrix.arch }}
-          path: packages/skill/target/${{ matrix.target }}/release/hearme-skill-linux-${{ matrix.arch }}
+          name: chorum-skill-linux-${{ matrix.arch }}
+          path: packages/skill/target/${{ matrix.target }}/release/chorum-skill-linux-${{ matrix.arch }}
           if-no-files-found: error
 
       - name: Attach to release (tags only)
@@ -81,5 +81,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            packages/skill/target/${{ matrix.target }}/release/hearme-skill-linux-${{ matrix.arch }}
+            packages/skill/target/${{ matrix.target }}/release/chorum-skill-linux-${{ matrix.arch }}
             packages/skill/scripts/install.sh

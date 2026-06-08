@@ -1,24 +1,24 @@
 # Hermes plugin manifest (hermes-agent >= 0.14).
 #
-# You don't write this file by hand — the `hearme-skill` binary drops it (plus a
-# generated stdlib-only subprocess shim) into ~/.hermes/plugins/hearme/:
+# You don't write this file by hand — the `chorum-skill` binary drops it (plus a
+# generated stdlib-only subprocess shim) into ~/.hermes/plugins/chorum/:
 #
-#   hearme-skill install          # both hosts; or `install-plugin` for Hermes only
+#   chorum-skill install          # both hosts; or `install-plugin` for Hermes only
 #
 # That's the whole install: no Python package to pip-install, no second codebase.
 # The shim shells out to the binary for every tool call and self-registers the
 # answering cron once a delegation token exists. The directory drop-in is the
 # deterministic load path at gateway boot (`hermes plugins install owner/repo`
 # does NOT work — it clones the monorepo root and misses this subdirectory).
-name: hearme
+name: chorum
 version: 0.0.1
 description: >-
   Answer public yes/no questions on the user's behalf, using the host agent's
   own model and memory. Inference needs no extra API key; a cron job drives the
   answering cycle.
-author: Hearme
+author: Chorum
 kind: standalone
 provides_tools:
-  - hearme_list_open_questions
-  - hearme_submit_answer
-  - hearme_submit_no_signal
+  - chorum_list_open_questions
+  - chorum_submit_answer
+  - chorum_submit_no_signal

@@ -1,4 +1,4 @@
-# hearme-web — Next.js 14 App Router.
+# chorum-web — Next.js 14 App Router.
 # Build context: repo root.
 FROM node:20-alpine
 

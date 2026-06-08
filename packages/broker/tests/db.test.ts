@@ -43,8 +43,8 @@ let selfStatusImpl: GetSelfRequest = async () => {
 };
 
 beforeAll(async () => {
-  process.env.HEARME_BROKER_RATELIMIT_ENABLED = "0";
-  process.env.HEARME_BROKER_DEV_INSECURE_REGISTER = "1";
+  process.env.CHORUM_BROKER_RATELIMIT_ENABLED = "0";
+  process.env.CHORUM_BROKER_DEV_INSECURE_REGISTER = "1";
   try {
     pg = await startPg();
   } catch (err) {
@@ -230,14 +230,14 @@ describe("POST /v1/register (verify-once)", () => {
 
   it("rejects an unconfirmed on-chain registry when required", async (ctx) => {
     if (!pg) return ctx.skip();
-    process.env.HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION = "1";
+    process.env.CHORUM_BROKER_REQUIRE_REGISTRY_CONFIRMATION = "1";
     const res = await app.inject({
       method: "POST",
       url: "/v1/register",
       payload: makeEnrollment({ uniqueIdentifier: "self:reg-3", registryConfirmed: false }),
     });
     expect(res.json()).toMatchObject({ accepted: false, reason: "self_registry_unconfirmed" });
-    delete process.env.HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION;
+    delete process.env.CHORUM_BROKER_REQUIRE_REGISTRY_CONFIRMATION;
   });
 });
 

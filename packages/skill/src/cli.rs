@@ -14,7 +14,7 @@ use crate::config::{get_settings, Settings};
 use crate::{hermes, onboarding, openclaw, tools};
 
 #[derive(Parser)]
-#[command(name = "hearme-skill", version, about = "Hearme standalone skill CLI")]
+#[command(name = "chorum-skill", version, about = "Chorum standalone skill CLI")]
 struct Cli {
     /// Target a named Hermes profile (installs under ~/.hermes/profiles/<name>).
     /// Without this, the active $HERMES_HOME is used, else the default ~/.hermes.
@@ -91,7 +91,7 @@ enum Command {
         #[arg(long)]
         bridge_url: Option<String>,
     },
-    /// Detect the agent host(s) and install the hearme skill/plugin for each.
+    /// Detect the agent host(s) and install the chorum skill/plugin for each.
     Install {
         #[arg(long, value_enum, default_value_t = HostArg::Auto)]
         host: HostArg,
@@ -146,7 +146,7 @@ enum Command {
         #[arg(long)]
         broker_url: Option<String>,
     },
-    /// Import a downloaded ChatGPT export into Hearme's local memory DB.
+    /// Import a downloaded ChatGPT export into Chorum's local memory DB.
     ChatgptImport {
         /// Path to ChatGPT export ZIP, extracted directory, or conversations.json.
         export_path: String,
@@ -364,7 +364,7 @@ fn warn_if_ambiguous_profile(explicit_target: bool) {
         profiles.join(", ")
     );
     eprintln!(
-        "      If your agent runs under one of those, re-run scoped to it, e.g.:\n        hearme-skill --hermes-profile {} <command>",
+        "      If your agent runs under one of those, re-run scoped to it, e.g.:\n        chorum-skill --hermes-profile {} <command>",
         profiles[0]
     );
 }
@@ -477,7 +477,7 @@ fn post_onboard_setup(host: HostArg, broker_url: &str, bridge_url: &str, explici
                 enable_hermes_plugin();
                 let (ok, msg) = hermes::restart_gateway();
                 if ok {
-                    println!("{msg}; the hearme tools are now loaded (the cron job self-registers).");
+                    println!("{msg}; the chorum tools are now loaded (the cron job self-registers).");
                 } else {
                     eprintln!(
                         "Plugin written, but the gateway was not restarted ({msg}). Restart it to load the tools:\n  {}",
@@ -485,7 +485,7 @@ fn post_onboard_setup(host: HostArg, broker_url: &str, bridge_url: &str, explici
                     );
                 }
             }
-            Err(e) => eprintln!("Note: could not write the Hermes plugin drop-in ({e}). Run `hearme-skill install-plugin` to retry."),
+            Err(e) => eprintln!("Note: could not write the Hermes plugin drop-in ({e}). Run `chorum-skill install-plugin` to retry."),
         }
     }
     if hosts.contains(&"openclaw") {
@@ -504,22 +504,22 @@ fn post_onboard_setup(host: HostArg, broker_url: &str, bridge_url: &str, explici
                 }
                 report_openclaw_cron(&openclaw::ensure_openclaw_cron(None, None));
             }
-            Err(e) => eprintln!("Note: could not write the OpenClaw skill ({e}). Run `hearme-skill install-openclaw` to retry."),
+            Err(e) => eprintln!("Note: could not write the OpenClaw skill ({e}). Run `chorum-skill install-openclaw` to retry."),
         }
     }
 }
 
-/// Register `hearme` in the active profile's plugin allow-list so the gateway
+/// Register `chorum` in the active profile's plugin allow-list so the gateway
 /// actually loads the drop-in. Standalone plugins are opt-in; without this the
 /// gateway discovers the plugin but skips it, and the cron never self-registers.
 /// Best-effort — a parse failure prints the manual fallback rather than aborting.
 fn enable_hermes_plugin() {
     let path = hermes::config_path();
     match hermes::enable_plugin_in_config(&path) {
-        Ok(true) => println!("Enabled the hearme plugin in {}.", path.display()),
+        Ok(true) => println!("Enabled the chorum plugin in {}.", path.display()),
         Ok(false) => {} // already in plugins.enabled — nothing to do
         Err(e) => eprintln!(
-            "Note: could not enable the hearme plugin in {} ({e}). Standalone plugins are opt-in; enable it by hand, then restart the gateway:\n  hermes plugins enable hearme",
+            "Note: could not enable the chorum plugin in {} ({e}). Standalone plugins are opt-in; enable it by hand, then restart the gateway:\n  hermes plugins enable chorum",
             path.display()
         ),
     }
@@ -562,7 +562,7 @@ fn cmd_schedule() -> i32 {
     // the job once you onboard, so this command is a no-op here.
     eprintln!(
         "could not register the Hermes cron job from the standalone binary (the cron API lives inside the Hermes gateway).\n\
-         The plugin shim self-registers it once a delegation token exists — run `hearme-skill install` then `hearme-skill onboard`."
+         The plugin shim self-registers it once a delegation token exists — run `chorum-skill install` then `chorum-skill onboard`."
     );
     2
 }
@@ -710,7 +710,7 @@ fn cmd_install(
         );
         return 1;
     }
-    println!("Next: run `hearme-skill onboard --broker-url <url> --bridge-url <url>` once to set up your Self identity.");
+    println!("Next: run `chorum-skill onboard --broker-url <url> --bridge-url <url>` once to set up your Self identity.");
     0
 }
 
@@ -735,7 +735,7 @@ fn cmd_install_openclaw(
     if !no_cron {
         report_openclaw_cron(&openclaw::ensure_openclaw_cron(schedule, None));
     }
-    println!("OpenClaw snapshots skills at session start — start a new session (or run `openclaw gateway restart`) to pick up hearme.");
+    println!("OpenClaw snapshots skills at session start — start a new session (or run `openclaw gateway restart`) to pick up chorum.");
     0
 }
 
@@ -757,7 +757,7 @@ fn cmd_chatgpt_import(export_path: &str, db: Option<&str>, include_assistant: bo
                 stats.db_path.display()
             );
             println!(
-                "Use HEARME_SKILL_MEMORY_BACKEND=chatgpt-export to answer from this memory DB."
+                "Use CHORUM_SKILL_MEMORY_BACKEND=chatgpt-export to answer from this memory DB."
             );
             0
         }
@@ -790,7 +790,7 @@ fn cmd_cost(as_json: bool) -> i32 {
         return 0;
     }
 
-    println!("Hearme answering-cron cost — host-model API spend (read from Hermes' usage DB)");
+    println!("Chorum answering-cron cost — host-model API spend (read from Hermes' usage DB)");
     println!(
         "  This month ({}): ${:.4}  over {} run(s)",
         report.current_month, report.current_month_cost_usd, report.current_month_runs
@@ -816,7 +816,7 @@ fn cmd_cost(as_json: bool) -> i32 {
         }
     }
     println!(
-        "  Basis: {}  •  budget override: HEARME_SKILL_MONTHLY_BUDGET_USD",
+        "  Basis: {}  •  budget override: CHORUM_SKILL_MONTHLY_BUDGET_USD",
         if report.has_actual_cost {
             "actual + estimated provider pricing"
         } else {

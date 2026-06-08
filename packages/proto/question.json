@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://hearme.network/proto/question.json",
+  "$id": "https://chorum.network/proto/question.json",
   "title": "Question",
   "description": "Shape returned by GET /v1/questions/open. See ARCHITECTURE_V0.md §5. The `topic` field is a space-joined list of canonical tokens from topics.json, assigned by the classifier service (packages/classifier) — NEVER by the asker. The broker filters out unclassified rows before serving, so this field is guaranteed non-empty on the wire.",
   "type": "object",

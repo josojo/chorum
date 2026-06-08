@@ -17,7 +17,7 @@
 services:
   prometheus:
     image: prom/prometheus:v2.54.1
-    container_name: hearme-prometheus
+    container_name: chorum-prometheus
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -31,7 +31,7 @@ services:
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
-    container_name: hearme-alertmanager
+    container_name: chorum-alertmanager
     restart: unless-stopped
     volumes:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
@@ -43,20 +43,20 @@ services:
   # — Prometheus reaches it internally at blackbox-exporter:9115.
   blackbox-exporter:
     image: prom/blackbox-exporter:v0.25.0
-    container_name: hearme-blackbox-exporter
+    container_name: chorum-blackbox-exporter
     restart: unless-stopped
     volumes:
       - ./monitoring/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
 
   grafana:
     image: grafana/grafana:11.2.0
-    container_name: hearme-grafana
+    container_name: chorum-grafana
     restart: unless-stopped
     depends_on:
       - prometheus
     environment:
       # Default dev password is "admin"; override in prod via the env / SSM.
-      GF_SECURITY_ADMIN_PASSWORD: ${HEARME_GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${CHORUM_GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro

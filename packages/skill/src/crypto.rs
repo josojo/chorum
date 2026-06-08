@@ -120,9 +120,9 @@ mod tests {
     use base64::Engine;
 
     // Agent keypair seed from packages/broker/tests/goldens.test.ts: the 32
-    // ASCII bytes of "AGENT-KEY-FOR-HEARME-TESTING-32B".
-    const SEED: &[u8; 32] = b"AGENT-KEY-FOR-HEARME-TESTING-32B";
-    const AGENT_PUB_B64: &str = "vG256kFHAI/bBigaiiQjfTdhkr6dz3ul4zMK9ZQPPMk=";
+    // ASCII bytes of "AGENT-KEY-FOR-CHORUM-TESTING-32B".
+    const SEED: &[u8; 32] = b"AGENT-KEY-FOR-CHORUM-TESTING-32B";
+    const AGENT_PUB_B64: &str = "CzdPHjqsN4fbFaBvAgcfkgbC2o383njYoniN5c0pBro=";
 
     #[test]
     fn public_key_matches_broker_golden() {
@@ -139,13 +139,13 @@ mod tests {
             "11111111-2222-3333-4444-555555555555",
             "yes",
             "nonce-abc",
-            "03e9bf5601d898df94914f61003abf783e62b7a0a92c1f2bde32b529a0355717",
+            "6433b2ffed393ca1192c61f4603c47dccf772c4e75b8ef90c16a1e5ede2f67b3",
         );
         let sig = kp.sign(&digest);
         let sig_b64 = base64::engine::general_purpose::STANDARD.encode(sig);
         assert_eq!(
             sig_b64,
-            "dGnBfOhWyo7S6PNqr0SUGPu5Lk1THJEZ80Wp3Y2+KTfGMR/zS4T9WknXFvwvxn1ma6y+7C9fGBZLGwoF7dhTBQ=="
+            "7+i3+8I9gFyGxpTuEzRcMren6mF/yNN1c8VoK6qp2l9cJDOcWhDFlg59F6YrAKZOJLCCjlt5FwJpYEbVXXMDAw=="
         );
         // And it verifies under our own verifier.
         assert!(verify(&kp.public_bytes(), &digest, &sig));
@@ -156,12 +156,12 @@ mod tests {
         let kp = Keypair::from_seed(SEED);
         let digest = crate::canonical::revocation_payload(
             "11111111-2222-3333-4444-555555555555",
-            "03e9bf5601d898df94914f61003abf783e62b7a0a92c1f2bde32b529a0355717",
+            "6433b2ffed393ca1192c61f4603c47dccf772c4e75b8ef90c16a1e5ede2f67b3",
         );
         let sig_b64 = base64::engine::general_purpose::STANDARD.encode(kp.sign(&digest));
         assert_eq!(
             sig_b64,
-            "IRHlY3omUKleOAKchmQe+TwZ2Pdd1D7afshfNaA9B6fsGMmdZfDhukisxpwMnCa3ro9yGUNGSdDy4qp2vwEqDg=="
+            "7h5CcExeYwvRUmyRlS2nhGnylk2l9GYs0R6Oci9fp0ky72SIq9H5jBNBzS74uykig6TARRrAFmpED4su3oO9BA=="
         );
     }
 }

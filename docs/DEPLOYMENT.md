@@ -1,4 +1,4 @@
-# Production deployment — hearme v0
+# Production deployment — chorum v0
 
 > Operational runbook for shipping the v0 stack. Covers what to set, what to
 > rotate, how to back up, and how to verify the loop end-to-end on real Self
@@ -19,30 +19,30 @@ The repo ships dev defaults so a fresh `scripts/dev-up.sh` works out of the
 box. Those defaults are catastrophic in production: a dev signing key lets
 anyone forge a `DelegationToken`; the dev-bypass route mints identities with no
 Self proof at all. The broker **refuses to start** when
-`HEARME_BROKER_PRODUCTION_MODE=1` is set and any documented dev default is
+`CHORUM_BROKER_PRODUCTION_MODE=1` is set and any documented dev default is
 still present (see `packages/broker/src/startupChecks.ts`).
 Failing closed is the only safe default; do not paper over this with a flag.
 
 > **Behaviour gap, follow-up.** This TS port uses the **opt-in
-> `HEARME_BROKER_PRODUCTION_MODE`** toggle. The
-> *fail-closed-by-default + opt-in `HEARME_BROKER_DEV_MODE`* inversion that
+> `CHORUM_BROKER_PRODUCTION_MODE`** toggle. The
+> *fail-closed-by-default + opt-in `CHORUM_BROKER_DEV_MODE`* inversion that
 > landed on `main` in #62 has **not** been ported here, so forgetting the env
 > var in production does **not** fail closed — the checks simply don't run.
 > Until #62 is ported to TS, prod compose **must** set
-> `HEARME_BROKER_PRODUCTION_MODE: "1"` (already done in `docker-compose.prod.yml`).
+> `CHORUM_BROKER_PRODUCTION_MODE: "1"` (already done in `docker-compose.prod.yml`).
 
 The full pre-flight list (the broker checks each on startup when
-`HEARME_BROKER_PRODUCTION_MODE=1`):
+`CHORUM_BROKER_PRODUCTION_MODE=1`):
 
 | Env var | Dev default | Production value |
 |---|---|---|
-| `HEARME_BROKER_PRODUCTION_MODE` | unset | **`1`** (without this, checks below do not run) |
-| `HEARME_BROKER_SIGNING_KEY` | published dev seed | a fresh 32-byte Ed25519 seed (base64), in your secret manager |
-| `HEARME_BROKER_DATABASE_URL` | `…hearme_broker_dev@localhost…` | rotated password, internal DSN |
-| `HEARME_BROKER_DEV_INSECURE_REGISTER` | `false` | **stays `false`** (mounts `/v1/dev/register` if `true`) |
-| `HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION` | `true` | **stays `true`** (the one-time Celo registry/root check, §5) |
-| `HEARME_BROKER_EXPOSE_REJECTION_REASONS` | `true` | **`false`** (otherwise the broker is a verification oracle) |
-| `HEARME_BROKER_SELF_BRIDGE_URL` | `http://localhost:8787` | same-host sidecar (warning) or internal URL |
+| `CHORUM_BROKER_PRODUCTION_MODE` | unset | **`1`** (without this, checks below do not run) |
+| `CHORUM_BROKER_SIGNING_KEY` | published dev seed | a fresh 32-byte Ed25519 seed (base64), in your secret manager |
+| `CHORUM_BROKER_DATABASE_URL` | `…chorum_broker_dev@localhost…` | rotated password, internal DSN |
+| `CHORUM_BROKER_DEV_INSECURE_REGISTER` | `false` | **stays `false`** (mounts `/v1/dev/register` if `true`) |
+| `CHORUM_BROKER_REQUIRE_REGISTRY_CONFIRMATION` | `true` | **stays `true`** (the one-time Celo registry/root check, §5) |
+| `CHORUM_BROKER_EXPOSE_REJECTION_REASONS` | `true` | **`false`** (otherwise the broker is a verification oracle) |
+| `CHORUM_BROKER_SELF_BRIDGE_URL` | `http://localhost:8787` | same-host sidecar (warning) or internal URL |
 | `SELF_MOCK_PASSPORT` (self-bridge) | `1` (staging) | **`0`** (mainnet, real passports) |
 | `SELF_CELO_RPC_URL` (self-bridge) | unset | a Celo mainnet RPC URL |
 
@@ -69,12 +69,12 @@ SSM Parameter Store** under a per-env path:
 
 | Path | Type | Holds |
 |---|---|---|
-| `/hearme/staging/HEARME_STAGING_*` | `SecureString` (passwords, signing key, OpenRouter key) / `String` (host, callback URL) | staging |
-| `/hearme/prod/HEARME_PROD_*` | same split | prod |
+| `/chorum/staging/CHORUM_STAGING_*` | `SecureString` (passwords, signing key, OpenRouter key) / `String` (host, callback URL) | staging |
+| `/chorum/prod/CHORUM_PROD_*` | same split | prod |
 
 The leaf of each path is the **exact** env var name the compose overlays
 reference (`docker-compose.staging.yml` / `docker-compose.prod.yml`), so the
-on-box `.env` is just a projection of `/hearme/<env>/*`. The full key list per
+on-box `.env` is just a projection of `/chorum/<env>/*`. The full key list per
 env is in `staging.env.example` / `prod.env.example`. For the exact workflow to
 add a new parameter and wire it into compose, see `docs/ADDING_SSM_SECRET.md`.
 
@@ -88,8 +88,8 @@ shred -u ./staging.env
 Then redeploy so the box picks up the new value.
 
 **Staging deploy** renders the secrets automatically: `deploy-staging.yml`
-streams `scripts/render-secrets-env.sh staging` onto the box as `~/hearme/.env`
-before `docker compose up` (the runner already holds the `hearme-staging` AWS
+streams `scripts/render-secrets-env.sh staging` onto the box as `~/chorum/.env`
+before `docker compose up` (the runner already holds the `chorum-staging` AWS
 creds). Rotating a staging secret = change it in SSM, then push to `main` (or
 re-run the workflow).
 
@@ -99,10 +99,10 @@ the stack up. Pin the images to the commit's SHA and record last-known-good
 
 ```sh
 scripts/render-secrets-env.sh prod \
-  | ssh -i ~/.ssh/hearme-prod.pem ubuntu@<prod-ip> 'umask 077; cat > ~/hearme/.env'
-ssh -i ~/.ssh/hearme-prod.pem ubuntu@<prod-ip> bash -se <<'EOF'
-  cd ~/hearme && git pull
-  export HEARME_DEPLOY_SHA="$(git rev-parse --short=12 HEAD)"
+  | ssh -i ~/.ssh/chorum-prod.pem ubuntu@<prod-ip> 'umask 077; cat > ~/chorum/.env'
+ssh -i ~/.ssh/chorum-prod.pem ubuntu@<prod-ip> bash -se <<'EOF'
+  cd ~/chorum && git pull
+  export CHORUM_DEPLOY_SHA="$(git rev-parse --short=12 HEAD)"
   docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
   scripts/healthgate.sh                 # fail here = do NOT finalize; rollback stays valid
   scripts/deploy-finalize.sh prod       # records .deploy-state, prunes stale images
@@ -113,18 +113,18 @@ EOF
 services internally), so prod uses a single `-f` — not the `-f base -f overlay`
 pair staging uses. Prod's database is **AWS RDS**, not an on-box container, so
 the prod file defines no `postgres` service and the DSNs target
-`${HEARME_PROD_POSTGRES_HOST}`. First-time RDS provisioning + bootstrap is §4;
+`${CHORUM_PROD_POSTGRES_HOST}`. First-time RDS provisioning + bootstrap is §4;
 SHA-pinned images / rollback (§7) are unchanged.
 
 **IAM** — the principal that renders secrets needs, scoped to its env's path:
 
 ```
-ssm:GetParametersByPath   arn:aws:ssm:eu-central-1:<acct>:parameter/hearme/<env>/*
+ssm:GetParametersByPath   arn:aws:ssm:eu-central-1:<acct>:parameter/chorum/<env>/*
 kms:Decrypt               the key SSM used (alias/aws/ssm by default)
 ```
 
 `push-secrets-to-ssm.sh` additionally needs `ssm:PutParameter` + `kms:Encrypt`.
-The staging deploy uses the `hearme-staging` IAM user (already wired into
+The staging deploy uses the `chorum-staging` IAM user (already wired into
 `deploy-staging.yml`); prod rendering uses your operator credentials.
 
 ---
@@ -138,13 +138,13 @@ window rate limits** on the write endpoints (PR introduced
 
 | What | Default | Override |
 |---|---|---|
-| `POST /v1/register` | 3/hour | `HEARME_BROKER_RATELIMIT_REGISTER_PER_HOUR` |
-| `POST /v1/envelopes` | 30/min | `HEARME_BROKER_RATELIMIT_ENVELOPES_PER_MINUTE` |
-| `POST /v1/envelopes/revoke` | 10/min | `HEARME_BROKER_RATELIMIT_REVOKE_PER_MINUTE` |
-| `/ask` question creation | 5/hour | `HEARME_WEB_RATELIMIT_QUESTIONS_PER_HOUR` |
+| `POST /v1/register` | 3/hour | `CHORUM_BROKER_RATELIMIT_REGISTER_PER_HOUR` |
+| `POST /v1/envelopes` | 30/min | `CHORUM_BROKER_RATELIMIT_ENVELOPES_PER_MINUTE` |
+| `POST /v1/envelopes/revoke` | 10/min | `CHORUM_BROKER_RATELIMIT_REVOKE_PER_MINUTE` |
+| `/ask` question creation | 5/hour | `CHORUM_WEB_RATELIMIT_QUESTIONS_PER_HOUR` |
 
 Header trust is on by default because the v0 shape is **Caddy → app**; set
-`HEARME_BROKER_RATELIMIT_TRUST_PROXY_HEADERS=false` and `HEARME_WEB_TRUST_PROXY_HEADERS=false`
+`CHORUM_BROKER_RATELIMIT_TRUST_PROXY_HEADERS=false` and `CHORUM_WEB_TRUST_PROXY_HEADERS=false`
 **only** if you ever expose either service directly. Otherwise any client can
 forge `X-Real-IP` and bypass the limit.
 
@@ -165,7 +165,7 @@ passports, so:
 1. Set `SELF_MOCK_PASSPORT=0` on the bridge.
 2. Set `SELF_CELO_RPC_URL` to a Celo **mainnet** RPC endpoint (an Infura /
    Alchemy / public node URL).
-3. Keep `HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION=true` so the broker
+3. Keep `CHORUM_BROKER_REQUIRE_REGISTRY_CONFIRMATION=true` so the broker
    rejects any registration whose Merkle root isn't current on Celo.
 
 Verify the chain dependency before going live:
@@ -189,26 +189,26 @@ identity. They are frozen for the life of an environment's data:
 
 | Constant | Frozen value (prod) | Env / staging | Defined in | Why it can never change |
 |----------|--------------------|---------------|------------|-------------------------|
-| **Self scope** (nullifier) | `hearme-v1` | `SELF_SCOPE` (staging: `staging-hearme-v1`) | `packages/self-bridge/src/scope.js` → `PRODUCTION_SCOPE` | The Self circuit hashes the scope into every nullifier (`unique_identifier`). A new scope gives every existing passport a brand-new identity: Sybil resistance resets, every `registrations` row orphans, and every per-question voter tag stops matching. There is no migration path — old nullifiers cannot be re-derived. (GH #97) |
-| **Broker credential `scope`** | `hearme-v1` | `HEARME_BROKER_SELF_SCOPE` (staging: `staging-hearme-v1`) | `packages/broker/src/verify/scope.ts` → `PRODUCTION_SCOPE` | Stamped into every DelegationToken / asker-session, bound into the broker signature, and checked against incoming credentials (`verify/delegation.ts`, `SELF_SCOPE_MISMATCH`). **Must equal the env's Self scope.** Together with the per-env signing key, it is what keeps a staging credential from ever being accepted by prod. |
+| **Self scope** (nullifier) | `chorum-v1` | `SELF_SCOPE` (staging: `staging-chorum-v1`) | `packages/self-bridge/src/scope.js` → `PRODUCTION_SCOPE` | The Self circuit hashes the scope into every nullifier (`unique_identifier`). A new scope gives every existing passport a brand-new identity: Sybil resistance resets, every `registrations` row orphans, and every per-question voter tag stops matching. There is no migration path — old nullifiers cannot be re-derived. (GH #97) |
+| **Broker credential `scope`** | `chorum-v1` | `CHORUM_BROKER_SELF_SCOPE` (staging: `staging-chorum-v1`) | `packages/broker/src/verify/scope.ts` → `PRODUCTION_SCOPE` | Stamped into every DelegationToken / asker-session, bound into the broker signature, and checked against incoming credentials (`verify/delegation.ts`, `SELF_SCOPE_MISMATCH`). **Must equal the env's Self scope.** Together with the per-env signing key, it is what keeps a staging credential from ever being accepted by prod. |
 
-The two scopes **must match within an environment** (prod `hearme-v1` ↔
-`hearme-v1`; staging `staging-hearme-v1` ↔ `staging-hearme-v1`).
+The two scopes **must match within an environment** (prod `chorum-v1` ↔
+`chorum-v1`; staging `staging-chorum-v1` ↔ `staging-chorum-v1`).
 
 How the freeze is enforced (both bridge and broker, identical pattern):
 
 - **Production ignores the env var entirely.** With `SELF_PRODUCTION_MODE=1`
-  (bridge) / `HEARME_BROKER_PRODUCTION_MODE=1` (broker), the scope is pinned to
-  `PRODUCTION_SCOPE` in code and `SELF_SCOPE` / `HEARME_BROKER_SELF_SCOPE` is
+  (bridge) / `CHORUM_BROKER_PRODUCTION_MODE=1` (broker), the scope is pinned to
+  `PRODUCTION_SCOPE` in code and `SELF_SCOPE` / `CHORUM_BROKER_SELF_SCOPE` is
   ignored (a loud warning is logged if one is set). A dropped/typo'd/edited env
   var therefore **cannot** re-mint identities — the worst case is a warning, not
   a silent identity reset (fail-safe).
 - **Staging uses a distinct frozen scope.** `docker-compose.staging.yml` pins
-  `SELF_SCOPE=staging-hearme-v1` and `HEARME_BROKER_SELF_SCOPE=staging-hearme-v1`
+  `SELF_SCOPE=staging-chorum-v1` and `CHORUM_BROKER_SELF_SCOPE=staging-chorum-v1`
   so staging's mock-passport identities and credentials can never collide with
   prod. Equally frozen for staging's data. *(Adopting a distinct staging scope is
   a one-time reset of staging's existing identity graph — fine pre-launch.)*
-- **Local dev** uses `hearme-v1` from `docker-compose.yml` (mock passports +
+- **Local dev** uses `chorum-v1` from `docker-compose.yml` (mock passports +
   throwaway dev DB, so no collision with prod).
 
 To intentionally start a fresh identity generation (a true `v2`), you bump
@@ -252,25 +252,25 @@ is a separate availability decision that does not change the backup story.
 > maximum`). Pass `--retention-days 1` to provision now (still automated +
 > off-box + 1-day PITR — a large step up from a single volume), then raise it
 > after upgrading the plan, with no downtime:
-> `aws rds modify-db-instance --db-instance-identifier hearme-prod --backup-retention-period 7 --apply-immediately`.
+> `aws rds modify-db-instance --db-instance-identifier chorum-prod --backup-retention-period 7 --apply-immediately`.
 
 ### 4.2 First-time provisioning + bootstrap
 
 One-time, from a workstation with AWS creds (`rds:CreateDBInstance`, and SSM
-read/write on `/hearme/prod/*`):
+read/write on `/chorum/prod/*`):
 
 ```sh
 # 0. Master password must already be in SSM (push-secrets-to-ssm.sh prod ...).
-# 1. Create the instance and record its endpoint in SSM as HEARME_PROD_POSTGRES_HOST.
+# 1. Create the instance and record its endpoint in SSM as CHORUM_PROD_POSTGRES_HOST.
 scripts/provision-rds.sh \
-  --subnet-group hearme-db-subnets \   # DB subnet group over the VPC's private subnets
+  --subnet-group chorum-db-subnets \   # DB subnet group over the VPC's private subnets
   --security-group sg-0abc123 \        # SG that allows 5432 FROM the EC2 box's SG
   --push-ssm
 
-# 2. On the prod box: render the .env (now incl. HEARME_PROD_POSTGRES_HOST) and
+# 2. On the prod box: render the .env (now incl. CHORUM_PROD_POSTGRES_HOST) and
 #    bootstrap the empty DB — pgcrypto, schema (migrator), roles + grants.
-scripts/render-secrets-env.sh prod | ssh prod 'umask 077; cat > ~/hearme/.env'
-ssh prod 'cd ~/hearme && git pull && scripts/bootstrap-rds.sh'
+scripts/render-secrets-env.sh prod | ssh prod 'umask 077; cat > ~/chorum/.env'
+ssh prod 'cd ~/chorum && git pull && scripts/bootstrap-rds.sh'
 ```
 
 `bootstrap-rds.sh` is idempotent and applies the **same** role/grant boundary as
@@ -299,8 +299,8 @@ it doesn't collide with the one bootstrap already wrote:
 
 ```sh
 # On the prod box, old stack still running:
-docker exec hearme-postgres pg_dump -U hearme_admin -Fc --no-owner --no-privileges \
-  --exclude-table=_schema_migrations hearme > /tmp/cutover.dump
+docker exec chorum-postgres pg_dump -U chorum_admin -Fc --no-owner --no-privileges \
+  --exclude-table=_schema_migrations chorum > /tmp/cutover.dump
 ```
 
 Quiesce writers (so nothing is lost between dump and switch), then load in one
@@ -308,16 +308,16 @@ transaction. It is atomic: if the `SET` is denied or any `COPY` fails, the whole
 load — including the `TRUNCATE` — rolls back, leaving no partial state:
 
 ```sh
-docker stop hearme-broker hearme-web hearme-classifier
-set -a; . ~/hearme/.env; set +a
-PGH="$HEARME_PROD_POSTGRES_HOST"; ADMINPW="$HEARME_PROD_POSTGRES_ADMIN_PASSWORD"
+docker stop chorum-broker chorum-web chorum-classifier
+set -a; . ~/chorum/.env; set +a
+PGH="$CHORUM_PROD_POSTGRES_HOST"; ADMINPW="$CHORUM_PROD_POSTGRES_ADMIN_PASSWORD"
 
 { echo "SET session_replication_role = replica;"
   echo "TRUNCATE aggregates,askers,envelopes,questions,registrations,revocations,self_chain_cursors,self_nullifier_invalidations RESTART IDENTITY CASCADE;"
   docker run --rm -v /tmp/cutover.dump:/cutover.dump:ro postgres:16 \
     pg_restore --data-only --no-owner --no-privileges -f - /cutover.dump
 } | docker run --rm -i --network host -e PGPASSWORD="$ADMINPW" postgres:16 \
-    psql "host=$PGH user=hearme_admin dbname=hearme sslmode=require" \
+    psql "host=$PGH user=chorum_admin dbname=chorum sslmode=require" \
       -v ON_ERROR_STOP=1 --single-transaction
 ```
 
@@ -328,15 +328,15 @@ in the same session as the `SET` is what lets FK enforcement stay deferred —
 Verify row counts match between the on-box DB and RDS, **then** switch (§1.1):
 
 ```sh
-cd ~/hearme
-export HEARME_DEPLOY_SHA="$(git rev-parse --short=12 HEAD)"
+cd ~/chorum
+export CHORUM_DEPLOY_SHA="$(git rev-parse --short=12 HEAD)"
 docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
 scripts/healthgate.sh && scripts/deploy-finalize.sh prod
 shred -u /tmp/cutover.dump
 ```
 
-`--remove-orphans` retires the old `hearme-postgres` container. Keep its Docker
-volume (`hearme-pgdata`) until RDS is confirmed serving — it is your rollback.
+`--remove-orphans` retires the old `chorum-postgres` container. Keep its Docker
+volume (`chorum-pgdata`) until RDS is confirmed serving — it is your rollback.
 
 > **Additive migrations make this safe even when prod is behind.** Columns a
 > later migration adds (e.g. `0005`'s `answer_count`/`signal_count`) take their
@@ -353,14 +353,14 @@ your account allows:
 
 ```sh
 aws rds restore-db-instance-to-point-in-time \
-  --source-db-instance-identifier hearme-prod \
-  --target-db-instance-identifier hearme-restore-drill \
+  --source-db-instance-identifier chorum-prod \
+  --target-db-instance-identifier chorum-restore-drill \
   --use-latest-restorable-time \
-  --db-subnet-group-name hearme-db-subnets \
+  --db-subnet-group-name chorum-db-subnets \
   --vpc-security-group-ids <rds-sg> --no-publicly-accessible
-aws rds wait db-instance-available --db-instance-identifier hearme-restore-drill
+aws rds wait db-instance-available --db-instance-identifier chorum-restore-drill
 # psql to the restored endpoint, confirm the 8 tables + row counts, then:
-aws rds delete-db-instance --db-instance-identifier hearme-restore-drill --skip-final-snapshot
+aws rds delete-db-instance --db-instance-identifier chorum-restore-drill --skip-final-snapshot
 ```
 
 This spins a **second** instance. On a restricted **AWS Free plan** that is
@@ -373,16 +373,16 @@ managed-Postgres analogue of `scripts/verify-db.sh`, which targets the local
 container):
 
 ```sh
-set -a; . ~/hearme/.env; set +a
-docker run --rm --network host -e PGPASSWORD="$HEARME_PROD_POSTGRES_ADMIN_PASSWORD" \
-  postgres:16 pg_dump -h "$HEARME_PROD_POSTGRES_HOST" -U hearme_admin \
-  -Fc --no-owner --no-privileges hearme > /tmp/drill.dump
+set -a; . ~/chorum/.env; set +a
+docker run --rm --network host -e PGPASSWORD="$CHORUM_PROD_POSTGRES_ADMIN_PASSWORD" \
+  postgres:16 pg_dump -h "$CHORUM_PROD_POSTGRES_HOST" -U chorum_admin \
+  -Fc --no-owner --no-privileges chorum > /tmp/drill.dump
 # spin a scratch container, restore, count rows, throw it away:
 docker run -d --name pg-drill -e POSTGRES_PASSWORD=x postgres:16 >/dev/null
 sleep 5 && docker cp /tmp/drill.dump pg-drill:/drill.dump
-docker exec -e PGPASSWORD=x pg-drill createdb -U postgres hearme
-docker exec -e PGPASSWORD=x pg-drill pg_restore -U postgres -d hearme --no-owner /drill.dump
-docker exec -e PGPASSWORD=x pg-drill psql -U postgres -d hearme -c "\dt"
+docker exec -e PGPASSWORD=x pg-drill createdb -U postgres chorum
+docker exec -e PGPASSWORD=x pg-drill pg_restore -U postgres -d chorum --no-owner /drill.dump
+docker exec -e PGPASSWORD=x pg-drill psql -U postgres -d chorum -c "\dt"
 docker rm -f pg-drill && rm -f /tmp/drill.dump
 ```
 
@@ -411,7 +411,7 @@ covered — see below). Three pieces:
 
 1. **Structured logs.** The broker's pino logger emits newline-delimited JSON
    with a `service: "broker"` field, an env-tunable level
-   (`HEARME_BROKER_LOG_LEVEL`, default `info`), and redaction of the
+   (`CHORUM_BROKER_LOG_LEVEL`, default `info`), and redaction of the
    `Authorization`/`Cookie` request headers (`packages/broker/src/logging.ts`).
    Pipe stdout to your log backend.
 2. **Liveness.** `GET /healthz` returns `{"status":"ok"}` — the orchestrator
@@ -420,16 +420,16 @@ covered — see below). Three pieces:
    (`packages/broker/src/observability/metrics.ts`). It is **internal-only** —
    the Caddyfile routes only `/v1/*`, `/self/*`, and the web default, so
    `/metrics` is never internet-reachable; Prometheus scrapes it over the
-   compose network. Series: `hearme_broker_register_total{outcome}`,
+   compose network. Series: `chorum_broker_register_total{outcome}`,
    `…envelopes_total{outcome}`, `…revoke_total{outcome}` (register / ingest /
    revoke rate), `…rejections_total{route,reason}` (verification-failure
    breakdown by `RejectionReason`), `…ratelimited_total{route}` (429 rate), plus
-   default Node process metrics. Disable with `HEARME_BROKER_METRICS_ENABLED=0`.
+   default Node process metrics. Disable with `CHORUM_BROKER_METRICS_ENABLED=0`.
 4. **Error tracking.** The broker forwards unhandled exceptions (per-request and
    process-level) to **Sentry** when `SENTRY_DSN` is set
    (`packages/broker/src/observability/sentry.ts`). It is **env-gated**: with no
    DSN it is a silent no-op, so it ships safely before a Sentry project exists.
-   Wire the DSN via `HEARME_PROD_SENTRY_DSN` (see `prod.env.example`).
+   Wire the DSN via `CHORUM_PROD_SENTRY_DSN` (see `prod.env.example`).
 
 ### Running the monitoring stack
 
@@ -449,7 +449,7 @@ Slack/webhook destination to actually page (`monitoring/alertmanager/alertmanage
 Full details and the follow-up list (native `/metrics` + Sentry for the other
 three services, classifier-backlog gauge) are in `monitoring/README.md`.
 
-Don't enable `HEARME_BROKER_EXPOSE_REJECTION_REASONS=1` in production "just
+Don't enable `CHORUM_BROKER_EXPOSE_REJECTION_REASONS=1` in production "just
 so logs are friendlier" — the same string the operator reads is the string
 the *attacker* reads (it answers "which bit of my forged envelope was
 wrong"). The reason is recorded internally (logs + `…rejections_total`); the
@@ -461,20 +461,20 @@ external ack stays generic.
 
 Run through this before flipping the public DNS:
 
-- [ ] `HEARME_BROKER_PRODUCTION_MODE=1` is set; broker boots without raising
+- [ ] `CHORUM_BROKER_PRODUCTION_MODE=1` is set; broker boots without raising
       `ProductionConfigError`. *(Note: in this TS port the checks are opt-in,
       not fail-closed-by-default — see the gap note in §1. Forgetting the env
       var silently skips them.)*
-- [ ] `HEARME_BROKER_SIGNING_KEY` is a freshly generated 32-byte seed, stored
+- [ ] `CHORUM_BROKER_SIGNING_KEY` is a freshly generated 32-byte seed, stored
       only in the secret manager and the broker process env.
-- [ ] `HEARME_BROKER_DATABASE_URL` uses a non-dev password.
-- [ ] `HEARME_BROKER_EXPOSE_REJECTION_REASONS=false`.
-- [ ] `HEARME_BROKER_DEV_INSECURE_REGISTER=false` (or unset).
-- [ ] `HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION=true`.
+- [ ] `CHORUM_BROKER_DATABASE_URL` uses a non-dev password.
+- [ ] `CHORUM_BROKER_EXPOSE_REJECTION_REASONS=false`.
+- [ ] `CHORUM_BROKER_DEV_INSECURE_REGISTER=false` (or unset).
+- [ ] `CHORUM_BROKER_REQUIRE_REGISTRY_CONFIRMATION=true`.
 - [ ] `SELF_MOCK_PASSPORT=0` on the self-bridge.
 - [ ] Self scope is frozen: prod runs with `SELF_PRODUCTION_MODE=1` (so the
-      scope is pinned to `hearme-v1` in code and `SELF_SCOPE` is ignored), and
-      `GET /healthz` on the bridge reports `"scope":"hearme-v1"`. This value is
+      scope is pinned to `chorum-v1` in code and `SELF_SCOPE` is ignored), and
+      `GET /healthz` on the bridge reports `"scope":"chorum-v1"`. This value is
       **permanent** — see §3.1 Frozen constants.
 - [ ] `SELF_CELO_RPC_URL` set and a hand `curl` against it succeeds.
 - [ ] Caddy or your reverse proxy sets `X-Real-IP` for both broker and web
@@ -484,7 +484,7 @@ Run through this before flipping the public DNS:
 - [ ] Broker `GET /healthz` and web `GET /api/healthz` are monitored.
 - [ ] Observability is up (§5): the monitoring overlay is running, Prometheus is
       scraping `broker:8000/metrics`, the down/error-rate alerts have a real
-      Alertmanager destination, and `HEARME_PROD_SENTRY_DSN` is set (or you have
+      Alertmanager destination, and `CHORUM_PROD_SENTRY_DSN` is set (or you have
       consciously deferred error tracking).
 - [ ] A rollback has been rehearsed once: `scripts/rollback.sh` returns the box
       to the previous good SHA and the health gate passes (§7).
@@ -504,11 +504,11 @@ is no image registry. Deploy safety is therefore built from three pieces that
 all live in the repo:
 
 **1. Images are pinned to an immutable git-SHA tag — never `:latest`.**
-`docker-compose.yml` tags every built service as `hearme-<svc>:${HEARME_DEPLOY_SHA}`
+`docker-compose.yml` tags every built service as `chorum-<svc>:${CHORUM_DEPLOY_SHA}`
 (`broker`, `self-bridge`, `web`, `migrator`, `classifier`). The deploy exports
-`HEARME_DEPLOY_SHA=$(git rev-parse --short=12 HEAD)` before `up`, so each deploy
+`CHORUM_DEPLOY_SHA=$(git rev-parse --short=12 HEAD)` before `up`, so each deploy
 leaves a **named, immutable image for that commit** on the box. Local `docker
-compose up` (no `HEARME_DEPLOY_SHA`) falls back to the `dev` tag — unchanged dev
+compose up` (no `CHORUM_DEPLOY_SHA`) falls back to the `dev` tag — unchanged dev
 ergonomics.
 
 **2. The last-known-good SHA is recorded — but only after a health gate.**
@@ -525,7 +525,7 @@ ENV=staging|prod
 DEPLOYED_AT=<UTC>
 ```
 
-`deploy-finalize` also prunes old `hearme-*` image tags, keeping the current and
+`deploy-finalize` also prunes old `chorum-*` image tags, keeping the current and
 previous good SHAs (so a rollback need not rebuild) plus `dev`.
 
 **3. One-command rollback.** On the box:

@@ -1,4 +1,4 @@
-# Hearme — v0 Architecture (what is built today)
+# Chorum — v0 Architecture (what is built today)
 
 > **Version map.** This is the first of three architecture documents.
 > - **v0 (this doc):** the working system — install the skill, verify with Self, answer questions, and once you've answered enough, ask your own. No money.
@@ -11,19 +11,19 @@
 
 ## 0. What v0 is
 
-A user installs the **`hearme` skill** into their existing agent runtime (Hermes or OpenClaw), verifies a real human behind it once with the **Self** app ([self.xyz](https://self.xyz)), and from then on the agent answers public questions *on the user's behalf* using the agent's own model and memory. Once an agent has contributed enough answers, its operator unlocks the right to post questions of their own on the web frontend. The frontend shows every question and an aggregate breakdown of how agents answered.
+A user installs the **`chorum` skill** into their existing agent runtime (Hermes or OpenClaw), verifies a real human behind it once with the **Self** app ([self.xyz](https://self.xyz)), and from then on the agent answers public questions *on the user's behalf* using the agent's own model and memory. Once an agent has contributed enough answers, its operator unlocks the right to post questions of their own on the web frontend. The frontend shows every question and an aggregate breakdown of how agents answered.
 
 **There is no money in v0.** No payments, no payout credential, no on-chain settlement. v0 exists to prove the loop works end to end: real identity → real agent → real answers → public aggregates → earn the right to ask.
 
 Three services, one shared database, plus the user's phone at enrollment time:
 
-1. **`hearme-web`** — Next.js site where askers post questions and anyone can see how agents answered.
-2. **`hearme-broker`** — Python service that dispatches questions to agents, verifies returned envelopes, and is the only writer to the answers table.
-3. **`hearme-skill`** — Python skill that runs inside the user's Hermes/OpenClaw agent and answers questions on their behalf.
+1. **`chorum-web`** — Next.js site where askers post questions and anyone can see how agents answered.
+2. **`chorum-broker`** — Python service that dispatches questions to agents, verifies returned envelopes, and is the only writer to the answers table.
+3. **`chorum-skill`** — Python skill that runs inside the user's Hermes/OpenClaw agent and answers questions on their behalf.
 
 Plus a shared Postgres database, a **`self-bridge`** Node sidecar (Self's verifier is Node-only), and the user's phone (running the **Self** app) which appears only at install/refresh time.
 
-> **Identity provider: Self (self.xyz).** Hearme's proof-of-personhood layer is built on Self — passport/national-ID NFC + zk-SNARKs. Proofs are SNARK-verified **off-chain** on our own backend; the **only** on-chain dependency is a single Celo Identity-Registry read **at registration** (§5). Per answer there is **no chain access and no proof at all** (§1.14, §7.3). This replaced an earlier zkPassport integration; see `IDENTITY.md` for the why.
+> **Identity provider: Self (self.xyz).** Chorum's proof-of-personhood layer is built on Self — passport/national-ID NFC + zk-SNARKs. Proofs are SNARK-verified **off-chain** on our own backend; the **only** on-chain dependency is a single Celo Identity-Registry read **at registration** (§5). Per answer there is **no chain access and no proof at all** (§1.14, §7.3). This replaced an earlier zkPassport integration; see `IDENTITY.md` for the why.
 
 ---
 
@@ -32,15 +32,15 @@ Plus a shared Postgres database, a **`self-bridge`** Node sidecar (Self's verifi
 These are the non-negotiables. Every component below exists to serve one of them. They carry forward unchanged into v1 and v2.
 
 ### 1.1 Consent is the product
-The agent answers *on behalf of* the user. If users ever feel surveilled, Hearme dies. The skill must expose a sharp, legible policy surface (topics, askers, daily caps) and never silently drift from it. Default to off; opt-in per category.
+The agent answers *on behalf of* the user. If users ever feel surveilled, Chorum dies. The skill must expose a sharp, legible policy surface (topics, askers, daily caps) and never silently drift from it. Default to off; opt-in per category.
 
 ### 1.2 Personal-data minimization at the boundary
 The agent reasons over rich personal memory locally (or with the help of a model provider). Only the **answer itself** plus the user's **DelegationToken** — a **broker-issued, broker-signed session credential** carrying a stable `uniqueIdentifier`, the bucketed predicates, and the bound `agent_key` — crosses the device + model boundary. Raw facts, chain-of-thought, source memories, raw passport fields, and the raw Self proofs — never.
 
-> **Why a broker-issued credential (not the raw proof).** Self proofs expire **±1 day** (`SelfBackendVerifier` throws `InvalidTimestamp` outside that window), so the broker *cannot* re-verify a stored proof per envelope over a 90-day token. Hearme therefore **verifies the Self proofs exactly once, at registration** (§8.1), and the broker issues a signed session credential the agent replays per answer (§5). This is not just a performance choice — it is forced by Self's freshness window. It also closes the data-minimization boundary: the raw proof (and the raw nationality inside it) reaches the broker **once at registration**, where it is bucketed (`region`, `age_band`) and the raw form discarded; per-answer, only the bucketed credential travels.
+> **Why a broker-issued credential (not the raw proof).** Self proofs expire **±1 day** (`SelfBackendVerifier` throws `InvalidTimestamp` outside that window), so the broker *cannot* re-verify a stored proof per envelope over a 90-day token. Chorum therefore **verifies the Self proofs exactly once, at registration** (§8.1), and the broker issues a signed session credential the agent replays per answer (§5). This is not just a performance choice — it is forced by Self's freshness window. It also closes the data-minimization boundary: the raw proof (and the raw nationality inside it) reaches the broker **once at registration**, where it is bucketed (`region`, `age_band`) and the raw form discarded; per-answer, only the bucketed credential travels.
 
 #### 1.2.1 ChatGPT export memory sidewheel
-Some users will have the richest self-history in ChatGPT rather than Hermes. Hearme may therefore offer an optional sidewheel: the user explicitly downloads their ChatGPT data export, and a local CLI imports `conversations.json` into a Hearme-owned SQLite FTS database under the same local root as the ledger. The skill can then select that database as a `MemoryProvider`.
+Some users will have the richest self-history in ChatGPT rather than Hermes. Chorum may therefore offer an optional sidewheel: the user explicitly downloads their ChatGPT data export, and a local CLI imports `conversations.json` into a Chorum-owned SQLite FTS database under the same local root as the ledger. The skill can then select that database as a `MemoryProvider`.
 
 This sidewheel is **not** app scraping. It must not read private ChatGPT macOS app containers, use Accessibility to scrape the UI, or assume OpenAI exposes a local chat-history API. It is export/import only, initiated by the user. The imported DB is local, deletable, and separate from the broker. The provider still returns a question-scoped `MemorySnapshot`; raw conversation IDs and source metadata do not leave the memory layer, and nothing from the export is sent to the broker.
 
@@ -48,12 +48,12 @@ This sidewheel is **not** app scraping. It must not read private ChatGPT macOS a
 Demographic disclosure is decided **once**, at install, when the user picks a disclosure level on the phone (e.g. age band, region). The chosen predicates are proven via Self, verified once by the broker at registration, and baked into the broker-issued DelegationToken. Every answer reuses the same predicate set; askers do **not** negotiate predicates per question. If an asker needs finer slicing, they slice post-hoc on the aggregate, not by demanding new disclosures from the user.
 
 ### 1.4 Sybil resistance via stable scoped uniqueness; the answers table is unlinkable at rest
-The DelegationToken's `uniqueIdentifier` is the **Self nullifier** under the single scope `"hearme-v1"` (the nullifier is unique-per-user-per-scope) — so the same passport produces the same identifier across every Hearme answer. The broker uses it for Sybil enforcement and per-user honeypot scoring.
+The DelegationToken's `uniqueIdentifier` is the **Self nullifier** under the single scope `"chorum-v1"` (the nullifier is unique-per-user-per-scope) — so the same passport produces the same identifier across every Chorum answer. The broker uses it for Sybil enforcement and per-user honeypot scoring.
 
 But the raw nullifier is **never written to the `envelopes` table.** If it were, the answers table would be a permanent re-identification honeypot: a single `GROUP BY unique_identifier` (or any backup, read replica, or analytics export of it) would reconstruct everything a given human ever answered. Instead, each envelope is stored under a **per-question voter tag** — a pseudonym derived by the broker:
 
 ```
-voter_tag = base64( HMAC-SHA256( s_q, "hearme-voter-tag-v1" | question_id | nullifier ) )
+voter_tag = base64( HMAC-SHA256( s_q, "chorum-voter-tag-v1" | question_id | nullifier ) )
 ```
 
 where `s_q` is the question's **own** independently-random 32-byte linkage secret (ADR-098), minted lazily on the first answer and **destroyed a grace period after the question closes**.
@@ -62,7 +62,7 @@ This is the best of both: it is **deterministic** per `(question_id, nullifier)`
 
 **Self-destructing — the liability does not accumulate (ADR-098).** Once `s_q` is destroyed, **no one — not even the broker — can re-derive that question's tags from a nullifier**, so its answers are cryptographically orphaned from every identity, permanently. The re-identification risk is therefore bounded to the *live working set* (open questions plus a short trailing grace + retention window) rather than growing forever behind one global secret. The destruction trigger is a question's own lifecycle (`closes_at` + grace), the finest natural epoch — it subsumes the calendar-epoch rotation once sketched for v2. (Epoch-rotated Self *scopes* — so even the nullifier rotates — remain the deeper, separate v2 change.)
 
-**Wrapped at rest (ADR-098).** `s_q` is stored **encrypted** — `AES-256-GCM(master_key, s_q)`, the master key held in broker env / SSM, never in any database. So forward secrecy comes from *destroying* the wrapped secret (the master key can't decrypt a nulled row), while a DB-only leak *without* the master key yields only ciphertext — restoring the "a dump of the answers data alone can't relink" property even for open questions. The wrapped secrets live in a broker-owned `hearme_secrets` database (the broker has only `USAGE`, not `CREATE`, on the shared schema), co-located on the same RDS instance as the main DB.
+**Wrapped at rest (ADR-098).** `s_q` is stored **encrypted** — `AES-256-GCM(master_key, s_q)`, the master key held in broker env / SSM, never in any database. So forward secrecy comes from *destroying* the wrapped secret (the master key can't decrypt a nulled row), while a DB-only leak *without* the master key yields only ciphertext — restoring the "a dump of the answers data alone can't relink" property even for open questions. The wrapped secrets live in a broker-owned `chorum_secrets` database (the broker has only `USAGE`, not `CREATE`, on the shared schema), co-located on the same RDS instance as the main DB.
 
 **Where linkage now lives.** Re-linking the answers table to individuals requires *all* of: a question's **still-live** `s_q`, the env/SSM **master key** to unwrap it, *and* the `registrations` nullifier list — and is impossible for any question whose secret has been destroyed. Per-person tallies the broker genuinely needs (the §14.2 ask-credit count, the "respondents" stat) are kept as explicit counters on the `registrations` row, not derived by scanning answers. The broker can still link when it must (revoke, on-chain invalidation, gating) **for live questions only**; the bulk data — the thing most likely to be queried, exported, or leaked — carries only per-question pseudonyms.
 
@@ -80,7 +80,7 @@ The skill must never emit a side-channel artifact (signed receipt, plaintext log
 **Known residual: voluntary key transfer.** After enrollment, `agent_key` is just an Ed25519 keypair on disk; a user can sell the key file + passphrase + cached DelegationToken and let a briber answer under their `unique_identifier` until the token expires. This is the dominant bribery attack and is **not defended in v0**. The full counter-measure set (hardware-bound keys, phone-held voting authority, periodic re-attestation) is designed in **[v2](ARCHITECTURE_V2.md)**. v0's only mitigation is that there is no money to win — with no payout, there is little to bribe for.
 
 ### 1.7 Indistinguishable response fidelity
-Hearme will plant honeypot questions to catch lazy agents. The skill must answer real and test questions with identical depth. No "is this a test?" branches — that defeats the mechanism. (Honeypot *enforcement* lands in v2; the principle is fixed now so the skill never grows a test-detection branch.)
+Chorum will plant honeypot questions to catch lazy agents. The skill must answer real and test questions with identical depth. No "is this a test?" branches — that defeats the mechanism. (Honeypot *enforcement* lands in v2; the principle is fixed now so the skill never grows a test-detection branch.)
 
 ### 1.8 Local-first decisioning
 All policy evaluation, persona projection, and answer generation runs in-process inside the user's Hermes/OpenClaw instance and model provider.
@@ -97,7 +97,7 @@ Hermes supports several memory backends. The skill talks through Hermes's memory
 ### 1.12 Override is sacred
 The user can preview, edit, or veto any answer before submission. Every submitted answer is revocable post-hoc within the protocol's revocation window.
 
-**v0 cron deployment note.** When the skill runs as the `hearme` plugin driven by a cron job (§7, the production path), answering is *unattended* — there is no live preview between generation and submission. The pre-submission veto is therefore replaced by an opt-in policy gate: nothing is auto-submitted unless the user sets `auto_answer: true` in `policy.yaml`, and the deterministic policy backstop (topic allow/blocklist, daily cap, replay-safety) is re-checked inside `hearme_submit_answer` on every submit. Post-hoc revocation remains the user's recourse.
+**v0 cron deployment note.** When the skill runs as the `chorum` plugin driven by a cron job (§7, the production path), answering is *unattended* — there is no live preview between generation and submission. The pre-submission veto is therefore replaced by an opt-in policy gate: nothing is auto-submitted unless the user sets `auto_answer: true` in `policy.yaml`, and the deterministic policy backstop (topic allow/blocklist, daily cap, replay-safety) is re-checked inside `chorum_submit_answer` on every submit. Post-hoc revocation remains the user's recourse.
 
 ### 1.13 Phone is the enrollment device, not a hot dependency
 The user's phone (running the Self app) is touched at exactly three moments: **install**, **refresh** (every 90 days), and **revocation**. Because age granularity uses a multi-threshold scheme (§8.3), *install* may run several quick Self proofs back-to-back; this cost is paid once. In steady state, the phone is never contacted.
@@ -107,7 +107,7 @@ Most users have no formed view on most questions. If the skill runs a full gener
 
 **`no_signal` is first-class data**, not noise — "47% of EU 25–34 respondents had no formed view on synthetic meat" is exactly the silent-majority finding that traditional Likert-forced polls hide. Aggregation treats `no_signal` as its own bucket.
 
-> **v0 realization.** Because answer generation is host-resident (the Hermes/OpenClaw agent reasons over its own memory), the relevance gate is the agent's *own judgement*, not a separate embedding lookup. The `ANSWER_PROMPT` instructs the agent to record `no_signal` (`hearme_submit_no_signal` / CLI `submit-no-signal`) rather than guess. The embedding-tier pre-filter described in §7.3 is the reference design the standalone harness uses; the dedicated opinion-fingerprint optimization is a later iteration.
+> **v0 realization.** Because answer generation is host-resident (the Hermes/OpenClaw agent reasons over its own memory), the relevance gate is the agent's *own judgement*, not a separate embedding lookup. The `ANSWER_PROMPT` instructs the agent to record `no_signal` (`chorum_submit_no_signal` / CLI `submit-no-signal`) rather than guess. The embedding-tier pre-filter described in §7.3 is the reference design the standalone harness uses; the dedicated opinion-fingerprint optimization is a later iteration.
 
 ### 1.15 Reward information that corresponds to a real person, not participation
 The eventual marketplace must reward *information that corresponds to a real person*, never mere participation. In v0 there is no reward at all, so this principle shows up only as: **`no_signal` is honored, not penalized** — an honest "no view" is recorded as data rather than pressured into a fabricated opinion. The full pricing model (baseline reimbursement + at-risk grounding bonus) arrives with payments in [v1](ARCHITECTURE_V1.md)/[v2](ARCHITECTURE_V2.md).
@@ -123,7 +123,7 @@ The eventual marketplace must reward *information that corresponds to a real per
           │ POST question                    │ GET question/aggregate
           ▼                                  ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  hearme-web  (Next.js, App Router, server components)       │
+│  chorum-web  (Next.js, App Router, server components)       │
 │  - reads: questions, aggregates                             │
 │  - writes: questions (only, gated by asker unlock §15)      │
 └──────────────────────────┬──────────────────────────────────┘
@@ -137,7 +137,7 @@ The eventual marketplace must reward *information that corresponds to a real per
              │ write envelopes              │ poll for open questions
              │ increment aggregates         │
 ┌────────────┴───────┐               ┌──────┴─────────────────┐
-│  hearme-broker     │   HTTP/JSON   │  hearme-skill          │
+│  chorum-broker     │   HTTP/JSON   │  chorum-skill          │
 │  (Python/FastAPI)  ├──────────────►│  (Python, in Hermes/   │
 │                    │◄──────────────┤   OpenClaw)            │
 │  - dispatches Qs   │  envelopes    │  - answers Qs locally  │
@@ -153,13 +153,13 @@ The eventual marketplace must reward *information that corresponds to a real per
 
 **Boundaries.** The frontend and the broker share a database but not code; they communicate only through Postgres. The broker is the only service that can write `envelopes` rows (enforced by DB role grants). The frontend is the only service that creates `questions`. Agents never talk to the frontend; they only talk to the broker.
 
-**Why three services and not one.** The broker's verification logic is security-critical and must be reviewable in isolation. Keeping it as a separate Python service lets it share verification code with `hearme-skill` and lets us deploy/scale them differently later.
+**Why three services and not one.** The broker's verification logic is security-critical and must be reviewable in isolation. Keeping it as a separate Python service lets it share verification code with `chorum-skill` and lets us deploy/scale them differently later.
 
 ---
 
 ## 3. Shared database
 
-Postgres. Schema is owned by `hearme-web` (Drizzle migrations live in that repo) but both services read from it; the broker has its own role with write permission scoped to `envelopes`, `aggregates`, `revocations`, and `registrations`.
+Postgres. Schema is owned by `chorum-web` (Drizzle migrations live in that repo) but both services read from it; the broker has its own role with write permission scoped to `envelopes`, `aggregates`, `revocations`, and `registrations`.
 
 ```sql
 CREATE TABLE askers (
@@ -182,7 +182,7 @@ CREATE TABLE questions (
 CREATE TABLE envelopes (
   question_id          UUID NOT NULL REFERENCES questions(id),
   unique_identifier    TEXT NOT NULL,              -- §1.4: PER-QUESTION voter tag = HMAC(s_q,
-                                                   --   "hearme-voter-tag-v1"|question_id|nullifier), s_q = the question's
+                                                   --   "chorum-voter-tag-v1"|question_id|nullifier), s_q = the question's
                                                    --   own secret (destroyed at close, ADR-098). NOT the raw nullifier —
                                                    --   unlinkable across questions. NEVER write the nullifier here.
   answer               TEXT NOT NULL,              -- LLM-generated answer text (empty string when no_signal=true)
@@ -198,7 +198,7 @@ CREATE TABLE envelopes (
 -- Enforces one agent_key per Self nullifier (atomic Sybil bind) and backs
 -- the broker-issued session credential (DelegationToken).
 CREATE TABLE registrations (
-  unique_identifier    TEXT PRIMARY KEY,           -- Self nullifier (scope "hearme-v1") — the ONLY raw-nullifier-keyed table
+  unique_identifier    TEXT PRIMARY KEY,           -- Self nullifier (scope "chorum-v1") — the ONLY raw-nullifier-keyed table
   agent_key            TEXT NOT NULL,              -- base64 Ed25519 pubkey bound to this nullifier
   disclosed_predicates JSONB NOT NULL,             -- bucketed {age_band, region} re-derived at registration
   issued_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -226,15 +226,15 @@ CREATE INDEX ON envelopes(question_id);
 CREATE INDEX ON envelopes(submitted_at);
 ```
 
-The composite primary key on `envelopes(question_id, unique_identifier)` is the hard enforcement of Sybil resistance at the database layer. Because `unique_identifier` holds the deterministic per-question voter tag (§1.4), a repeat answer from the same human to the same question collides on the PK and is rejected — the broker can crash, restart, double-submit and the DB still rejects duplicates — while two answers by the same human to *different* questions store unrelated tags, so the table cannot be grouped back into one person's history. Each question's secret `s_q` that derives the tag lives — **wrapped** under an env/SSM master key — in a broker-owned `hearme_secrets` database (the `question_secrets` table, ADR-098), never in this shared schema, and is destroyed a grace period after the question closes; per-person tallies are kept on `registrations.{answer_count,signal_count}` rather than by scanning `envelopes`.
+The composite primary key on `envelopes(question_id, unique_identifier)` is the hard enforcement of Sybil resistance at the database layer. Because `unique_identifier` holds the deterministic per-question voter tag (§1.4), a repeat answer from the same human to the same question collides on the PK and is rejected — the broker can crash, restart, double-submit and the DB still rejects duplicates — while two answers by the same human to *different* questions store unrelated tags, so the table cannot be grouped back into one person's history. Each question's secret `s_q` that derives the tag lives — **wrapped** under an env/SSM master key — in a broker-owned `chorum_secrets` database (the `question_secrets` table, ADR-098), never in this shared schema, and is destroyed a grace period after the question closes; per-person tallies are kept on `registrations.{answer_count,signal_count}` rather than by scanning `envelopes`.
 
-> **Secrets store (ADR-098).** `question_secrets(question_id, secret, closes_at, destroyed_at)` is **not** part of this shared schema. It lives in a broker-owned `hearme_secrets` database (`HEARME_BROKER_SECRETS_DATABASE_URL`), co-located on the same RDS instance as the main DB; `hearme_web` / `hearme_classifier` have no access to it. `secret` is the **wrapped** `s_q` (`AES-256-GCM(master_key, s_q)`), so a dump of the instance yields only ciphertext. A periodic reaper destroys (`secret = NULL`) every secret whose question closed more than the grace window ago; once destroyed, the master key can no longer decrypt it, so the question's answers are unlinkable even to the broker.
+> **Secrets store (ADR-098).** `question_secrets(question_id, secret, closes_at, destroyed_at)` is **not** part of this shared schema. It lives in a broker-owned `chorum_secrets` database (`CHORUM_BROKER_SECRETS_DATABASE_URL`), co-located on the same RDS instance as the main DB; `chorum_web` / `chorum_classifier` have no access to it. `secret` is the **wrapped** `s_q` (`AES-256-GCM(master_key, s_q)`), so a dump of the instance yields only ciphertext. A periodic reaper destroys (`secret = NULL`) every secret whose question closed more than the grace window ago; once destroyed, the master key can no longer decrypt it, so the question's answers are unlinkable even to the broker.
 
 > **Reserved for later versions.** [v1](ARCHITECTURE_V1.md) adds payout/credential columns + tables; [v2](ARCHITECTURE_V2.md) adds the answer-integrity tables (`memory_commitments`, `fidelity_scores`, `audit_flags`) and a `grounding_commitment` column on `envelopes`. None of these exist or are enforced in v0.
 
 ---
 
-## 4. `hearme-web` — frontend
+## 4. `chorum-web` — frontend
 
 Next.js App Router. Server components for reads; client components only where interactivity demands it.
 
@@ -253,7 +253,7 @@ Next.js App Router. Server components for reads; client components only where in
 
 **Layout.**
 ```
-hearme-web/
+chorum-web/
 ├── src/app/
 │   ├── page.tsx              # /
 │   ├── ask/page.tsx          # /ask
@@ -266,7 +266,7 @@ hearme-web/
 
 ---
 
-## 5. `hearme-broker` — dispatcher and verifier
+## 5. `chorum-broker` — dispatcher and verifier
 
 Python service. Two responsibilities: dispatch open questions to agents, and verify+persist envelopes that come back.
 
@@ -290,7 +290,7 @@ parse enrollment bundle: {self_proofs[], agent_key}
        confirm each proof's identity-registry Merkle root is a CURRENT/known root
        published by Self's on-chain Identity Registry / Hub on Celo, AND the identity
        is registered. (This is the ONLY on-chain read in the system.)
-  → enforce bindings: agent_key == userDefinedData, scope == "hearme-v1",
+  → enforce bindings: agent_key == userDefinedData, scope == "chorum-v1",
        all proofs carry the SAME nullifier  → unique_identifier
   → re-derive region (from disclosed nationality) and age_band (from the older-than
        booleans) — the broker's value is authoritative
@@ -310,8 +310,8 @@ parse (pydantic)
   → verify agent_signature over H(question_id, answer, nonce, delegation_hash) using token.agent_key.public
   → check question_id exists, status='open', closes_at > now()
   → check signed predicates are eligible for the question scope
-  → ensure (lazily mint, wrapped) this question's secret s_q in hearme_secrets, then
-       derive voter_tag = HMAC(s_q, "hearme-voter-tag-v1"|question_id|unique_identifier)  (§1.4, ADR-098)
+  → ensure (lazily mint, wrapped) this question's secret s_q in chorum_secrets, then
+       derive voter_tag = HMAC(s_q, "chorum-voter-tag-v1"|question_id|unique_identifier)  (§1.4, ADR-098)
   → INSERT envelope under voter_tag (composite PK rejects duplicates; raw nullifier never stored)
   → increment aggregates row for question_id
   → bump registrations.{answer_count, signal_count} for the nullifier  (per-person tally; §14.2)
@@ -324,7 +324,7 @@ If any step fails, the request is rejected with a reason code; nothing is writte
 
 **Layout.**
 ```
-hearme-broker/src/hearme_broker/
+chorum-broker/src/chorum_broker/
 ├── main.py                   # FastAPI app
 ├── routes/{questions,register,envelopes,askers}.py
 ├── verify/
@@ -341,17 +341,17 @@ hearme-broker/src/hearme_broker/
 
 ---
 
-## 6. `hearme-skill` — trust boundaries
+## 6. `chorum-skill` — trust boundaries
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  hearme-broker (only contact in steady state)            │
+│  chorum-broker (only contact in steady state)            │
 └──────────────▲────────────────────┬─────────────────────┘
                │ envelope            │ open-questions poll
 ┌──────────────┴────────────────────▼─────────────────────┐
 │  User device / server — Hermes/OpenClaw runtime          │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │  hearme skill                                     │   │
+│  │  chorum skill                                     │   │
 │  │  - holds agent_key (Ed25519, on-disk encrypted)   │   │
 │  │  - holds cached DelegationToken                   │   │
 │  │  - never holds passport material                  │   │
@@ -367,11 +367,11 @@ Three trust boundaries: broker, agent runtime, phone. The phone is touched only 
 
 ---
 
-## 7. `hearme-skill` — layered architecture
+## 7. `chorum-skill` — layered architecture
 
-**Production path (v0): a Hermes/OpenClaw plugin + cron, not a standalone process.** The skill installs into the user's existing agent (`hermes_agent.plugins` entry point → `plugin.py:register`) and exposes tools under the `hearme` toolset: `hearme_list_open_questions`, `hearme_submit_answer`, and `hearme_submit_no_signal` (`tools.py`). A cron job (`schedule.py`) fires on a schedule; the host agent answers open questions through those tools **using its own configured model and memory**, so there is no second model-provider API key. The privacy-critical work stays deterministic at the tool boundary: the model only sees question text/topic and returns answer text, while policy gating, the delegation token, the nonce, and envelope signing live entirely inside the tools (the model never sees identity material).
+**Production path (v0): a Hermes/OpenClaw plugin + cron, not a standalone process.** The skill installs into the user's existing agent (`hermes_agent.plugins` entry point → `plugin.py:register`) and exposes tools under the `chorum` toolset: `chorum_list_open_questions`, `chorum_submit_answer`, and `chorum_submit_no_signal` (`tools.py`). A cron job (`schedule.py`) fires on a schedule; the host agent answers open questions through those tools **using its own configured model and memory**, so there is no second model-provider API key. The privacy-critical work stays deterministic at the tool boundary: the model only sees question text/topic and returns answer text, while policy gating, the delegation token, the nonce, and envelope signing live entirely inside the tools (the model never sees identity material).
 
-Canonical install (prod): `pip install git+...#subdirectory=packages/skill` then `hearme-skill onboard`.
+Canonical install (prod): `pip install git+...#subdirectory=packages/skill` then `chorum-skill onboard`.
 
 The layered pipeline below describes the in-process Answerer flow, which v0 retains as the **dev/CI harness** (`dev_runner.py` with `FakeLLMClient`, no network LLM) and as the reference for the deterministic layers the tools reuse (Policy, Envelope, Ledger). The Relevance layer (§7.3) short-circuits past Persona and Answerer when the user has no signal.
 
@@ -390,7 +390,7 @@ The layered pipeline below describes the in-process Answerer flow, which v0 reta
 Polls the broker at `GET /v1/questions/open?since=<last_seen>` (default 30s). Persists `last_seen` from broker-supplied `created_at` so host clock skew cannot skip questions. Submits envelopes. Backoff, retry, replay. No business logic.
 
 ### 7.2 Policy — `policy.py`
-Pure function `(question, user_policy, ledger_stats) -> Decision` with decisions `answer | decline | prompt_user`. User policy is plain YAML in `~/.hermes/hearme/policy.yaml`: topics, askers, max/day, auto-submit window. Honeypot detection lives elsewhere; policy never branches on "is this a test".
+Pure function `(question, user_policy, ledger_stats) -> Decision` with decisions `answer | decline | prompt_user`. User policy is plain YAML in `~/.hermes/chorum/policy.yaml`: topics, askers, max/day, auto-submit window. Honeypot detection lives elsewhere; policy never branches on "is this a test".
 
 ### 7.3 Relevance — `relevance.py` (reference design)
 The cheap gate satisfying §1.14. Pure function `(question, memory_handle) -> RelevanceScore ∈ [0,1]`: embed the question (retrieval-tier model), run k-NN against the user's memory through Hermes's abstraction, return a top-k similarity score. Below threshold → short-circuit to a `no_signal` envelope; above → continue to Persona/Answerer with `relevance_score` attached. In the v0 production path this is realized **host-side** (the agent's own judgement), per §1.14.
@@ -425,13 +425,13 @@ The only time the phone produces cryptographic material for the agent. Built on 
 `@selfxyz/core` (verify) and `@selfxyz/qrcode` / `SelfAppBuilder` (request creation) are Node-only; there is no pure-Python verifier. So the Python broker and skill delegate to **`packages/self-bridge`** over HTTP. The bridge does the cryptography; Python keeps every binding/structural check. **Transport note:** the Self mobile app POSTs the proof directly to the `endpoint` configured in the SelfApp — so the self-bridge *is* that endpoint (a callback webhook); the skill polls the bridge for completion.
 
 ### 8.1 Flow
-1. User installs the `hearme` skill. The skill generates an Ed25519 keypair → `agent_key`.
-2. The skill asks the self-bridge `POST /requests {agentKey, profile}`. The bridge builds SelfApp configs via `SelfAppBuilder` with `scope = "hearme-v1"`, `endpoint = <bridge callback>`, `userDefinedData = hex(agent_key)` (the agent-key bind), and disclosures per profile (§8.3). Returns `{requestId, urls[]}` (one QR per threshold proof).
+1. User installs the `chorum` skill. The skill generates an Ed25519 keypair → `agent_key`.
+2. The skill asks the self-bridge `POST /requests {agentKey, profile}`. The bridge builds SelfApp configs via `SelfAppBuilder` with `scope = "chorum-v1"`, `endpoint = <bridge callback>`, `userDefinedData = hex(agent_key)` (the agent-key bind), and disclosures per profile (§8.3). Returns `{requestId, urls[]}` (one QR per threshold proof).
 3. The skill renders each `url` as a QR. User opens the **Self app**, taps passport (a **mock passport** in staging — §12), approves. The Self app POSTs the proof to the bridge `endpoint`.
 4. The bridge runs `SelfBackendVerifier.verify(...)` per submission. The skill polls `GET /requests/:id` until all expected proofs are `complete`.
 5. The skill bundles the verified proofs into an **EnrollmentBundle** and `POST`s to `POST /v1/register`.
 6. The broker runs the registration pipeline (§5), atomically binds `nullifier ↔ agent_key`, and returns the **broker-signed DelegationToken** (the session credential replayed per answer). Integrity comes from the broker's signature; the raw `self_proofs` are not stored and never travel again.
-7. Skill encrypts and stores the DelegationToken at `~/.hermes/hearme/delegation.token`; the raw `self_proofs` are discarded.
+7. Skill encrypts and stores the DelegationToken at `~/.hermes/chorum/delegation.token`; the raw `self_proofs` are discarded.
 
 **Graceful degradation.** Only the `18+` proof is required. Finer thresholds are optional; a user who declines extra scans gets `age_band = "18+"` and still participates.
 
@@ -439,9 +439,9 @@ The only time the phone produces cryptographic material for the agent. Built on 
 7 days before expiry, UI nudges the user. User re-runs the proof set; the skill re-registers; the broker re-verifies and re-issues the token (same nullifier ⇒ idempotent bind). If ignored, the agent stops answering.
 
 ### 8.3 Disclosure profiles
-Self discloses a single `minimumAge` boolean per proof and the raw nationality. Hearme reconstructs:
+Self discloses a single `minimumAge` boolean per proof and the raw nationality. Chorum reconstructs:
 - **Region** ← disclosed `nationality` (ISO-3166), mapped to a region and **bucketed by the broker at registration**; raw country discarded after.
-- **Age band** ← a **multi-threshold ladder**: at install the skill requests `older-than` proofs at thresholds `[18, 25, 35, 50, 65]`, all under `scope="hearme-v1"` so they share one nullifier. The passing set reconstructs a band. **Exact DOB never disclosed.**
+- **Age band** ← a **multi-threshold ladder**: at install the skill requests `older-than` proofs at thresholds `[18, 25, 35, 50, 65]`, all under `scope="chorum-v1"` so they share one nullifier. The passing set reconstructs a band. **Exact DOB never disclosed.**
 
 Profiles (picked once on the phone): **Minimal** `{age_band:"18+", region:"EU/non-EU"}`; **Standard** (default) `{5-band ladder, continent}`.
 
@@ -456,7 +456,7 @@ Phone publishes a signed revocation to the broker (`POST /v1/revocations` — ta
 ```
 **DelegationToken** (broker-issued session credential):
 ```json
-{ "version": 2, "scope": "hearme-v1", "unique_identifier": "<Self nullifier>",
+{ "version": 2, "scope": "chorum-v1", "unique_identifier": "<Self nullifier>",
   "disclosed_predicates": {"age_band": "35-49", "region": "EU"},
   "agent_key": "<base64 32 bytes>", "issued_at": "...", "expires_at": "...",
   "broker_signature": "<base64 64 bytes>" }
@@ -476,7 +476,7 @@ Phone publishes a signed revocation to the broker (`POST /v1/revocations` — ta
 ## 9. Monorepo layout
 
 ```
-hearme/
+chorum/
 ├── ARCHITECTURE_V0.md  ARCHITECTURE_V1.md  ARCHITECTURE_V2.md
 ├── docker-compose.yml             # postgres + broker + web + self-bridge for local dev
 ├── packages/
@@ -514,7 +514,7 @@ No phone contact anywhere in this lifecycle. The phone was only needed at instal
 Anything stubbed appears in code with `# STUB:` and in each package's README. **No silent stubs.**
 
 - **Payments.** No money flows anywhere in v0. Deferred to **[v1](ARCHITECTURE_V1.md)**. No payment fields in the schema.
-- **Public payout credential.** v0 answering uses only the private Hearme-scoped nullifier + DelegationToken. The opt-in public Self Agent ID / ERC-8004 credential needed for withdrawable payouts arrives in **[v1](ARCHITECTURE_V1.md)**.
+- **Public payout credential.** v0 answering uses only the private Chorum-scoped nullifier + DelegationToken. The opt-in public Self Agent ID / ERC-8004 credential needed for withdrawable payouts arrives in **[v1](ARCHITECTURE_V1.md)**.
 - **Answer-integrity enforcement.** Grounding commitments, honeypot adjudication, the override-oracle fidelity scoring, bonus escrow/clawback, fidelity-weighted aggregation — all designed for **[v2](ARCHITECTURE_V2.md)**, none enforced in v0. v0's anti-cheat is structural: no reward means little to farm, and the signal-bearing floor (§15) blocks the cheapest ask-farming.
 - **Advanced bribery defenses.** Hardware-bound keys, phone-held MACI voting authority, periodic re-attestation — designed for **[v2](ARCHITECTURE_V2.md)** (§1.6).
 - **Memory provider abstraction.** Skill hard-codes one provider; the abstraction is wired in a later iteration.
@@ -525,13 +525,13 @@ Anything stubbed appears in code with `# STUB:` and in each package's README. **
 
 ### What is DONE in v0
 - **Real Self proof verification, verify-once.** `POST /v1/register` runs `SelfBackendVerifier.verify()` through the self-bridge, enforces bindings, derives `region`/`age_band`, atomically binds `nullifier ↔ agent_key`, and issues a broker-signed DelegationToken. Per envelope, only the token signature + registry/revocation are checked — no Self proof at answer time. Plus the one-time on-chain Celo Identity-Registry root read (§5). Mock-passport proofs verify only with `SELF_MOCK_PASSPORT=1` (staging / Celo Sepolia).
-- **`no_signal` end to end.** The agent emits `no_signal` (`hearme_submit_no_signal`) instead of guessing; the broker keeps dedicated `aggregates.no_signal_total` + `no_signal_by_predicate` (no-signal envelopes never pollute per-option tallies); the result page renders a "No formed view" breakdown.
+- **`no_signal` end to end.** The agent emits `no_signal` (`chorum_submit_no_signal`) instead of guessing; the broker keeps dedicated `aggregates.no_signal_total` + `no_signal_by_predicate` (no-signal envelopes never pollute per-option tallies); the result page renders a "No formed view" breakdown.
 - **Asker unlock threshold (§15.3).** Possession-of-DelegationToken auth + the ≥50 answers / ≥10 signal-bearing gate, with admin override.
-- **Unlinkable answers at rest, self-destructing (§1.4, ADR-098).** Envelopes are stored under a per-question voter tag (`HMAC(s_q, …|question_id|nullifier)`), never the raw nullifier, so the answers table cannot be grouped into one person's history. Each question has its **own** secret `s_q`, stored wrapped under an env/SSM master key in a broker-owned `hearme_secrets` DB and **destroyed a grace period after the question closes** — after which that question's answers are unlinkable even to the broker, so the liability stays bounded to the live working set instead of accumulating forever. Per-person tallies live as counters on `registrations`; the startup check refuses to boot in production with the dev master key. Verified end to end (the answers table holds no raw nullifier; one person's two answers carry unrelated tags; `s_q` is ciphertext at rest; revoke/invalidation roll the counters back; destroying a closed question's secret orphans its answers while leaving the published aggregate intact).
+- **Unlinkable answers at rest, self-destructing (§1.4, ADR-098).** Envelopes are stored under a per-question voter tag (`HMAC(s_q, …|question_id|nullifier)`), never the raw nullifier, so the answers table cannot be grouped into one person's history. Each question has its **own** secret `s_q`, stored wrapped under an env/SSM master key in a broker-owned `chorum_secrets` DB and **destroyed a grace period after the question closes** — after which that question's answers are unlinkable even to the broker, so the liability stays bounded to the live working set instead of accumulating forever. Per-person tallies live as counters on `registrations`; the startup check refuses to boot in production with the dev master key. Verified end to end (the answers table holds no raw nullifier; one person's two answers carry unrelated tags; `s_q` is ciphertext at rest; revoke/invalidation roll the counters back; destroying a closed question's secret orphans its answers while leaving the published aggregate intact).
 
 - **No free-form answer text at rest (#137).** The published page already shows only aggregates, never individual answers — but the answers table itself must not become a re-identification surface either. So the broker persists into `envelopes.answer` **only the canonical option label** it classifies the answer to (or `""` for a no_signal envelope), never the raw string it received. The honest skill already collapses the answer to a single option *before signing* (skill `match_option`), but the broker does not trust that: a tampered/injected client could append re-identifying prose that still classifies to an option ("yes — she runs prod from the Frankfurt box"), or set `no_signal=true` and stash text in `answer`; the broker drops both. The consequence is that even without column-level encryption-at-rest, a DB / backup leak of `envelopes` exposes no free-form micro-data ("a nurse in Lyon with two kids…") that — combined with `disclosed_predicates` + `submitted_at` — could single out a person in a small cohort. The answer column now carries exactly the information the aggregate already publishes (which option), and nothing more. Verified end to end (a signed leaky answer is stored as just `"yes"`; a no_signal envelope stores `""`).
 
-**Residual caveats (carried into IDENTITY.md):** (a) a Celo-side revocation made *after* registration is not re-checked per answer (Hearme's own `registrations` registry governs revocation thereafter); (b) one human holding multiple legal passports yields multiple nullifiers.
+**Residual caveats (carried into IDENTITY.md):** (a) a Celo-side revocation made *after* registration is not re-checked per answer (Chorum's own `registrations` registry governs revocation thereafter); (b) one human holding multiple legal passports yields multiple nullifiers.
 
 ---
 
@@ -560,7 +560,7 @@ Each package has its own suite; one cross-cutting end-to-end suite at the repo r
 
 - **Question dispatch transport.** Polling every 30s means ~30s latency; move to SSE/WebSocket later.
 - **Broker signing-key management.** The DelegationToken is only as trustworthy as `broker_key`. Where it lives (KMS/HSM/env) and how it rotates (overlap window or forced re-registration) is open. v0: single key in config.
-- **Linkage-secret management (§1.4, ADR-098) — resolved.** Each question's secret `s_q` is stored wrapped (AES-256-GCM under an env/SSM master key) in a broker-owned `hearme_secrets` DB co-located on the main RDS instance, and destroyed a grace period after the question closes (a reaper keyed on `closes_at`). Accepted consequence: revoke / Self-invalidation reach only **live** questions — once `s_q` is destroyed a closed question's answers can no longer be located (their aggregate is already published, so this is correct). Open knobs: the grace window length (and the master key must stay stable, since rotating it orphans live wrapped secrets); and whether to ever move the secrets off RDS to KMS/Secrets-Manager for a stronger real-deletion guarantee (ADR-098 Alternatives).
+- **Linkage-secret management (§1.4, ADR-098) — resolved.** Each question's secret `s_q` is stored wrapped (AES-256-GCM under an env/SSM master key) in a broker-owned `chorum_secrets` DB co-located on the main RDS instance, and destroyed a grace period after the question closes (a reaper keyed on `closes_at`). Accepted consequence: revoke / Self-invalidation reach only **live** questions — once `s_q` is destroyed a closed question's answers can no longer be located (their aggregate is already published, so this is correct). Open knobs: the grace window length (and the master key must stay stable, since rotating it orphans live wrapped secrets); and whether to ever move the secrets off RDS to KMS/Secrets-Manager for a stronger real-deletion guarantee (ADR-098 Alternatives).
 - **Credential-vs-registry revocation latency.** Revocation flips `registrations.revoked_at`, checked per envelope — immediate, but a stolen token works until then (or until `expires_at`). Shortening TTL trades refresh friction for a tighter window.
 - **DelegationToken storage at rest.** OS keychain, passphrase-encrypted file, or Hermes-identity-derived key?
 - **Aggregate semantics for free-form answers.** v0 aggregates by predicate only; semantic clustering of answer text is a later design and must not leak identifying patterns.
@@ -590,4 +590,4 @@ v0 does not need a continuous credit ledger on day one. It starts with a **boole
 The boolean unlock is the v0 form of a general **answer-credit economy**: earn credits by answering, spend credits by asking, with credits conserving (the network can never be asked for more answers than it has supplied). **[v1](ARCHITECTURE_V1.md)** generalizes this to a continuous ledger and adds a *buy-credits-with-money* path for demand-side customers who will never run answering agents. **[v2](ARCHITECTURE_V2.md)** makes earned credit fidelity-weighted so confabulated answers can't be laundered into ask-rights.
 
 ### 14.4 X-sharing is a growth boost, not a gate
-A generic "I use Hearme" promo on X is free, on-message advertising and (being generic) preserves question anonymity. But X accounts are cheap and X ≠ proof-of-personhood, so it is a **weak** spam gate. It is therefore optional and incentivized (a share can grant a small credit bonus or reach boost), never the toll. Distribution and gating stay decoupled.
+A generic "I use Chorum" promo on X is free, on-message advertising and (being generic) preserves question anonymity. But X accounts are cheap and X ≠ proof-of-personhood, so it is a **weak** spam gate. It is therefore optional and incentivized (a share can grant a small credit bonus or reach boost), never the toll. Distribution and gating stay decoupled.

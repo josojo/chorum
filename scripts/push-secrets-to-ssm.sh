@@ -10,7 +10,7 @@
 # parameters are overwritten in place.
 #
 # Requires AWS creds (default region) with:
-#   ssm:PutParameter  on  arn:aws:ssm:<region>:<acct>:parameter/hearme/<env>/*
+#   ssm:PutParameter  on  arn:aws:ssm:<region>:<acct>:parameter/chorum/<env>/*
 #   kms:Encrypt       on  the key SSM used (alias/aws/ssm by default)
 #
 # Usage:
@@ -32,7 +32,7 @@ esac
   exit 2
 }
 
-prefix="/hearme/${env_name}"
+prefix="/chorum/${env_name}"
 
 # Public, non-secret values — stored as plain String so they are readable in
 # the console without decryption.

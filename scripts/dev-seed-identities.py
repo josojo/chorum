@@ -2,7 +2,7 @@
 """Create N synthetic identities and answer open questions — phone-free e2e.
 
 DANGER / testing only. Requires the broker running with
-``HEARME_BROKER_DEV_INSECURE_REGISTER=1`` (mounts ``POST /v1/dev/register``,
+``CHORUM_BROKER_DEV_INSECURE_REGISTER=1`` (mounts ``POST /v1/dev/register``,
 which mints DelegationTokens without any Self proof). This exercises the FULL
 answer→aggregate pipeline with real Ed25519 keys + signed envelopes; only the
 Self proof-of-personhood step is bypassed.
@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
             if reg.status_code == 404:
                 print(
                     "POST /v1/dev/register is 404 — start the broker with "
-                    "HEARME_BROKER_DEV_INSECURE_REGISTER=1.",
+                    "CHORUM_BROKER_DEV_INSECURE_REGISTER=1.",
                     file=sys.stderr,
                 )
                 return 2

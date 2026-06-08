@@ -3,7 +3,7 @@
 // ARCHITECTURE_V0.md §8.5:  delegation_hash = SHA-256(canonical_json(delegation_token))
 //
 // Properties required (match the Python verify/canonical.py and, crucially, the
-// hearme-skill which independently computes delegation_hash and signs over it):
+// chorum-skill which independently computes delegation_hash and signs over it):
 //   - Object keys sorted lexicographically at every nesting level.
 //   - No insignificant whitespace (Python separators=(",",":")).
 //   - UTF-8 bytes out.

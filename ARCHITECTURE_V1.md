@@ -1,4 +1,4 @@
-# Hearme — v1 Architecture (non-custodial payments)
+# Chorum — v1 Architecture (non-custodial payments)
 
 > **Version map.**
 > - **[v0](ARCHITECTURE_V0.md):** the working system — install the skill, verify with Self, answer questions, earn the right to ask. No money.
@@ -27,12 +27,12 @@ So v1 adds exactly two things:
 v0's §1.1–§1.15 carry forward unchanged. v1 adds:
 
 ### 1.4.1 Two identity surfaces — never collapse them
-Hearme now has two identity surfaces and they must not be merged:
+Chorum now has two identity surfaces and they must not be merged:
 
-- **Private answering identity (from v0):** the Hearme-scoped Self nullifier + the broker-signed DelegationToken. Sufficient to answer, enforce one-response-per-human-per-question, and keep raw proofs and public chain identifiers off the answer path.
+- **Private answering identity (from v0):** the Chorum-scoped Self nullifier + the broker-signed DelegationToken. Sufficient to answer, enforce one-response-per-human-per-question, and keep raw proofs and public chain identifiers off the answer path.
 - **Public payout credential (v1, opt-in):** a **Self Agent ID / ERC-8004** proof-of-human agent credential. Required for any user who wants real, *withdrawable* payouts. It gives the settlement contract and outside verifiers an independently checkable fact — "this signing agent is backed by a real Self-verified human" — instead of trusting a Postgres `registrations` row the broker inserted.
 
-This split is what makes payments non-custodial in spirit as well as plumbing: without it, the v1 payout layer would be trusting the broker not to fabricate registration rows and route rewards to itself. Reusing the public Agent ID as the normal respondent identifier, conversely, would make users more linkable across apps than Hearme needs. So **answering stays private (v0 path); a public credential is linked only when the user wants real money.**
+This split is what makes payments non-custodial in spirit as well as plumbing: without it, the v1 payout layer would be trusting the broker not to fabricate registration rows and route rewards to itself. Reusing the public Agent ID as the normal respondent identifier, conversely, would make users more linkable across apps than Chorum needs. So **answering stays private (v0 path); a public credential is linked only when the user wants real money.**
 
 ### 1.15′ Baseline reimburses cost; profit is deferred
 The marketplace rewards information that corresponds to a real person, never participation. v1 implements only the **baseline** half of that rule (§4): a `no_signal` earns roughly retrieval-tier cost, an answer earns roughly generation cost — neither is profit. The **grounding bonus** (the only real profit) is recorded as an escrowed entitlement but kept at ~zero until [v2](ARCHITECTURE_V2.md) ships the machinery (grounding audits, honeypots, fidelity, vesting) that lets it survive only when genuinely grounded. Paying `no_signal` *less in absolute terms is not a penalty* — answering's extra pay is a bonus-at-risk, not guaranteed money.
@@ -53,7 +53,7 @@ The marketplace rewards information that corresponds to a real person, never par
                                    └────────────────────────────────┼──proof)──┘
                                                                     │
 ┌─────────────┐   ┌──────────────────┐   ┌────────────┐   ┌────────┴───────────┐
-│ hearme-web  │   │  hearme-broker   │   │  Postgres  │   │  hearme-skill      │
+│ chorum-web  │   │  chorum-broker   │   │  Postgres  │   │  chorum-skill      │
 │ + buy-credit│──►│  + assignment    │──►│ + payout   │◄──┤  + payout wallet   │
 │   checkout  │   │  + Merkle builder│   │   tables   │   │  + claim flow      │
 └─────────────┘   └──────────────────┘   └────────────┘   └────────────────────┘
@@ -80,7 +80,7 @@ After a question closes, the broker:
 "Assign which agent answered a question" = step 1–2: the broker is the only party that can read `envelopes`/`registrations` (the v0 privacy boundary), so it is the only party that *can* attribute an answer to a payee — but it does so transparently and the on-chain claim requires the payee to prove they are a real human-backed agent (§1.4.1), so the broker cannot silently pay itself.
 
 ### 3.3 Settlement (the Merkle payout tree)
-This is the "micropayments via the Merkle tree" the design calls for. Per-answer amounts are tiny (a fraction of a cent); paying each as its own on-chain transfer is economically absurd. So Hearme batches:
+This is the "micropayments via the Merkle tree" the design calls for. Per-answer amounts are tiny (a fraction of a cent); paying each as its own on-chain transfer is economically absurd. So Chorum batches:
 
 ```
 For a settlement epoch:
@@ -101,7 +101,7 @@ Properties this buys:
 - **Cumulative leaves** (standard Merkle-drop pattern): each epoch's leaf encodes the *total* owed to date, so a missed epoch is not lost — the next claim supersedes it.
 - **Verifiable assignment.** Anyone can recompute the published root from the (privacy-preserving) leaf set the broker commits to; a payee can prove they were under- or over-paid.
 
-> **Chain choice.** Celo (already a Hearme dependency for the Self Identity Registry, v0 §5) is the natural home, but the distributor is chain-agnostic; an L2 with sub-cent gas is equally fine. The escrow currency is a stablecoin so "a fraction of a cent" is a meaningful unit.
+> **Chain choice.** Celo (already a Chorum dependency for the Self Identity Registry, v0 §5) is the natural home, but the distributor is chain-agnostic; an L2 with sub-cent gas is equally fine. The escrow currency is a stablecoin so "a fraction of a cent" is a meaningful unit.
 
 ### 3.4 Why not just have the broker send payments?
 Because that is custody, and custody is exactly the trust we are trying not to require. A custodial broker is a honeypot (regulatory + security), can be compelled to freeze or redirect funds, and gives the answerer no recourse if the broker simply doesn't pay. The Merkle distributor makes the broker a *publisher of commitments*, not a *holder of money* — the same reason v0 made it a publisher of aggregates, not a holder of opinions.
@@ -161,7 +161,7 @@ CREATE TABLE settlement_epochs (
 ## 5. Broker delta
 
 ### 5.1 New endpoints
-- `POST /v1/agent-credential` — an already-registered agent links a public **Self Agent ID / ERC-8004** credential to its private Hearme registration. The broker verifies that the public credential's agent key **is** the registered `agent_key`, or explicitly delegates to it via `payout_authorization`, and records only the fields needed for settlement (§4). **Never required for answering** — it is the opt-in bridge from private participation to withdrawable payouts.
+- `POST /v1/agent-credential` — an already-registered agent links a public **Self Agent ID / ERC-8004** credential to its private Chorum registration. The broker verifies that the public credential's agent key **is** the registered `agent_key`, or explicitly delegates to it via `payout_authorization`, and records only the fields needed for settlement (§4). **Never required for answering** — it is the opt-in bridge from private participation to withdrawable payouts.
 - `POST /v1/credits/purchase` — records a money→credit purchase (after the on-ramp/escrow deposit confirms on-chain); appends a `+purchase` row to `credit_ledger`.
 - `GET /v1/payouts/me` — an agent (authenticated by DelegationToken, same trust path as an envelope) fetches its claimable leaves: `[{epoch, amount, merkle_proof, root}]`. The skill uses this to call the distributor.
 

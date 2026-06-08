@@ -1,6 +1,6 @@
-# inspect.md — how to inspect the hearme stack
+# inspect.md — how to inspect the chorum stack
 
-Practical commands for figuring out **what is happening** when the hearme skill
+Practical commands for figuring out **what is happening** when the chorum skill
 is installed in a Hermes agent answering questions against the staging broker.
 Three places to look:
 
@@ -17,13 +17,13 @@ Three places to look:
 journalctl --user -u hermes-gateway.service --since today -n 200
 
 # Local: what did the skill actually record?
-sqlite3 ~/.hermes/hearme/ledger.sqlite '.tables'
-sqlite3 -header -column ~/.hermes/hearme/ledger.sqlite \
+sqlite3 ~/.hermes/chorum/ledger.sqlite '.tables'
+sqlite3 -header -column ~/.hermes/chorum/ledger.sqlite \
   'SELECT * FROM submissions ORDER BY rowid DESC LIMIT 10;'
 
 # Server: any envelopes arrive at the broker?
-ssh -i ~/.ssh/hearme-staging.pem ubuntu@3.121.186.133 \
-  'cd ~/hearme && docker compose -f docker-compose.yml -f docker-compose.staging.yml logs broker --since=1h | grep -E "envelopes|register"'
+ssh -i ~/.ssh/chorum-staging.pem ubuntu@3.121.186.133 \
+  'cd ~/chorum && docker compose -f docker-compose.yml -f docker-compose.staging.yml logs broker --since=1h | grep -E "envelopes|register"'
 ```
 
 ---
@@ -49,20 +49,20 @@ journalctl --user -u hermes-gateway.service --since today -n 500
 journalctl --user -u hermes-gateway.service --since "1 hour ago"
 ```
 
-The skill itself logs under the Python loggers `hearme_skill.tools`,
-`hearme_skill.schedule`, `hearme_skill.broker`, `hearme_skill.register`. Filter:
+The skill itself logs under the Python loggers `chorum_skill.tools`,
+`chorum_skill.schedule`, `chorum_skill.broker`, `chorum_skill.register`. Filter:
 
 ```bash
-journalctl --user -u hermes-gateway.service | grep hearme_skill
+journalctl --user -u hermes-gateway.service | grep chorum_skill
 ```
 
 ### Cron job — list, run-now, history
 
 ```bash
 hermes cron --help                    # confirm subcommands in your version
-hermes cron list                      # find 'hearme-answer-cycle'
-hermes cron run hearme-answer-cycle   # fire NOW (don't wait for the schedule)
-hermes cron history hearme-answer-cycle
+hermes cron list                      # find 'chorum-answer-cycle'
+hermes cron run chorum-answer-cycle   # fire NOW (don't wait for the schedule)
+hermes cron history chorum-answer-cycle
 ```
 
 The output of a forced run appears in the gateway journal — keep
@@ -99,7 +99,7 @@ journalctl. Closing the shell kills it.
 ### Files
 
 ```bash
-ls -la ~/.hermes/hearme/
+ls -la ~/.hermes/chorum/
 # agent_key          Ed25519 signing key (0600)
 # delegation.token   broker-issued JWT-like JSON (90-day TTL)
 # policy.yaml        what you let the skill answer
@@ -110,7 +110,7 @@ ls -la ~/.hermes/hearme/
 ### Delegation token — expiry, predicates
 
 ```bash
-python3 -m json.tool < ~/.hermes/hearme/delegation.token
+python3 -m json.tool < ~/.hermes/chorum/delegation.token
 # inspect `expires_at`, `disclosed_predicates` (region, country, age_band),
 # and the broker signature.
 ```
@@ -118,7 +118,7 @@ python3 -m json.tool < ~/.hermes/hearme/delegation.token
 ### Policy
 
 ```bash
-cat ~/.hermes/hearme/policy.yaml
+cat ~/.hermes/chorum/policy.yaml
 ```
 
 Two gotchas worth re-checking when nothing seems to happen:
@@ -130,23 +130,23 @@ Two gotchas worth re-checking when nothing seems to happen:
 ### Ledger — the structured truth
 
 ```bash
-sqlite3 ~/.hermes/hearme/ledger.sqlite '.tables'
+sqlite3 ~/.hermes/chorum/ledger.sqlite '.tables'
 # expect: questions, answers, submissions, revocations, question_spend, meta
 
-sqlite3 ~/.hermes/hearme/ledger.sqlite '.schema submissions'
+sqlite3 ~/.hermes/chorum/ledger.sqlite '.schema submissions'
 
 # what the broker accepted / rejected (most recent first)
-sqlite3 -header -column ~/.hermes/hearme/ledger.sqlite \
+sqlite3 -header -column ~/.hermes/chorum/ledger.sqlite \
   'SELECT question_id, accepted, reason, submitted_at
    FROM submissions ORDER BY rowid DESC LIMIT 10;'
 
 # what the agent actually wrote (rationale stays local, never on the wire)
-sqlite3 -header -column ~/.hermes/hearme/ledger.sqlite \
+sqlite3 -header -column ~/.hermes/chorum/ledger.sqlite \
   'SELECT question_id, answer_text, rationale, created_at
    FROM answers ORDER BY rowid DESC LIMIT 10;'
 
 # every question the skill has seen (and skipped or answered)
-sqlite3 -header -column ~/.hermes/hearme/ledger.sqlite \
+sqlite3 -header -column ~/.hermes/chorum/ledger.sqlite \
   'SELECT question_id, text, topic, closes_at
    FROM questions ORDER BY rowid DESC LIMIT 10;'
 ```
@@ -159,7 +159,7 @@ decisions are recorded too, so it tells you exactly why a cron cycle was quiet.
 ```bash
 python3 -c "from importlib.metadata import entry_points; \
 print([ep.name for ep in entry_points(group='hermes_agent.plugins')])"
-# expect 'hearme' in the list
+# expect 'chorum' in the list
 ```
 
 Must be in the **same Python env** as the running Hermes agent.
@@ -168,12 +168,12 @@ Must be in the **same Python env** as the running Hermes agent.
 
 ## 3. Staging server
 
-Deployed at `3.121.186.133` under `/home/ubuntu/hearme` (proper git checkout of
+Deployed at `3.121.186.133` under `/home/ubuntu/chorum` (proper git checkout of
 `main`). SSH is locked to the admin IP.
 
 ```bash
-ssh -i ~/.ssh/hearme-staging.pem ubuntu@3.121.186.133
-cd ~/hearme
+ssh -i ~/.ssh/chorum-staging.pem ubuntu@3.121.186.133
+cd ~/chorum
 dc='docker compose -f docker-compose.yml -f docker-compose.staging.yml'
 ```
 
@@ -222,11 +222,11 @@ This is where you see incoming proof POSTs from the Self relayer
 
 ```bash
 $dc exec postgres \
-  psql -U hearme_admin hearme -c 'SELECT count(*) FROM registrations;'
+  psql -U chorum_admin chorum -c 'SELECT count(*) FROM registrations;'
 $dc exec postgres \
-  psql -U hearme_admin hearme \
+  psql -U chorum_admin chorum \
   -c 'SELECT question_id, count(*) FROM envelopes GROUP BY question_id ORDER BY 2 DESC LIMIT 10;'
-$dc exec postgres psql -U hearme_admin hearme -c '\d envelopes'
+$dc exec postgres psql -U chorum_admin chorum -c '\d envelopes'
 ```
 
 ### Health probes (no SSH needed)
@@ -247,16 +247,16 @@ Open three terminals and trigger a cycle:
 journalctl --user -u hermes-gateway.service -f
 
 # Terminal B — broker on staging
-ssh -i ~/.ssh/hearme-staging.pem ubuntu@3.121.186.133 \
-  'cd ~/hearme && docker compose -f docker-compose.yml -f docker-compose.staging.yml logs broker -f'
+ssh -i ~/.ssh/chorum-staging.pem ubuntu@3.121.186.133 \
+  'cd ~/chorum && docker compose -f docker-compose.yml -f docker-compose.staging.yml logs broker -f'
 
 # Terminal C — fire the cron
-hermes cron run hearme-answer-cycle
+hermes cron run chorum-answer-cycle
 ```
 
 A complete cycle leaves three traces, in order:
 
-1. (A) `hearme_skill.tools` lines for `list_open_questions` → `submit_answer`.
+1. (A) `chorum_skill.tools` lines for `list_open_questions` → `submit_answer`.
 2. (B) `POST /v1/envelopes HTTP/1.1 200 OK` per submitted answer.
 3. (Local) row in `submissions` with `accepted=1`.
 
@@ -269,11 +269,11 @@ If any of those is missing, the absence tells you where the cycle stalled.
 | Question | Command |
 |---|---|
 | Did the cron fire on time? | `journalctl --user -u hermes-gateway.service --since "30 min ago"` |
-| Did the skill submit anything? | `sqlite3 ~/.hermes/hearme/ledger.sqlite 'SELECT * FROM submissions ORDER BY rowid DESC LIMIT 5;'` |
+| Did the skill submit anything? | `sqlite3 ~/.hermes/chorum/ledger.sqlite 'SELECT * FROM submissions ORDER BY rowid DESC LIMIT 5;'` |
 | Did the broker accept? | Same row — column `accepted`; rejection in `reason`. |
-| What did Hermes actually answer? | `sqlite3 ~/.hermes/hearme/ledger.sqlite 'SELECT question_id, answer_text FROM answers ORDER BY rowid DESC LIMIT 5;'` |
-| Is my delegation token still valid? | `python3 -m json.tool < ~/.hermes/hearme/delegation.token` (check `expires_at`) |
+| What did Hermes actually answer? | `sqlite3 ~/.hermes/chorum/ledger.sqlite 'SELECT question_id, answer_text FROM answers ORDER BY rowid DESC LIMIT 5;'` |
+| Is my delegation token still valid? | `python3 -m json.tool < ~/.hermes/chorum/delegation.token` (check `expires_at`) |
 | Are the staging services healthy? | The `curl … /healthz` block in §3. |
 | Did the proof reach the bridge during onboarding? | Caddy logs filtered to `/self/`. |
 | Why did the broker reject? | `$dc logs broker | grep -E "register|envelope" | grep -i fail` |
-| How many answers from my agent landed? | `$dc exec postgres psql -U hearme_admin hearme -c "SELECT count(*) FROM envelopes WHERE delegation_hash = decode('<hex>','hex');"` (hash is in the `submissions` ledger) |
+| How many answers from my agent landed? | `$dc exec postgres psql -U chorum_admin chorum -c "SELECT count(*) FROM envelopes WHERE delegation_hash = decode('<hex>','hex');"` (hash is in the `submissions` ledger) |

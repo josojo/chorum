@@ -1,13 +1,13 @@
-# `docker compose up` brings up the hearme v0 *server* stack: shared Postgres,
+# `docker compose up` brings up the chorum v0 *server* stack: shared Postgres,
 # broker, web, and the self-bridge. None of these need a model-provider API key.
 #
-# The answering agent (the `hearme` skill) is NOT a service here: it runs inside
+# The answering agent (the `chorum` skill) is NOT a service here: it runs inside
 # the user's own Hermes or OpenClaw agent, which already has a model configured.
 # Install the standalone binary (packages/skill, Rust), wire it into the host,
 # and onboard:
-#   curl -fsSL https://github.com/josojo/hearme/releases/latest/download/install.sh | sh
-#   hearme-skill install     # drops the plugin/skill into Hermes/OpenClaw
-#   hearme-skill onboard --bridge-url http://localhost:8787 --broker-url http://localhost:8000
+#   curl -fsSL https://github.com/josojo/chorum/releases/latest/download/install.sh | sh
+#   chorum-skill install     # drops the plugin/skill into Hermes/OpenClaw
+#   chorum-skill onboard --bridge-url http://localhost:8787 --broker-url http://localhost:8000
 #
 # First run:
 #   docker compose up --build
@@ -22,12 +22,12 @@
 services:
   postgres:
     image: postgres:16
-    container_name: hearme-postgres
+    container_name: chorum-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: hearme
-      POSTGRES_USER: hearme_admin
-      POSTGRES_PASSWORD: hearme_admin_dev
+      POSTGRES_DB: chorum
+      POSTGRES_USER: chorum_admin
+      POSTGRES_PASSWORD: chorum_admin_dev
     # Bind published ports to loopback only. In prod/staging the overlays add
     # Caddy (the sole 0.0.0.0:80/443 listener) and reach every service over the
     # internal compose network (e.g. `postgres:5432`, `broker:8000`); the host
@@ -38,7 +38,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - hearme-pgdata:/var/lib/postgresql/data
+      - chorum-pgdata:/var/lib/postgresql/data
       # Extensions + schema + roles + seed are applied on first container start,
       # in alpha order.
       # 00: extensions (pgcrypto — see db/init/00-extensions.sql)
@@ -51,15 +51,15 @@ services:
       # The role/grant body shared with the managed-Postgres path
       # (scripts/bootstrap-rds.sh). Mounted OUTSIDE initdb.d so the entrypoint
       # does not run it directly — 02-roles.sh applies it via `psql -f`.
-      - ./db/init/roles.sql:/hearme/roles.sql:ro
+      - ./db/init/roles.sql:/chorum/roles.sql:ro
       - ./db/init/03-seed.sql:/docker-entrypoint-initdb.d/03-seed.sql:ro
-      # 04: the broker-owned `hearme_secrets` DB for per-question voter-tag
+      # 04: the broker-owned `chorum_secrets` DB for per-question voter-tag
       # secrets (ADR-098) — a second DB the broker owns (it has only USAGE on
-      # `hearme`). In prod the same DB is co-located on the RDS instance
+      # `chorum`). In prod the same DB is co-located on the RDS instance
       # (bootstrap-rds.sh); the secret is wrapped at rest under the master key.
       - ./db/init/04-secrets-db.sh:/docker-entrypoint-initdb.d/04-secrets-db.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hearme_admin -d hearme"]
+      test: ["CMD-SHELL", "pg_isready -U chorum_admin -d chorum"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -71,9 +71,9 @@ services:
     # Tag the built image with the deploy's git SHA so the previous build stays
     # on the box as an immutable, named image — `scripts/rollback.sh` re-`up`s a
     # prior SHA without rebuilding. Defaults to `dev` for local `docker compose
-    # up`. The deploy sets HEARME_DEPLOY_SHA (see deploy-staging.yml / §7).
-    image: hearme-broker:${HEARME_DEPLOY_SHA:-dev}
-    container_name: hearme-broker
+    # up`. The deploy sets CHORUM_DEPLOY_SHA (see deploy-staging.yml / §7).
+    image: chorum-broker:${CHORUM_DEPLOY_SHA:-dev}
+    container_name: chorum-broker
     restart: unless-stopped
     depends_on:
       postgres:
@@ -88,33 +88,33 @@ services:
       # checks run BY DEFAULT (see startup_checks.py); the prod/staging overlays
       # do NOT set this, so they fail closed if a dev default leaks through.
       # This must NEVER be set in a deployed environment.
-      HEARME_BROKER_DEV_MODE: "1"
+      CHORUM_BROKER_DEV_MODE: "1"
       # asyncpg DSN. scheme must be `postgres://` (asyncpg-style).
-      HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:hearme_broker_dev@postgres:5432/hearme
+      CHORUM_BROKER_DATABASE_URL: postgres://chorum_broker:chorum_broker_dev@postgres:5432/chorum
       # Self proofs are verified once (at /v1/register) via the bridge the broker controls.
-      HEARME_BROKER_SELF_BRIDGE_URL: http://self-bridge:8787
+      CHORUM_BROKER_SELF_BRIDGE_URL: http://self-bridge:8787
       # Identity scope stamped into / checked on every credential. MUST equal the
       # self-bridge's SELF_SCOPE. Local-dev value; staging overrides to
-      # "staging-hearme-v1" and prod IGNORES it (frozen to "hearme-v1" in code —
+      # "staging-chorum-v1" and prod IGNORES it (frozen to "chorum-v1" in code —
       # GH #97). See packages/broker/src/verify/scope.ts and docs/DEPLOYMENT.md.
-      HEARME_BROKER_SELF_SCOPE: hearme-v1
+      CHORUM_BROKER_SELF_SCOPE: chorum-v1
       # Dev: no Celo RPC wired into the bridge, so skip the on-chain registry
       # gate. Set to "1" (and wire SELF_CELO_RPC_URL on the bridge) for the
       # Sybil-hardening check. See ARCHITECTURE_V0.md §5.
-      HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "0"
+      CHORUM_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "0"
       # Dev signing key for the broker-issued DelegationToken. OVERRIDE in prod.
-      HEARME_BROKER_SIGNING_KEY: QlJPS0VSLVNJR05JTkctS0VZLUhFQVJNRS1ERVYzMkI=
+      CHORUM_BROKER_SIGNING_KEY: QlJPS0VSLVNJR05JTkctS0VZLUhFQVJNRS1ERVYzMkI=
       # Per-question voter-tag secret store (ADR-098, §1.4): a broker-owned DB
       # (04-secrets-db.sh), co-located on the same instance in prod. Each secret
       # is wrapped at rest under the master key below. OVERRIDE the key in prod.
-      HEARME_BROKER_SECRETS_DATABASE_URL: postgres://hearme_broker:hearme_broker_dev@postgres:5432/hearme_secrets
-      HEARME_BROKER_VOTER_TAG_MASTER_KEY: SEVBUk1FLVZPVEVSLVRBRy1TRUNSRVQtREVWLTMyQiE=
+      CHORUM_BROKER_SECRETS_DATABASE_URL: postgres://chorum_broker:chorum_broker_dev@postgres:5432/chorum_secrets
+      CHORUM_BROKER_VOTER_TAG_MASTER_KEY: SEVBUk1FLVZPVEVSLVRBRy1TRUNSRVQtREVWLTMyQiE=
       # Optional production hook: poll Self on-chain identity invalidation/update
-      # events and revoke matching Hearme registrations + accepted votes.
-      HEARME_BROKER_SELF_REVOCATION_LISTENER_ENABLED: "0"
-      # HEARME_BROKER_SELF_REVOCATION_RPC_URL: https://forno.celo.org
-      # HEARME_BROKER_SELF_REVOCATION_CONTRACT_ADDRESS: "0x..."
-      # HEARME_BROKER_SELF_REVOCATION_EVENT_TOPIC: "0x..."
+      # events and revoke matching Chorum registrations + accepted votes.
+      CHORUM_BROKER_SELF_REVOCATION_LISTENER_ENABLED: "0"
+      # CHORUM_BROKER_SELF_REVOCATION_RPC_URL: https://forno.celo.org
+      # CHORUM_BROKER_SELF_REVOCATION_CONTRACT_ADDRESS: "0x..."
+      # CHORUM_BROKER_SELF_REVOCATION_EVENT_TOPIC: "0x..."
     # Loopback only — see the note on the postgres service. Remote bot-runners
     # reach the broker over TLS via Caddy's `/v1/*` route, not this host port.
     ports:
@@ -130,15 +130,15 @@ services:
     build:
       context: .
       dockerfile: packages/self-bridge/Dockerfile
-    image: hearme-self-bridge:${HEARME_DEPLOY_SHA:-dev}
-    container_name: hearme-self-bridge
+    image: chorum-self-bridge:${CHORUM_DEPLOY_SHA:-dev}
+    container_name: chorum-self-bridge
     restart: unless-stopped
     environment:
-      # Local-dev nullifier scope. Staging overrides this to "staging-hearme-v1"
-      # and prod IGNORES it entirely (frozen to "hearme-v1" in code — GH #97).
+      # Local-dev nullifier scope. Staging overrides this to "staging-chorum-v1"
+      # and prod IGNORES it entirely (frozen to "chorum-v1" in code — GH #97).
       # Frozen for the life of any environment's data: changing it orphans every
       # registration there. See scope.js PRODUCTION_SCOPE and docs/DEPLOYMENT.md.
-      SELF_SCOPE: hearme-v1
+      SELF_SCOPE: chorum-v1
       SELF_ENDPOINT: http://self-bridge:8787/callback
       SELF_ENDPOINT_TYPE: staging_https
       # mockPassport=1 accepts mock-passport proofs (staging/Celo testnet). Set 0
@@ -173,14 +173,14 @@ services:
     build:
       context: .
       dockerfile: packages/web/Dockerfile
-    image: hearme-migrator:${HEARME_DEPLOY_SHA:-dev}
-    container_name: hearme-migrator
+    image: chorum-migrator:${CHORUM_DEPLOY_SHA:-dev}
+    container_name: chorum-migrator
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      # Admin DSN: hearme_web/hearme_broker roles can't ALTER.
-      MIGRATOR_DATABASE_URL: postgres://hearme_admin:hearme_admin_dev@postgres:5432/hearme
+      # Admin DSN: chorum_web/chorum_broker roles can't ALTER.
+      MIGRATOR_DATABASE_URL: postgres://chorum_admin:chorum_admin_dev@postgres:5432/chorum
     command: ["node", "scripts/migrate.mjs"]
     restart: "no"
 
@@ -188,8 +188,8 @@ services:
     build:
       context: .
       dockerfile: packages/web/Dockerfile
-    image: hearme-web:${HEARME_DEPLOY_SHA:-dev}
-    container_name: hearme-web
+    image: chorum-web:${CHORUM_DEPLOY_SHA:-dev}
+    container_name: chorum-web
     restart: unless-stopped
     depends_on:
       postgres:
@@ -208,7 +208,7 @@ services:
     environment:
       # postgres-js DSN. scheme `postgres://` works for both Drizzle's
       # postgres driver and the Next.js runtime.
-      DATABASE_URL: postgres://hearme_web:hearme_web_dev@postgres:5432/hearme
+      DATABASE_URL: postgres://chorum_web:chorum_web_dev@postgres:5432/chorum
       # /stats reads privacy-safe aggregate counts (agents, respondents) the
       # web role can't query directly from the broker.
       BROKER_URL: http://broker:8000
@@ -225,15 +225,15 @@ services:
   # questions from /v1/questions/open, so this service is the gate between
   # "asker just posted" and "agent is allowed to see it".
   #
-  # If HEARME_CLASSIFIER_OPENROUTER_API_KEY is not set, the service crashes on
+  # If CHORUM_CLASSIFIER_OPENROUTER_API_KEY is not set, the service crashes on
   # boot with a clear error — deliberately fail-closed. New questions just
   # accumulate as NULL and stay invisible to agents until the key is provided.
   classifier:
     build:
       context: .
       dockerfile: packages/classifier/Dockerfile
-    image: hearme-classifier:${HEARME_DEPLOY_SHA:-dev}
-    container_name: hearme-classifier
+    image: chorum-classifier:${CHORUM_DEPLOY_SHA:-dev}
+    container_name: chorum-classifier
     restart: unless-stopped
     depends_on:
       postgres:
@@ -241,21 +241,21 @@ services:
       migrator:
         condition: service_completed_successfully
     environment:
-      HEARME_CLASSIFIER_DATABASE_URL: postgres://hearme_classifier:hearme_classifier_dev@postgres:5432/hearme
+      CHORUM_CLASSIFIER_DATABASE_URL: postgres://chorum_classifier:chorum_classifier_dev@postgres:5432/chorum
       # Provide via your shell (`.env` next to docker-compose.yml) — never
       # commit a key here. Docker Compose auto-loads `.env` for variable
       # substitution in this file. The variable is REQUIRED; the service will
       # fail to boot if it is missing.
-      HEARME_CLASSIFIER_OPENROUTER_API_KEY: ${HEARME_CLASSIFIER_OPENROUTER_API_KEY:-}
-      HEARME_CLASSIFIER_MODEL: ${HEARME_CLASSIFIER_MODEL:-google/gemini-2.5-flash-lite}
-      HEARME_CLASSIFIER_POLL_INTERVAL_MS: "10000"
-      HEARME_CLASSIFIER_BATCH_SIZE: "20"
-      HEARME_CLASSIFIER_REFERER: https://hearme.network
-      HEARME_CLASSIFIER_TITLE: hearme-classifier
+      CHORUM_CLASSIFIER_OPENROUTER_API_KEY: ${CHORUM_CLASSIFIER_OPENROUTER_API_KEY:-}
+      CHORUM_CLASSIFIER_MODEL: ${CHORUM_CLASSIFIER_MODEL:-google/gemini-2.5-flash-lite}
+      CHORUM_CLASSIFIER_POLL_INTERVAL_MS: "10000"
+      CHORUM_CLASSIFIER_BATCH_SIZE: "20"
+      CHORUM_CLASSIFIER_REFERER: https://chorum.network
+      CHORUM_CLASSIFIER_TITLE: chorum-classifier
 
   # NOTE: the answering agent is intentionally not a service here. It is the
-  # `hearme` Hermes plugin and runs inside the user's Hermes agent (which holds
+  # `chorum` Hermes plugin and runs inside the user's Hermes agent (which holds
   # the model config + API key). See the header of this file to install it.
 
 volumes:
-  hearme-pgdata:
+  chorum-pgdata:
