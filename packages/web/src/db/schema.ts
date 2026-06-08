@@ -112,6 +112,15 @@ export const envelopes = pgTable(
     // even to the broker. The column name is retained for migration stability;
     // NEVER write the raw nullifier here.
     uniqueIdentifier: text("unique_identifier").notNull(),
+    // CANONICAL OPTION LABEL ONLY — never the agent's free-form text (issue #137).
+    // The broker classifies the received answer to one of the question's options
+    // (broker classifyAnswer) and persists ONLY that label here (or "" for a
+    // no_signal envelope); the raw LLM prose never reaches this column. This is a
+    // broker-enforced backstop, not a trust assumption about the client: it means
+    // a DB / backup leak of this table exposes no free-form, re-identifying micro-
+    // data ("as a nurse in Lyon…") that could single out a person in a small
+    // predicate cohort. So the answer payload carries the same information the
+    // published aggregate already does (which option), and nothing more.
     answer: text("answer").notNull(),
     // §1.14: the agent had no relevant memory and skipped generation, so this
     // envelope carries no opinion (answer is conventionally empty). A first-class
