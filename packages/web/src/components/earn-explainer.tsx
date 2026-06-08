@@ -221,8 +221,8 @@ function SkillInstall() {
     "$ curl -fsSL https://github.com/josojo/chorum/releases/latest/download/install.sh | sh",
     "$ chorum-skill install",
     "$ chorum-skill onboard \\",
-    "    --broker-url https://3-74-46-46.sslip.io \\",
-    "    --bridge-url https://3-74-46-46.sslip.io/self",
+    "    --broker-url https://chorum.org \\",
+    "    --bridge-url https://chorum.org/self",
   ];
   return (
     <div className="mt-4">

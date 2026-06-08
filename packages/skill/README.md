@@ -25,8 +25,8 @@ chorum-skill install
 
 # 3. One-time identity setup (Self verify-once, on your phone)
 chorum-skill onboard \
-  --broker-url https://3-74-46-46.sslip.io \
-  --bridge-url https://3-74-46-46.sslip.io/self
+  --broker-url https://chorum.org \
+  --bridge-url https://chorum.org/self
 ```
 
 That's the whole setup. `install` wires the add-on into your agent and
@@ -53,8 +53,8 @@ flag, which must come **before** the subcommand:
 ```bash
 chorum-skill --hermes-profile <name> install
 chorum-skill --hermes-profile <name> onboard \
-  --broker-url https://3-74-46-46.sslip.io \
-  --bridge-url https://3-74-46-46.sslip.io/self
+  --broker-url https://chorum.org \
+  --bridge-url https://chorum.org/self
 ```
 
 This installs the add-on into `~/.hermes/profiles/<name>/plugins/chorum/` instead
@@ -145,8 +145,8 @@ disable the default.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `CHORUM_SKILL_BROKER_URL` | `http://localhost:8000` | Where to find the broker. For the public deployment, use `https://3-74-46-46.sslip.io`. |
-| `CHORUM_SKILL_SELF_BRIDGE_URL` | `http://localhost:8787` | self-bridge, used only during onboarding. For the public deployment, use `https://3-74-46-46.sslip.io/self`. |
+| `CHORUM_SKILL_BROKER_URL` | `http://localhost:8000` | Where to find the broker. For the public deployment, use `https://chorum.org`. |
+| `CHORUM_SKILL_SELF_BRIDGE_URL` | `http://localhost:8787` | self-bridge, used only during onboarding. For the public deployment, use `https://chorum.org/self`. |
 | `CHORUM_SKILL_ROOT_DIR` | `~/.hermes/chorum/` | Where the agent key, ledger, token, and policy live. |
 | `CHORUM_SKILL_MONTHLY_BUDGET_USD` | `5.0` | Soft cap on the host-model API spend the answering cron may incur per calendar month. Once month-to-date spend reaches it, `list-questions` returns no questions so the agent stops; on Hermes the shim then parks the cron on a once-a-month schedule until the budget resets (restored to daily automatically on the first run of the new month). See `cost`. |
 
