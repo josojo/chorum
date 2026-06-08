@@ -9,10 +9,10 @@
 # merge cannot *remove* a service or a depends_on edge, so prod is expressed as
 # one self-contained file.) Bring it up with a single -f:
 #
-#   HEARME_DEPLOY_SHA=$(git rev-parse --short=12 HEAD) \
+#   CHORUM_DEPLOY_SHA=$(git rev-parse --short=12 HEAD) \
 #     docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
 #
-# `--remove-orphans` clears the old on-box `hearme-postgres` container left from
+# `--remove-orphans` clears the old on-box `chorum-postgres` container left from
 # a pre-RDS deployment. Migrate its data into RDS FIRST — see docs/DEPLOYMENT.md
 # §4 (cutover runbook). The database now lives in RDS: automated backups + PITR,
 # off-box and durable, which is the whole point of the move. Deploy safety
@@ -23,7 +23,7 @@
 # — see docs/DEPLOYMENT.md §1.1). Compose fails fast if any are missing, so prod
 # cannot silently boot with committed dev passwords, the dev broker signing key,
 # mock passports, the Self testnet, or disabled registry confirmation.
-# HEARME_PROD_POSTGRES_HOST is the RDS endpoint hostname.
+# CHORUM_PROD_POSTGRES_HOST is the RDS endpoint hostname.
 #
 # Every DSN below ends with `?sslmode=require`: RDS Postgres forces TLS
 # (rds.force_ssl=1) and rejects unencrypted connections ("no pg_hba.conf entry
@@ -44,44 +44,44 @@ services:
       self-bridge:
         condition: service_started
     environment:
-      # Base sets HEARME_BROKER_DEV_MODE=1 for local dev; `extends` would inherit
+      # Base sets CHORUM_BROKER_DEV_MODE=1 for local dev; `extends` would inherit
       # it. The TS broker does not read it (the fail-closed checks key off
       # PRODUCTION_MODE), but blank it so the prod config is not misleading.
-      HEARME_BROKER_DEV_MODE: ""
-      HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme?sslmode=require
+      CHORUM_BROKER_DEV_MODE: ""
+      CHORUM_BROKER_DATABASE_URL: postgres://chorum_broker:${CHORUM_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@${CHORUM_PROD_POSTGRES_HOST:?set in prod .env}:5432/chorum?sslmode=require
       # Fail closed at startup if any documented dev default is still set
       # (dev signing key, dev DB password, dev-bypass route, oracle-mode
       # rejection reasons, registry-confirmation disabled). See
       # packages/broker/src/startupChecks.ts.
-      # NOTE: this TS port still uses the opt-in HEARME_BROKER_PRODUCTION_MODE
-      # toggle, NOT the "fail-closed-by-default + opt-in HEARME_BROKER_DEV_MODE"
+      # NOTE: this TS port still uses the opt-in CHORUM_BROKER_PRODUCTION_MODE
+      # toggle, NOT the "fail-closed-by-default + opt-in CHORUM_BROKER_DEV_MODE"
       # inversion that landed on main in #62. Until that inversion is ported,
       # this env var MUST be set in prod — without it the startup checks do not
       # run and the dev defaults pass through silently. Follow-up: port #62 to TS.
-      HEARME_BROKER_PRODUCTION_MODE: "1"
-      HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "1"
-      HEARME_BROKER_EXPOSE_REJECTION_REASONS: "0"
-      HEARME_BROKER_DEV_INSECURE_REGISTER: "0"
-      # HEARME_BROKER_SELF_SCOPE is intentionally NOT set: in production the broker
-      # ignores it and pins the scope to "hearme-v1" in code (PRODUCTION_SCOPE), so
+      CHORUM_BROKER_PRODUCTION_MODE: "1"
+      CHORUM_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "1"
+      CHORUM_BROKER_EXPOSE_REJECTION_REASONS: "0"
+      CHORUM_BROKER_DEV_INSECURE_REGISTER: "0"
+      # CHORUM_BROKER_SELF_SCOPE is intentionally NOT set: in production the broker
+      # ignores it and pins the scope to "chorum-v1" in code (PRODUCTION_SCOPE), so
       # a changed env var can never re-label credentials or weaken the cross-env
-      # barrier (GH #97). Inherited "hearme-v1" from the base file is also ignored.
+      # barrier (GH #97). Inherited "chorum-v1" from the base file is also ignored.
       # This is FROZEN — it must equal the self-bridge's frozen mainnet scope.
-      HEARME_BROKER_SIGNING_KEY: ${HEARME_PROD_BROKER_SIGNING_KEY:?set in prod .env}
+      CHORUM_BROKER_SIGNING_KEY: ${CHORUM_PROD_BROKER_SIGNING_KEY:?set in prod .env}
       # Per-question voter-tag secret store (ADR-098): a broker-owned
-      # `hearme_secrets` database, co-located on the SAME RDS instance as the main
+      # `chorum_secrets` database, co-located on the SAME RDS instance as the main
       # DB. At-rest protection is the AES-256-GCM wrap under the master key below
       # (a dump of the instance yields only ciphertext); the unlink guarantee comes
       # from destroying the wrapped secret at close. bootstrap-rds.sh creates the
-      # `hearme_secrets` DB on the instance.
-      HEARME_BROKER_SECRETS_DATABASE_URL: postgres://hearme_broker:${HEARME_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme_secrets?sslmode=require
-      HEARME_BROKER_VOTER_TAG_MASTER_KEY: ${HEARME_PROD_BROKER_VOTER_TAG_MASTER_KEY:?set in prod .env}
+      # `chorum_secrets` DB on the instance.
+      CHORUM_BROKER_SECRETS_DATABASE_URL: postgres://chorum_broker:${CHORUM_PROD_POSTGRES_BROKER_PASSWORD:?set in prod .env}@${CHORUM_PROD_POSTGRES_HOST:?set in prod .env}:5432/chorum_secrets?sslmode=require
+      CHORUM_BROKER_VOTER_TAG_MASTER_KEY: ${CHORUM_PROD_BROKER_VOTER_TAG_MASTER_KEY:?set in prod .env}
       # Error tracking (issue #101). OPTIONAL and env-gated: empty DSN = no-op, so
-      # this is safe to leave unset. Set HEARME_PROD_SENTRY_DSN in the .env (SSM)
+      # this is safe to leave unset. Set CHORUM_PROD_SENTRY_DSN in the .env (SSM)
       # to turn it on. SENTRY_RELEASE pins errors to the deployed git SHA (§7).
-      SENTRY_DSN: ${HEARME_PROD_SENTRY_DSN:-}
+      SENTRY_DSN: ${CHORUM_PROD_SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: prod
-      SENTRY_RELEASE: ${HEARME_DEPLOY_SHA:-}
+      SENTRY_RELEASE: ${CHORUM_DEPLOY_SHA:-}
 
   self-bridge:
     extends:
@@ -89,7 +89,7 @@ services:
       service: self-bridge
     environment:
       # The callback the Self app posts proofs to MUST be public HTTPS.
-      SELF_ENDPOINT: ${HEARME_PROD_SELF_ENDPOINT:?set in prod .env}
+      SELF_ENDPOINT: ${CHORUM_PROD_SELF_ENDPOINT:?set in prod .env}
       # Mainnet endpoint type (not staging_https).
       SELF_ENDPOINT_TYPE: https
       # Real identity path: no mock passports, no dev mode.
@@ -99,7 +99,7 @@ services:
       # (mirrors the broker's startup_checks.py). See packages/self-bridge/src/server.js.
       SELF_PRODUCTION_MODE: "1"
       # SELF_SCOPE is intentionally NOT set here: in production the bridge ignores
-      # it and pins the scope to "hearme-v1" in code (PRODUCTION_SCOPE), so a
+      # it and pins the scope to "chorum-v1" in code (PRODUCTION_SCOPE), so a
       # changed env var can never re-mint every identity (GH #97). This is FROZEN.
       # Celo mainnet — pin so @selfxyz/core targets the mainnet IdentityVerification
       # Hub V2 (0xe57F4773bd9c9d8b6Cd70431117d353298B9f5BF) and not a testnet root.
@@ -116,7 +116,7 @@ services:
     # once by scripts/bootstrap-rds.sh; this run applies any later deltas.
     depends_on: !reset []
     environment:
-      MIGRATOR_DATABASE_URL: postgres://hearme_admin:${HEARME_PROD_POSTGRES_ADMIN_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme?sslmode=require
+      MIGRATOR_DATABASE_URL: postgres://chorum_admin:${CHORUM_PROD_POSTGRES_ADMIN_PASSWORD:?set in prod .env}@${CHORUM_PROD_POSTGRES_HOST:?set in prod .env}:5432/chorum?sslmode=require
 
   web:
     extends:
@@ -126,19 +126,19 @@ services:
       migrator:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgres://hearme_web:${HEARME_PROD_POSTGRES_WEB_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme?sslmode=require
+      DATABASE_URL: postgres://chorum_web:${CHORUM_PROD_POSTGRES_WEB_PASSWORD:?set in prod .env}@${CHORUM_PROD_POSTGRES_HOST:?set in prod .env}:5432/chorum?sslmode=require
       # Impressum (German imprint) operator details, rendered from SSM. Optional
       # (:- empty) so a deploy never fails before they're set; /impressum shows a
       # placeholder until then. Address is single-line; use "\n" for line breaks.
-      IMPRESSUM_NAME: ${HEARME_PROD_IMPRESSUM_NAME:-}
-      IMPRESSUM_ADDRESS: ${HEARME_PROD_IMPRESSUM_ADDRESS:-}
-      IMPRESSUM_EMAIL: ${HEARME_PROD_IMPRESSUM_EMAIL:-}
-      IMPRESSUM_PHONE: ${HEARME_PROD_IMPRESSUM_PHONE:-}
+      IMPRESSUM_NAME: ${CHORUM_PROD_IMPRESSUM_NAME:-}
+      IMPRESSUM_ADDRESS: ${CHORUM_PROD_IMPRESSUM_ADDRESS:-}
+      IMPRESSUM_EMAIL: ${CHORUM_PROD_IMPRESSUM_EMAIL:-}
+      IMPRESSUM_PHONE: ${CHORUM_PROD_IMPRESSUM_PHONE:-}
       # Optional invite-only login (HTTP Basic Auth on the web UI). Set BOTH in
       # SSM to require login; leave unset/empty to keep the site public. Toggles
       # the gate without touching the Caddyfile or restarting Caddy.
-      SITE_GATE_USER: ${HEARME_PROD_SITE_GATE_USER:-}
-      SITE_GATE_PASSWORD: ${HEARME_PROD_SITE_GATE_PASSWORD:-}
+      SITE_GATE_USER: ${CHORUM_PROD_SITE_GATE_USER:-}
+      SITE_GATE_PASSWORD: ${CHORUM_PROD_SITE_GATE_PASSWORD:-}
 
   classifier:
     extends:
@@ -148,12 +148,12 @@ services:
       migrator:
         condition: service_completed_successfully
     environment:
-      HEARME_CLASSIFIER_DATABASE_URL: postgres://hearme_classifier:${HEARME_PROD_POSTGRES_CLASSIFIER_PASSWORD:?set in prod .env}@${HEARME_PROD_POSTGRES_HOST:?set in prod .env}:5432/hearme?sslmode=require
-      HEARME_CLASSIFIER_OPENROUTER_API_KEY: ${HEARME_PROD_OPENROUTER_API_KEY:?set in prod .env}
+      CHORUM_CLASSIFIER_DATABASE_URL: postgres://chorum_classifier:${CHORUM_PROD_POSTGRES_CLASSIFIER_PASSWORD:?set in prod .env}@${CHORUM_PROD_POSTGRES_HOST:?set in prod .env}:5432/chorum?sslmode=require
+      CHORUM_CLASSIFIER_OPENROUTER_API_KEY: ${CHORUM_PROD_OPENROUTER_API_KEY:?set in prod .env}
 
   caddy:
     image: caddy:2
-    container_name: hearme-caddy
+    container_name: chorum-caddy
     restart: unless-stopped
     depends_on:
       - web
@@ -162,7 +162,7 @@ services:
       # The Caddyfile uses {$CADDY_SITE_HOST}; Caddy expands it at config-load
       # time. The fail-fast ":?" form makes compose error out instead of caddy
       # silently serving a config with an empty site block.
-      CADDY_SITE_HOST: ${HEARME_PROD_CADDY_SITE_HOST:?set in prod .env}
+      CADDY_SITE_HOST: ${CHORUM_PROD_CADDY_SITE_HOST:?set in prod .env}
     ports:
       - "80:80"
       - "443:443"

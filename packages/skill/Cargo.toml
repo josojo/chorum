@@ -1,9 +1,9 @@
 [package]
-name = "hearme-skill"
+name = "chorum-skill"
 version = "0.0.1"
 edition = "2021"
 rust-version = "1.74"
-description = "Hearme standalone skill — local agent that answers public questions on the user's behalf, wired into Hermes and OpenClaw (ARCHITECTURE_V0.md §6-8)."
+description = "Chorum standalone skill — local agent that answers public questions on the user's behalf, wired into Hermes and OpenClaw (ARCHITECTURE_V0.md §6-8)."
 license = "Proprietary"
 publish = false
 
@@ -11,11 +11,11 @@ publish = false
 # system OpenSSL. TLS comes from rustls (vendored), SQLite from the bundled
 # amalgamation (FTS5 enabled), crypto from pure-Rust ed25519-dalek.
 [[bin]]
-name = "hearme-skill"
+name = "chorum-skill"
 path = "src/main.rs"
 
 [lib]
-name = "hearme_skill"
+name = "chorum_skill"
 path = "src/lib.rs"
 
 [dependencies]

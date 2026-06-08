@@ -55,7 +55,7 @@ export function verifyDelegation(
   const settings = opts.settings ?? getSettings();
 
   // Step 0: the token's scope must be this environment's frozen scope. A
-  // mismatch (e.g. a staging token — scope "staging-hearme-v1" — replayed
+  // mismatch (e.g. a staging token — scope "staging-chorum-v1" — replayed
   // against prod) is rejected before any crypto. The scope is also bound into
   // the signature below, but this gives a precise reason and an early, cheap
   // cross-environment barrier even if signing keys were ever shared (GH #97).

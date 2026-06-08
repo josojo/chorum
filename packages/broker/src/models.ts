@@ -50,8 +50,8 @@ export const delegationTokenSchema = z
     version: z.literal(2),
     // Structural only. The exact value is FROZEN per environment and checked at
     // verify time against settings.selfScope (verify/delegation.ts) — a static
-    // literal here cannot know staging's "staging-hearme-v1" vs prod's
-    // "hearme-v1" (GH #97).
+    // literal here cannot know staging's "staging-chorum-v1" vs prod's
+    // "chorum-v1" (GH #97).
     scope: z.string(),
     unique_identifier: z.string(),
     disclosed_predicates: z.record(z.string(), z.string()),

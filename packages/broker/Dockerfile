@@ -1,4 +1,4 @@
-# hearme-broker — Node 20 + Fastify + Drizzle (postgres-js) + tweetnacl.
+# chorum-broker — Node 20 + Fastify + Drizzle (postgres-js) + tweetnacl.
 # Build context: repo root (docker-compose sets `context: .`).
 #
 # The broker reuses the Drizzle schema from packages/web/src/db/schema.ts (the

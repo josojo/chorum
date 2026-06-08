@@ -1,4 +1,4 @@
-# Prometheus scrape + alerting config for the hearme stack (issue #101).
+# Prometheus scrape + alerting config for the chorum stack (issue #101).
 #
 # Loaded by the `prometheus` service in docker-compose.monitoring.yml, which runs
 # as an overlay on the app stack so these targets resolve by compose hostname.
@@ -16,7 +16,7 @@ alerting:
 
 scrape_configs:
   # The broker's native Prometheus endpoint (prom-client). Carries the
-  # hearme_broker_* counters (register/envelope/revoke rate, rejection reasons,
+  # chorum_broker_* counters (register/envelope/revoke rate, rejection reasons,
   # 429s) plus default Node process metrics.
   - job_name: broker
     metrics_path: /metrics

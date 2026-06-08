@@ -7,7 +7,7 @@
 //
 //   1. A `service` field on every line, so a shared backend can split the
 //      broker's stream from web / self-bridge / classifier.
-//   2. An env-tunable level (HEARME_BROKER_LOG_LEVEL) — default "info", drop to
+//   2. An env-tunable level (CHORUM_BROKER_LOG_LEVEL) — default "info", drop to
 //      "warn" to quiet a noisy prod box or "debug" to chase an incident.
 //   3. Redaction of credential-bearing request headers, so an Authorization or
 //      Cookie value can never be serialized into a log line.

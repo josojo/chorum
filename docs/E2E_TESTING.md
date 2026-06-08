@@ -13,7 +13,7 @@ Two ways to exercise the full answer → broker → aggregate pipeline:
 ## A. Phone-free dev bypass
 
 The broker mounts `POST /v1/dev/register` **only** when
-`HEARME_BROKER_DEV_INSECURE_REGISTER=1`. It mints a broker-signed
+`CHORUM_BROKER_DEV_INSECURE_REGISTER=1`. It mints a broker-signed
 DelegationToken for a synthetic nullifier + nationality/age without any Self
 proof. Real Ed25519 keys, real signed envelopes, real eligibility + aggregate
 logic — only the personhood check is skipped. **Never enable in production.**
@@ -25,8 +25,8 @@ docker compose up -d postgres
 # 2. Broker with the bypass enabled (local; or add the env to the broker
 #    service and `docker compose up -d broker`)
 cd packages/broker && npm ci
-HEARME_BROKER_DEV_INSECURE_REGISTER=1 \
-HEARME_BROKER_DATABASE_URL="postgres://hearme_broker:hearme_broker_dev@localhost:5432/hearme" \
+CHORUM_BROKER_DEV_INSECURE_REGISTER=1 \
+CHORUM_BROKER_DATABASE_URL="postgres://chorum_broker:chorum_broker_dev@localhost:5432/chorum" \
   npm run dev
 
 # 3. Create N synthetic identities and answer every eligible open question
@@ -65,7 +65,7 @@ curl -s https://<test-host>/self/healthz   # expect mockPassport:true, devMode:t
 Redeploy the isolated testnet stack with the fix:
 
 ```sh
-cd ~/hearme && git pull && docker compose up --build -d self-bridge
+cd ~/chorum && git pull && docker compose up --build -d self-bridge
 curl -s http://localhost:8787/healthz                 # devMode:true
 ```
 
@@ -75,7 +75,7 @@ curl -s http://localhost:8787/healthz                 # devMode:true
 # From the machine running your Hermes agent / skill. On a public staging/prod
 # box the broker and bridge are not exposed directly — they are reached over TLS
 # through Caddy (broker under /v1/*, bridge under /self/*):
-hearme-skill onboard \
+chorum-skill onboard \
   --bridge-url https://<test-host>/self \
   --broker-url https://<test-host>
 # Scan each QR with the Self app (create a mock passport: tap the passport 5×).

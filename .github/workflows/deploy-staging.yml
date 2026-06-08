@@ -9,28 +9,28 @@ name: deploy-staging
 # so the admin-only SSH posture is preserved between deploys.
 #
 # Deploy safety (docs/DEPLOYMENT.md §7): built images are pinned to the commit's
-# git SHA (HEARME_DEPLOY_SHA), a health gate fails the deploy if the new stack
+# git SHA (CHORUM_DEPLOY_SHA), a health gate fails the deploy if the new stack
 # doesn't answer, and the last-known-good SHA is recorded on the box only after
 # that gate passes — so `scripts/rollback.sh` can always return to a good build.
 #
 # Required repository secrets:
-#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  - hearme-staging IAM user (the
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  - chorum-staging IAM user (the
 #                                               same one already provisioning
 #                                               EC2). Needs ec2:Authorize/
 #                                               RevokeSecurityGroupIngress on
 #                                               sg-05db2170c9271f2c6, plus
 #                                               ssm:GetParametersByPath +
 #                                               kms:Decrypt on
-#                                               /hearme/staging/* (to render the
+#                                               /chorum/staging/* (to render the
 #                                               secrets — see below).
-#   STAGING_SSH_KEY                           - contents of hearme-staging.pem
+#   STAGING_SSH_KEY                           - contents of chorum-staging.pem
 #                                               (the EC2 keypair, NOT a GH
 #                                               deploy key).
 #
 # Staging secrets are NOT a hand-maintained file on the box anymore. They live
-# in AWS SSM Parameter Store under /hearme/staging/* (SecureString for secrets,
+# in AWS SSM Parameter Store under /chorum/staging/* (SecureString for secrets,
 # String for the public hostname/URL). This workflow renders them onto the box
-# as ~/hearme/.env each deploy via scripts/render-secrets-env.sh, so the on-box
+# as ~/chorum/.env each deploy via scripts/render-secrets-env.sh, so the on-box
 # .env is a derived artifact. To rotate a secret, change it in SSM (or run
 # scripts/push-secrets-to-ssm.sh) and redeploy. See docs/DEPLOYMENT.md §1.
 
@@ -103,9 +103,9 @@ jobs:
           ssh-keyscan -H "$STAGING_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Render staging secrets from SSM onto the box
-        # SSM Parameter Store (/hearme/staging/*) is the single source of truth
+        # SSM Parameter Store (/chorum/staging/*) is the single source of truth
         # for staging secrets (docs/DEPLOYMENT.md §1). Render on the runner —
-        # which already holds the hearme-staging AWS creds — then stream the
+        # which already holds the chorum-staging AWS creds — then stream the
         # .env to the box over SSH. render-secrets-env.sh exits non-zero if the
         # path is empty, and we write to .env.new + mv so a perms/region slip
         # fails the deploy instead of clobbering the box's good .env with an
@@ -115,7 +115,7 @@ jobs:
           printf '%s\n' "$rendered" \
             | ssh -i ~/.ssh/staging -o ConnectTimeout=10 \
                   "$STAGING_USER@$STAGING_HOST" \
-                  'umask 077; mkdir -p ~/hearme; cat > ~/hearme/.env.new && mv ~/hearme/.env.new ~/hearme/.env'
+                  'umask 077; mkdir -p ~/chorum; cat > ~/chorum/.env.new && mv ~/chorum/.env.new ~/chorum/.env'
 
       - name: Pull main and rebuild on staging
         run: |
@@ -124,7 +124,7 @@ jobs:
               -o ServerAliveInterval=30 \
               "$STAGING_USER@$STAGING_HOST" bash -se <<EOF
           set -eu
-          cd ~/hearme
+          cd ~/chorum
 
           # Match main exactly. .env / any gitignored files survive untouched.
           git fetch --quiet origin main
@@ -139,38 +139,38 @@ jobs:
           # Existing Postgres volumes do not re-run /docker-entrypoint-initdb.d.
           # Re-apply the role script inside the running container so staging can
           # rotate away from the committed dev passwords without wiping data.
-          if docker ps --format '{{.Names}}' | grep -qx hearme-postgres; then
+          if docker ps --format '{{.Names}}' | grep -qx chorum-postgres; then
             docker exec -i \
-              -e POSTGRES_USER=hearme_admin \
-              -e POSTGRES_DB=hearme \
-              -e HEARME_DB_ADMIN_PASSWORD="\$HEARME_STAGING_POSTGRES_ADMIN_PASSWORD" \
-              -e HEARME_DB_WEB_PASSWORD="\$HEARME_STAGING_POSTGRES_WEB_PASSWORD" \
-              -e HEARME_DB_BROKER_PASSWORD="\$HEARME_STAGING_POSTGRES_BROKER_PASSWORD" \
-              hearme-postgres bash -s < db/init/02-roles.sh
+              -e POSTGRES_USER=chorum_admin \
+              -e POSTGRES_DB=chorum \
+              -e CHORUM_DB_ADMIN_PASSWORD="\$CHORUM_STAGING_POSTGRES_ADMIN_PASSWORD" \
+              -e CHORUM_DB_WEB_PASSWORD="\$CHORUM_STAGING_POSTGRES_WEB_PASSWORD" \
+              -e CHORUM_DB_BROKER_PASSWORD="\$CHORUM_STAGING_POSTGRES_BROKER_PASSWORD" \
+              chorum-postgres bash -s < db/init/02-roles.sh
 
             # Same reason: 04-secrets-db.sh creates the broker-owned
-            # `hearme_secrets` DB (ADR-098), but only on a fresh volume. The
+            # `chorum_secrets` DB (ADR-098), but only on a fresh volume. The
             # broker opens it at startup (initSecretsDb) and crashes if it is
             # missing, so re-apply it on the live container too. Idempotent
             # (CREATE DATABASE … WHERE NOT EXISTS \gexec).
             docker exec -i \
-              -e POSTGRES_USER=hearme_admin \
-              -e POSTGRES_DB=hearme \
-              hearme-postgres bash -s < db/init/04-secrets-db.sh
+              -e POSTGRES_USER=chorum_admin \
+              -e POSTGRES_DB=chorum \
+              chorum-postgres bash -s < db/init/04-secrets-db.sh
           fi
 
           # Pin the built images to this commit's SHA (docker-compose.yml reads
-          # HEARME_DEPLOY_SHA). The previous deploy's images stay on the box as
+          # CHORUM_DEPLOY_SHA). The previous deploy's images stay on the box as
           # immutable, named tags so scripts/rollback.sh can re-up them without
           # a rebuild. See docs/DEPLOYMENT.md §7.
-          export HEARME_DEPLOY_SHA="\$(git rev-parse --short=12 HEAD)"
-          echo "pinning images to tag \$HEARME_DEPLOY_SHA"
+          export CHORUM_DEPLOY_SHA="\$(git rev-parse --short=12 HEAD)"
+          echo "pinning images to tag \$CHORUM_DEPLOY_SHA"
 
           docker compose -f docker-compose.yml -f docker-compose.staging.yml config --quiet
           docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build --remove-orphans
 
           echo "--- container state ---"
-          docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'hearme-|NAMES'
+          docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'chorum-|NAMES'
 
           # Health-gate the new stack. If it never answers this exits non-zero
           # (set -e) and the deploy FAILS — deploy-finalize below does not run,

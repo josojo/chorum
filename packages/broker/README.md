@@ -1,6 +1,6 @@
-# hearme-broker
+# chorum-broker
 
-The dispatcher + envelope verifier for Hearme v0. Specified by
+The dispatcher + envelope verifier for Chorum v0. Specified by
 [ARCHITECTURE_V0.md §5](../../ARCHITECTURE_V0.md). One TypeScript service
 ([Fastify](https://fastify.dev/) + [Drizzle](https://orm.drizzle.team/) on
 [postgres-js](https://github.com/porsager/postgres) + Ed25519 via
@@ -25,8 +25,8 @@ shape is defined exactly once across the monorepo.
 cd packages/broker
 npm ci
 
-# DB DSN must point at the shared Postgres using the hearme_broker role.
-export HEARME_BROKER_DATABASE_URL="postgres://hearme_broker:hearme_broker_dev@localhost:5432/hearme"
+# DB DSN must point at the shared Postgres using the chorum_broker role.
+export CHORUM_BROKER_DATABASE_URL="postgres://chorum_broker:chorum_broker_dev@localhost:5432/chorum"
 
 npm run dev          # tsx watch src/server.ts (listens on :8000)
 # or, production-style:
@@ -39,32 +39,32 @@ on `:8000`.
 
 ### Settings
 
-All settings are read from environment variables prefixed `HEARME_BROKER_`
+All settings are read from environment variables prefixed `CHORUM_BROKER_`
 (see `src/config.ts`):
 
 | Variable                                 | Default                                                                | Meaning                                              |
 |------------------------------------------|------------------------------------------------------------------------|------------------------------------------------------|
-| `HEARME_BROKER_DATABASE_URL`             | `postgres://hearme_broker:hearme_broker_dev@localhost:5432/hearme`     | postgres-js DSN, must use the `hearme_broker` role.  |
-| `HEARME_BROKER_DB_POOL_MAX_SIZE`         | `10`                                                                   | postgres-js max pool size.                           |
-| `HEARME_BROKER_EXPOSE_REJECTION_REASONS` | `true`                                                                 | v0: include specific reason codes; turn off in prod. |
-| `HEARME_BROKER_SELF_BRIDGE_URL`          | `http://localhost:8787`                                                | self-bridge `/verify` base URL (broker-controlled); used only at registration. |
-| `HEARME_BROKER_SELF_VERIFY_TIMEOUT_SECONDS` | `30.0`                                                              | Timeout for the bridge verify call.                 |
-| `HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION` | `true`                                                            | Require the bridge's on-chain Celo registry/root check at registration. |
-| `HEARME_BROKER_SIGNING_KEY`              | dev key                                                                | base64 32-byte Ed25519 seed signing the DelegationToken. **Override in prod.** |
-| `HEARME_BROKER_PRODUCTION_MODE`          | `false`                                                                | Refuse to boot if any dev default is still set (`src/startupChecks.ts`). |
-| `HEARME_BROKER_DEV_INSECURE_REGISTER`    | `false`                                                                | **Testing only.** Mounts `POST /v1/dev/register` (synthetic identity, no Self proof). |
-| `HEARME_BROKER_RATELIMIT_*`              | enabled; 3/h register, 30/min envelopes, 10/min revoke                 | Per-client sliding-window limits (`src/ratelimit.ts`). |
-| `HEARME_BROKER_LOG_LEVEL`                | `info`                                                                 | pino level for the structured JSON logger (`src/logging.ts`). |
-| `HEARME_BROKER_METRICS_ENABLED`          | `true`                                                                 | Serve Prometheus metrics at `GET /metrics` (internal-only; `src/observability/metrics.ts`). |
+| `CHORUM_BROKER_DATABASE_URL`             | `postgres://chorum_broker:chorum_broker_dev@localhost:5432/chorum`     | postgres-js DSN, must use the `chorum_broker` role.  |
+| `CHORUM_BROKER_DB_POOL_MAX_SIZE`         | `10`                                                                   | postgres-js max pool size.                           |
+| `CHORUM_BROKER_EXPOSE_REJECTION_REASONS` | `true`                                                                 | v0: include specific reason codes; turn off in prod. |
+| `CHORUM_BROKER_SELF_BRIDGE_URL`          | `http://localhost:8787`                                                | self-bridge `/verify` base URL (broker-controlled); used only at registration. |
+| `CHORUM_BROKER_SELF_VERIFY_TIMEOUT_SECONDS` | `30.0`                                                              | Timeout for the bridge verify call.                 |
+| `CHORUM_BROKER_REQUIRE_REGISTRY_CONFIRMATION` | `true`                                                            | Require the bridge's on-chain Celo registry/root check at registration. |
+| `CHORUM_BROKER_SIGNING_KEY`              | dev key                                                                | base64 32-byte Ed25519 seed signing the DelegationToken. **Override in prod.** |
+| `CHORUM_BROKER_PRODUCTION_MODE`          | `false`                                                                | Refuse to boot if any dev default is still set (`src/startupChecks.ts`). |
+| `CHORUM_BROKER_DEV_INSECURE_REGISTER`    | `false`                                                                | **Testing only.** Mounts `POST /v1/dev/register` (synthetic identity, no Self proof). |
+| `CHORUM_BROKER_RATELIMIT_*`              | enabled; 3/h register, 30/min envelopes, 10/min revoke                 | Per-client sliding-window limits (`src/ratelimit.ts`). |
+| `CHORUM_BROKER_LOG_LEVEL`                | `info`                                                                 | pino level for the structured JSON logger (`src/logging.ts`). |
+| `CHORUM_BROKER_METRICS_ENABLED`          | `true`                                                                 | Serve Prometheus metrics at `GET /metrics` (internal-only; `src/observability/metrics.ts`). |
 | `SENTRY_DSN`                             | — (unset)                                                              | Enable Sentry error tracking. Unset = no-op. Companions: `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE` (`src/observability/sentry.ts`). |
-| `HEARME_BROKER_SELF_REVOCATION_LISTENER_ENABLED` | `false`                                                       | Poll Self on-chain invalidation/update events and revoke matching Hearme identities/votes. |
-| `HEARME_BROKER_SELF_REVOCATION_RPC_URL`  | —                                                                      | JSON-RPC endpoint for the chain carrying Self invalidation events. |
-| `HEARME_BROKER_SELF_REVOCATION_CONTRACT_ADDRESS` | —                                                              | Self contract address emitting invalidation/update events. |
-| `HEARME_BROKER_SELF_REVOCATION_EVENT_TOPIC` | —                                                                   | Keccak event signature topic for the Self invalidation/update event. |
-| `HEARME_BROKER_SELF_REVOCATION_NULLIFIER_TOPIC_INDEX` | `1`                                                        | Topic index containing the invalidated nullifier; set `-1` if it is in event data. |
-| `HEARME_BROKER_SELF_REVOCATION_NULLIFIER_DATA_WORD_INDEX` | `-1`                                                   | ABI data word containing the invalidated nullifier when it is not indexed. |
-| `HEARME_BROKER_SELF_REVOCATION_FROM_BLOCK` | `0`                                                                 | Initial block when no cursor exists. |
-| `HEARME_BROKER_SELF_REVOCATION_CONFIRMATIONS` | `12`                                                            | Blocks to lag behind head before processing logs. |
+| `CHORUM_BROKER_SELF_REVOCATION_LISTENER_ENABLED` | `false`                                                       | Poll Self on-chain invalidation/update events and revoke matching Chorum identities/votes. |
+| `CHORUM_BROKER_SELF_REVOCATION_RPC_URL`  | —                                                                      | JSON-RPC endpoint for the chain carrying Self invalidation events. |
+| `CHORUM_BROKER_SELF_REVOCATION_CONTRACT_ADDRESS` | —                                                              | Self contract address emitting invalidation/update events. |
+| `CHORUM_BROKER_SELF_REVOCATION_EVENT_TOPIC` | —                                                                   | Keccak event signature topic for the Self invalidation/update event. |
+| `CHORUM_BROKER_SELF_REVOCATION_NULLIFIER_TOPIC_INDEX` | `1`                                                        | Topic index containing the invalidated nullifier; set `-1` if it is in event data. |
+| `CHORUM_BROKER_SELF_REVOCATION_NULLIFIER_DATA_WORD_INDEX` | `-1`                                                   | ABI data word containing the invalidated nullifier when it is not indexed. |
+| `CHORUM_BROKER_SELF_REVOCATION_FROM_BLOCK` | `0`                                                                 | Initial block when no cursor exists. |
+| `CHORUM_BROKER_SELF_REVOCATION_CONFIRMATIONS` | `12`                                                            | Blocks to lag behind head before processing logs. |
 
 ## Registration pipeline (`POST /v1/register`)
 
@@ -103,7 +103,7 @@ Per envelope, in order — **no bridge call, no Self proof** at answer time:
 
 A failure at any step rejects the envelope. Detailed reasons are returned to
 the agent in v0 for debugging; **production should set
-`HEARME_BROKER_EXPOSE_REJECTION_REASONS=false`** so the broker is not an
+`CHORUM_BROKER_EXPOSE_REJECTION_REASONS=false`** so the broker is not an
 oracle for which bit of an envelope went wrong.
 
 ## Self on-chain invalidations
@@ -119,7 +119,7 @@ vars; disabled until the concrete Self event name/topic is supplied.
 ## Wire formats & cross-language compatibility
 
 Exactly mirror `packages/proto/{delegation,envelope,revocation,question}.json`
-and stay byte-for-byte compatible with the `hearme-skill` agent:
+and stay byte-for-byte compatible with the `chorum-skill` agent:
 
 - JSON keys are snake_case on the wire (`question_id`, `unique_identifier`,
   `disclosed_predicates`, …).
@@ -138,12 +138,12 @@ broker signature, envelope/revocation digests, predicate derivation).
 
 ## Database role grants required
 
-The broker connects as `hearme_broker`, defined by `db/init/02-roles.sh` with
+The broker connects as `chorum_broker`, defined by `db/init/02-roles.sh` with
 `SELECT/INSERT/UPDATE` on `envelopes`, `aggregates`, `registrations`,
 `self_nullifier_invalidations`, `self_chain_cursors`; `SELECT/INSERT` on
 `revocations`; `SELECT/UPDATE` on `questions`; `SELECT` on `askers`. The broker
 **cannot** INSERT or DELETE `questions` or `askers`; seed test data as
-`hearme_admin`.
+`chorum_admin`.
 
 ## Tests
 

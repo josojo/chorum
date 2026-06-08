@@ -61,8 +61,8 @@ test("resolveScope: production ignores SELF_SCOPE and pins the frozen value", ()
 test("resolveScope: outside production SELF_SCOPE selects the scope", () => {
   // Staging pins its own distinct frozen scope.
   assert.deepEqual(
-    resolveScope({ productionMode: false, envScope: "staging-hearme-v1" }),
-    { scope: "staging-hearme-v1", ignoredEnvScope: null },
+    resolveScope({ productionMode: false, envScope: "staging-chorum-v1" }),
+    { scope: "staging-chorum-v1", ignoredEnvScope: null },
   );
   // Local dev with no env falls back to the default.
   assert.deepEqual(
@@ -72,5 +72,5 @@ test("resolveScope: outside production SELF_SCOPE selects the scope", () => {
 });
 
 test("PRODUCTION_SCOPE is the frozen mainnet value", () => {
-  assert.equal(PRODUCTION_SCOPE, "hearme-v1");
+  assert.equal(PRODUCTION_SCOPE, "chorum-v1");
 });

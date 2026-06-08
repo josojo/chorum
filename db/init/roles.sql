@@ -15,61 +15,61 @@
 -- The admin role's own password is NOT managed here — it is set at DB creation
 -- (POSTGRES_PASSWORD locally, the RDS master password under managed Postgres).
 
-SELECT format('CREATE ROLE hearme_web LOGIN PASSWORD %L', :'web_password')
-WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_web')\gexec
+SELECT format('CREATE ROLE chorum_web LOGIN PASSWORD %L', :'web_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chorum_web')\gexec
 
-SELECT format('CREATE ROLE hearme_broker LOGIN PASSWORD %L', :'broker_password')
-WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_broker')\gexec
+SELECT format('CREATE ROLE chorum_broker LOGIN PASSWORD %L', :'broker_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chorum_broker')\gexec
 
-SELECT format('CREATE ROLE hearme_classifier LOGIN PASSWORD %L', :'classifier_password')
-WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hearme_classifier')\gexec
+SELECT format('CREATE ROLE chorum_classifier LOGIN PASSWORD %L', :'classifier_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chorum_classifier')\gexec
 
-ALTER ROLE hearme_web        WITH LOGIN PASSWORD :'web_password';
-ALTER ROLE hearme_broker     WITH LOGIN PASSWORD :'broker_password';
-ALTER ROLE hearme_classifier WITH LOGIN PASSWORD :'classifier_password';
+ALTER ROLE chorum_web        WITH LOGIN PASSWORD :'web_password';
+ALTER ROLE chorum_broker     WITH LOGIN PASSWORD :'broker_password';
+ALTER ROLE chorum_classifier WITH LOGIN PASSWORD :'classifier_password';
 
-GRANT USAGE ON SCHEMA public TO hearme_web, hearme_broker, hearme_classifier;
+GRANT USAGE ON SCHEMA public TO chorum_web, chorum_broker, chorum_classifier;
 
 -- Defensive revokes so the intended privacy boundary is visible in the grant
 -- script, even if a previous database allowed these reads. The registrations
 -- registry binds passport-derived identity to an agent_key; that's
 -- broker-internal verification state and never crosses to the web tier.
-REVOKE SELECT ON envelopes     FROM hearme_web;
-REVOKE SELECT ON revocations   FROM hearme_web;
-REVOKE SELECT ON registrations FROM hearme_web;
-REVOKE SELECT ON self_nullifier_invalidations FROM hearme_web;
-REVOKE SELECT ON self_chain_cursors           FROM hearme_web;
+REVOKE SELECT ON envelopes     FROM chorum_web;
+REVOKE SELECT ON revocations   FROM chorum_web;
+REVOKE SELECT ON registrations FROM chorum_web;
+REVOKE SELECT ON self_nullifier_invalidations FROM chorum_web;
+REVOKE SELECT ON self_chain_cursors           FROM chorum_web;
 
--- hearme_web: writes questions + askers (for the /ask form). Reads only
+-- chorum_web: writes questions + askers (for the /ask form). Reads only
 -- public result data. Raw envelopes / revocations / registrations remain
--- broker-private. NOTE: hearme_web is NOT granted UPDATE on questions —
--- topic assignment is owned by hearme_classifier, not the asker.
-GRANT SELECT, INSERT          ON questions     TO hearme_web;
-GRANT SELECT, INSERT          ON askers        TO hearme_web;
-GRANT SELECT                  ON aggregates    TO hearme_web;
+-- broker-private. NOTE: chorum_web is NOT granted UPDATE on questions —
+-- topic assignment is owned by chorum_classifier, not the asker.
+GRANT SELECT, INSERT          ON questions     TO chorum_web;
+GRANT SELECT, INSERT          ON askers        TO chorum_web;
+GRANT SELECT                  ON aggregates    TO chorum_web;
 
--- hearme_broker: owns the write path for everything the verification
+-- chorum_broker: owns the write path for everything the verification
 -- pipeline produces. Reads questions to validate question_id/closes_at.
-GRANT SELECT, INSERT, UPDATE  ON envelopes     TO hearme_broker;
-GRANT SELECT, INSERT, UPDATE  ON aggregates    TO hearme_broker;
-GRANT SELECT, INSERT          ON revocations   TO hearme_broker;
-GRANT SELECT, INSERT, UPDATE  ON registrations TO hearme_broker;
-GRANT SELECT, INSERT, UPDATE  ON self_nullifier_invalidations TO hearme_broker;
-GRANT SELECT, INSERT, UPDATE  ON self_chain_cursors           TO hearme_broker;
-GRANT SELECT, UPDATE          ON questions     TO hearme_broker;
-GRANT SELECT                  ON askers        TO hearme_broker;
+GRANT SELECT, INSERT, UPDATE  ON envelopes     TO chorum_broker;
+GRANT SELECT, INSERT, UPDATE  ON aggregates    TO chorum_broker;
+GRANT SELECT, INSERT          ON revocations   TO chorum_broker;
+GRANT SELECT, INSERT, UPDATE  ON registrations TO chorum_broker;
+GRANT SELECT, INSERT, UPDATE  ON self_nullifier_invalidations TO chorum_broker;
+GRANT SELECT, INSERT, UPDATE  ON self_chain_cursors           TO chorum_broker;
+GRANT SELECT, UPDATE          ON questions     TO chorum_broker;
+GRANT SELECT                  ON askers        TO chorum_broker;
 
--- hearme_classifier: reads NULL-topic open questions, writes the topic
+-- chorum_classifier: reads NULL-topic open questions, writes the topic
 -- column. Nothing else. Column-level UPDATE means a compromise of the
 -- classifier credentials can ONLY mislabel topics — it cannot edit text,
 -- options, close-times, or any other question field, and cannot read or
 -- write envelopes / registrations.
-REVOKE SELECT ON envelopes                    FROM hearme_classifier;
-REVOKE SELECT ON revocations                  FROM hearme_classifier;
-REVOKE SELECT ON registrations                FROM hearme_classifier;
-REVOKE SELECT ON self_nullifier_invalidations FROM hearme_classifier;
-REVOKE SELECT ON self_chain_cursors           FROM hearme_classifier;
-REVOKE SELECT ON aggregates                   FROM hearme_classifier;
-REVOKE SELECT ON askers                       FROM hearme_classifier;
-GRANT  SELECT                 ON questions        TO hearme_classifier;
-GRANT  UPDATE (topic)         ON questions        TO hearme_classifier;
+REVOKE SELECT ON envelopes                    FROM chorum_classifier;
+REVOKE SELECT ON revocations                  FROM chorum_classifier;
+REVOKE SELECT ON registrations                FROM chorum_classifier;
+REVOKE SELECT ON self_nullifier_invalidations FROM chorum_classifier;
+REVOKE SELECT ON self_chain_cursors           FROM chorum_classifier;
+REVOKE SELECT ON aggregates                   FROM chorum_classifier;
+REVOKE SELECT ON askers                       FROM chorum_classifier;
+GRANT  SELECT                 ON questions        TO chorum_classifier;
+GRANT  UPDATE (topic)         ON questions        TO chorum_classifier;

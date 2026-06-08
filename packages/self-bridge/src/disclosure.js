@@ -1,5 +1,5 @@
 // Disclosure policy for the self-bridge: the single source of truth for what a
-// hearme identity proof asserts and how a verified Self result collapses into
+// chorum identity proof asserts and how a verified Self result collapses into
 // the per-proof ``disclosed`` shape the broker derives predicates from.
 //
 // Self has no native 5-year-band or "region" predicate. We disclose:
@@ -34,7 +34,7 @@ export function disclosuresForThreshold(threshold) {
 }
 
 /**
- * Collapse a verified Self ``discloseOutput`` into hearme's per-proof disclosed
+ * Collapse a verified Self ``discloseOutput`` into chorum's per-proof disclosed
  * dict: ``{ nationality, older_than }``. ``older_than`` is the minimumAge the
  * proof attested (the holder is at least that old). Deterministic + pure so the
  * broker reproduces exactly what was disclosed.

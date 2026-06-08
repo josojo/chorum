@@ -1,10 +1,10 @@
-# Hearme Seed Loop
+# Chorum Seed Loop
 
-> The minimum viable wedge to get Hearme from zero to a defensible, growing marketplace — built around the people who are already running personal AI infrastructure today.
+> The minimum viable wedge to get Chorum from zero to a defensible, growing marketplace — built around the people who are already running personal AI infrastructure today.
 
 ## Strategic Logic
 
-Hearme's full vision depends on a future in which most people have a personal AI agent that knows them well. That future is arriving, but it is not here yet. A v1 that tries to be the full vision will fail twice: the respondent side will be too thin, and the buyer side will reject methodology it cannot defend.
+Chorum's full vision depends on a future in which most people have a personal AI agent that knows them well. That future is arriving, but it is not here yet. A v1 that tries to be the full vision will fail twice: the respondent side will be too thin, and the buyer side will reject methodology it cannot defend.
 
 The seed loop solves this by picking a wedge that satisfies three constraints simultaneously:
 
@@ -36,7 +36,7 @@ Why this segment:
 
 ### Respondent Side (Weeks 1–4)
 
-- Ship a Hearme skill / MCP server installable in one command on Openclaw and Hermes.
+- Ship a Chorum skill / MCP server installable in one command on Openclaw and Hermes.
 - User configures category opt-ins ("AI tools: yes, crypto: yes, politics: no"), sets a minimum stake threshold, and forgets about it.
 - Identity for MVP: GitHub OAuth (account at least one year old) plus Openclaw or Hermes deployment fingerprint. Manually review the first 500 sign-ups.
 - This is not Worldcoin-grade sybil resistance. It is good enough to defend a $50,000 buyer pilot, which is all that is needed at this stage.
@@ -51,7 +51,7 @@ Why this segment:
 
 ### The Validation Moment (Months 2–3)
 
-- Replicate a known public dataset head-to-head from Hearme respondents. Candidates: the Stack Overflow Developer Survey, State of JS, the JetBrains developer survey.
+- Replicate a known public dataset head-to-head from Chorum respondents. Candidates: the Stack Overflow Developer Survey, State of JS, the JetBrains developer survey.
 - Publish the result: *"We reproduced the IDE preference distribution within X% across the seven largest demographic buckets, using N=Y agent-mediated responses at Z% of the cost."*
 - This single artifact is what unlocks the next ten buyers. Without it, every buyer conversation restarts from skepticism. With it, every conversation starts from "show me the methodology paper."
 
@@ -70,7 +70,7 @@ Why this segment:
 ### Defer
 
 - **MACI and cryptographic anti-collusion.** Beautiful, but premature. Nobody is bribing voters at N=500. Ship in v2 once the system is worth attacking.
-- **Civic and political questions.** Especially these. The mechanism should not be litigating "is Hearme legitimate on Ukraine?" while still proving the basic primitive works on dev tools.
+- **Civic and political questions.** Especially these. The mechanism should not be litigating "is Chorum legitimate on Ukraine?" while still proving the basic primitive works on dev tools.
 - **Credit-card buyer onboarding.** Invoice the first ten buyers manually.
 - **General-purpose web sign-up flow.** Openclaw and Hermes only at first is a feature, not a limitation — it tells buyers "your respondents are real, technical, self-hosted humans," which is a stronger story than "anyone with an email."
 - **Demographic re-weighting.** Publish composition, do not weight. Honest composition is the v1 transparency story.
@@ -87,7 +87,7 @@ This pitch is true today. It does not require the "agent that knows your soul" f
 
 ### To buyers
 
-> Traditional developer surveys take six months and cost $50,000. This costs $500 and turns around in 48 hours. Respondents are real, verified, GitHub-aged builders running their own self-hosted AI agents — the exact population you are trying to reach. We publish full demographic composition alongside every result, so you can judge the data rather than trust a hidden weighting scheme. Use Hearme for one of your next ten research questions. Compare it to whatever else you trust.
+> Traditional developer surveys take six months and cost $50,000. This costs $500 and turns around in 48 hours. Respondents are real, verified, GitHub-aged builders running their own self-hosted AI agents — the exact population you are trying to reach. We publish full demographic composition alongside every result, so you can judge the data rather than trust a hidden weighting scheme. Use Chorum for one of your next ten research questions. Compare it to whatever else you trust.
 
 ---
 
@@ -112,4 +112,4 @@ At that point, the platform earns the right to expand:
 
 ## The Strategic Point
 
-Do not try to be Hearme-the-vision in v1. Be **"Stack Overflow Survey, but continuous, and the respondents get paid"** in v1. The vision is what the platform grows into once the dev-tools wedge has produced a few quarters of buyer-defensible data and a five-figure respondent pool. The Openclaw and Hermes user base is the head start that makes this credible — they are already running the infrastructure, already aligned with the principles, and already looking for the next thing to do with their agent.
+Do not try to be Chorum-the-vision in v1. Be **"Stack Overflow Survey, but continuous, and the respondents get paid"** in v1. The vision is what the platform grows into once the dev-tools wedge has produced a few quarters of buyer-defensible data and a five-figure respondent pool. The Openclaw and Hermes user base is the head start that makes this credible — they are already running the infrastructure, already aligned with the principles, and already looking for the next thing to do with their agent.

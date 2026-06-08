@@ -159,6 +159,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "chorum-skill"
+version = "0.0.1"
+dependencies = [
+ "base64",
+ "chrono",
+ "clap",
+ "dirs",
+ "ed25519-dalek",
+ "getrandom 0.2.17",
+ "qrcode",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "tempfile",
+ "ureq",
+ "zip",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -535,28 +557,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ba4ff7128dee98c7dc9794b6a411377e1404dba1c97deb8d1a55297bd25d8af"
 dependencies = [
  "hashbrown 0.14.5",
-]
-
-[[package]]
-name = "hearme-skill"
-version = "0.0.1"
-dependencies = [
- "base64",
- "chrono",
- "clap",
- "dirs",
- "ed25519-dalek",
- "getrandom 0.2.17",
- "qrcode",
- "regex",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "tempfile",
- "ureq",
- "zip",
 ]
 
 [[package]]

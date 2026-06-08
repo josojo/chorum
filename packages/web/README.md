@@ -1,6 +1,6 @@
-# hearme-web
+# chorum-web
 
-The Next.js App Router frontend for Hearme. See `/ARCHITECTURE_V0.md` §4 for the
+The Next.js App Router frontend for Chorum. See `/ARCHITECTURE_V0.md` §4 for the
 authoritative spec; this README only covers operational concerns.
 
 This package is **the only writer of `questions` and `askers`**, and reads
@@ -43,13 +43,13 @@ packages/web/
 
 ## Run locally
 
-Prerequisites: Node 20+, npm, and a running Postgres with the Hearme schema.
+Prerequisites: Node 20+, npm, and a running Postgres with the Chorum schema.
 The repo-root `docker-compose.yml` provides one (`scripts/dev-up.sh` is the
 convenience wrapper).
 
 ```bash
 # 1. From the repo root: start postgres (this also auto-loads the schema
-#    and creates the hearme_web / hearme_broker roles on first boot).
+#    and creates the chorum_web / chorum_broker roles on first boot).
 ./scripts/dev-up.sh
 
 # 2. Install + configure web.
@@ -76,7 +76,7 @@ Open <http://localhost:3000>.
 - `SELECT, INSERT` on `questions` and `askers`
 - `SELECT` on `aggregates`
 
-The dev compose stack provisions a `hearme_web` role with exactly these grants
+The dev compose stack provisions a `chorum_web` role with exactly these grants
 (see `db/init/02-roles.sh`). The web package only inserts into `questions`
 and `askers` from the `createQuestion` server action; raw envelopes,
 revocations, and aggregate writes are the broker's job and are explicitly

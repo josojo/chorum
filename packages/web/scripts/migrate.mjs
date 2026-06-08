@@ -27,7 +27,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // (0000_init.sql, generated from schema.ts) lives here alongside any deltas.
 // Overridable so tests can point the migrator at a fixture set.
 const MIGRATIONS_DIR =
-  process.env.HEARME_MIGRATIONS_DIR ??
+  process.env.CHORUM_MIGRATIONS_DIR ??
   join(__dirname, "..", "drizzle", "migrations");
 const BASELINE_VERSION = "0000_init";
 // Sentinel: every DB schema we'd want to baseline has this table.

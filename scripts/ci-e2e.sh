@@ -1,49 +1,49 @@
 #!/usr/bin/env bash
 # End-to-end answer-pipeline check for CI (and local use).
 #
-# Brings a *fresh* hearme agent online against a running broker and has it answer
+# Brings a *fresh* chorum agent online against a running broker and has it answer
 # one real question, then asserts the broker accepted the envelope and the
 # aggregate moved. Everything is real except proof-of-personhood: onboarding uses
 # the broker's phone-free dev bypass (POST /v1/dev/register, mounted only when
-# HEARME_BROKER_DEV_INSECURE_REGISTER=1). The agent's own Ed25519 key signs a
+# CHORUM_BROKER_DEV_INSECURE_REGISTER=1). The agent's own Ed25519 key signs a
 # real envelope that the broker verifies byte-for-byte — so a green run means the
 # skill's sign -> submit -> verify -> aggregate path works against a live stack.
 #
 # Prereqs:
 #   - a broker reachable at $BROKER_URL with the dev bypass enabled
 #     (docker-compose.ci.yml), seeded with the demo questions (db/init/03-seed.sql)
-#   - the hearme-skill binary at $HEARME_BIN
+#   - the chorum-skill binary at $CHORUM_BIN
 #   - python3 with the `cryptography` package (for the one-time keypair)
 #
 # Env knobs (all optional):
 #   BROKER_URL              default http://127.0.0.1:8000
-#   HEARME_BIN              default ./packages/skill/target/release/hearme-skill
-#   HEARME_SKILL_ROOT_DIR   default a fresh temp dir (the agent's home)
+#   CHORUM_BIN              default ./packages/skill/target/release/chorum-skill
+#   CHORUM_SKILL_ROOT_DIR   default a fresh temp dir (the agent's home)
 #   QUESTION_ID             default the seed's worldwide "AI agents" question
 set -euo pipefail
 
 BROKER_URL="${BROKER_URL:-http://127.0.0.1:8000}"
-HEARME_BIN="${HEARME_BIN:-./packages/skill/target/release/hearme-skill}"
+CHORUM_BIN="${CHORUM_BIN:-./packages/skill/target/release/chorum-skill}"
 QUESTION_ID="${QUESTION_ID:-10000000-0000-0000-0000-000000000001}"
 
 # A self-contained agent home so the run is reproducible and leaves no trace in
 # the developer's ~/.hermes. Exported so the binary picks it up.
-if [ -z "${HEARME_SKILL_ROOT_DIR:-}" ]; then
-  HEARME_SKILL_ROOT_DIR="$(mktemp -d)/hearme-agent"
+if [ -z "${CHORUM_SKILL_ROOT_DIR:-}" ]; then
+  CHORUM_SKILL_ROOT_DIR="$(mktemp -d)/chorum-agent"
 fi
-export HEARME_SKILL_ROOT_DIR
-mkdir -p "$HEARME_SKILL_ROOT_DIR"
+export CHORUM_SKILL_ROOT_DIR
+mkdir -p "$CHORUM_SKILL_ROOT_DIR"
 
-if [ ! -x "$HEARME_BIN" ]; then
-  echo "FATAL: hearme-skill binary not found/executable at '$HEARME_BIN'." >&2
+if [ ! -x "$CHORUM_BIN" ]; then
+  echo "FATAL: chorum-skill binary not found/executable at '$CHORUM_BIN'." >&2
   echo "       Build it first: (cd packages/skill && cargo build --release)" >&2
   exit 1
 fi
 
-echo "== hearme CI e2e =="
+echo "== chorum CI e2e =="
 echo "  broker:      $BROKER_URL"
-echo "  binary:      $HEARME_BIN"
-echo "  agent home:  $HEARME_SKILL_ROOT_DIR"
+echo "  binary:      $CHORUM_BIN"
+echo "  agent home:  $CHORUM_SKILL_ROOT_DIR"
 echo "  question:    $QUESTION_ID"
 
 # --- 1. Wait for the broker to be healthy --------------------------------------
@@ -78,9 +78,9 @@ echo "-- stats before: total_answers=$BEFORE_ANSWERS registered_agents=$BEFORE_A
 # keygen here (not letting the binary's `onboard` create it) lets us register the
 # exact public key that will later sign the envelope.
 echo "-- generating agent key + dev-registering a synthetic identity"
-TOKEN_FILE="$HEARME_SKILL_ROOT_DIR/dev-delegation.json"
+TOKEN_FILE="$CHORUM_SKILL_ROOT_DIR/dev-delegation.json"
 BROKER_URL="$BROKER_URL" \
-AGENT_KEY_PATH="$HEARME_SKILL_ROOT_DIR/agent_key" \
+AGENT_KEY_PATH="$CHORUM_SKILL_ROOT_DIR/agent_key" \
 TOKEN_FILE="$TOKEN_FILE" \
 python3 - <<'PY'
 import base64, json, os, urllib.request, urllib.error
@@ -130,19 +130,19 @@ print(f"   registered agent_key={agent_key_b64[:12]}... token expires {token.get
 PY
 
 # Store the broker-signed token through the binary's own code path.
-"$HEARME_BIN" accept-mock-delegation "$TOKEN_FILE"
+"$CHORUM_BIN" accept-mock-delegation "$TOKEN_FILE"
 
 # A permissive policy so the gate deterministically permits the answer regardless
 # of the question's topic (auto_answer is the master switch — topic_blocklist
 # still wins, but we set none). See packages/skill/src/policy.rs.
-cat > "$HEARME_SKILL_ROOT_DIR/policy.yaml" <<'YAML'
+cat > "$CHORUM_SKILL_ROOT_DIR/policy.yaml" <<'YAML'
 auto_answer: true
 max_answers_per_day: 100
 YAML
 
 # --- 4. The agent sees the question and answers it -----------------------------
 echo "-- listing open questions the policy permits"
-LIST_JSON="$("$HEARME_BIN" list-questions --broker-url "$BROKER_URL")"
+LIST_JSON="$("$CHORUM_BIN" list-questions --broker-url "$BROKER_URL")"
 echo "   $LIST_JSON"
 if ! printf '%s' "$LIST_JSON" | python3 -c "import json,sys; q=json.load(sys.stdin); ids=[x['question_id'] for x in q.get('questions',[])]; sys.exit(0 if '$QUESTION_ID' in ids else 1)"; then
   echo "FATAL: target question $QUESTION_ID is not in the answerable list." >&2
@@ -151,10 +151,10 @@ if ! printf '%s' "$LIST_JSON" | python3 -c "import json,sys; q=json.load(sys.std
 fi
 
 echo "-- submitting the answer through the binary (the same path the Hermes shim shells out to)"
-SUBMIT_JSON="$("$HEARME_BIN" submit-answer \
+SUBMIT_JSON="$("$CHORUM_BIN" submit-answer \
   --broker-url "$BROKER_URL" \
   --question-id "$QUESTION_ID" \
-  --answer "Yes - CI exercised the hearme answer pipeline end to end.")"
+  --answer "Yes - CI exercised the chorum answer pipeline end to end.")"
 echo "   $SUBMIT_JSON"
 printf '%s' "$SUBMIT_JSON" | python3 -c "
 import json, sys
@@ -182,7 +182,7 @@ fi
 
 # --- 6. Assert the agent's local ledger recorded the accepted answer -----------
 echo "-- confirming the local ledger recorded the submission"
-REVIEW_JSON="$("$HEARME_BIN" review-answers)"
+REVIEW_JSON="$("$CHORUM_BIN" review-answers)"
 printf '%s' "$REVIEW_JSON" | python3 -c "
 import json, sys
 r = json.load(sys.stdin)

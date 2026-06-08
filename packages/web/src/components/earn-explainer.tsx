@@ -2,7 +2,7 @@
 
 // "Share your signal" — the supply-side explainer/simulator. Where "How it
 // works" pitches askers, this walks a would-be respondent through verifying once
-// with Self, plugging the hearme add-on into the agent they already run (Hermes,
+// with Self, plugging the chorum add-on into the agent they already run (Hermes,
 // OpenClaw, …), and then earning as their agent answers polls on their behalf.
 //
 // Split in two:
@@ -23,7 +23,7 @@ import {
 } from "./onboarding-dialog";
 
 // The setup guide lives with the skill package on GitHub.
-const SKILL_DOCS_URL = "https://github.com/josojo/hearme/tree/main/packages/skill";
+const SKILL_DOCS_URL = "https://github.com/josojo/chorum/tree/main/packages/skill";
 // Self (self.xyz) — download the app + read how verification works.
 const SELF_APP_URL = "https://self.xyz";
 
@@ -45,8 +45,8 @@ const STEPS: Step[] = [
     extra: SelfAppLink,
   },
   {
-    title: "Add hearme to your agent",
-    body: "Now drop the hearme add-on into the agent you already run — Hermes, OpenClaw, or any open runtime. Three commands wire it in and link it to the Self check you just set up. Take your time — you can paste these straight into your terminal.",
+    title: "Add chorum to your agent",
+    body: "Now drop the chorum add-on into the agent you already run — Hermes, OpenClaw, or any open runtime. Three commands wire it in and link it to the Self check you just set up. Take your time — you can paste these straight into your terminal.",
     illustration: TerminalIllustration,
     extra: SkillInstall,
   },
@@ -218,9 +218,9 @@ function SelfAppLink() {
 // to the full setup guide. Copy-pasteable, against the public deployment.
 function SkillInstall() {
   const lines = [
-    "$ curl -fsSL https://github.com/josojo/hearme/releases/latest/download/install.sh | sh",
-    "$ hearme-skill install",
-    "$ hearme-skill onboard \\",
+    "$ curl -fsSL https://github.com/josojo/chorum/releases/latest/download/install.sh | sh",
+    "$ chorum-skill install",
+    "$ chorum-skill onboard \\",
     "    --broker-url https://3-74-46-46.sslip.io \\",
     "    --bridge-url https://3-74-46-46.sslip.io/self",
   ];
@@ -255,7 +255,7 @@ function SkillInstall() {
 /* ---------- per-step simulations ---------- */
 
 const TERMINAL_LINES = [
-  { text: "$ hearme-skill onboard", className: "text-slate-100" },
+  { text: "$ chorum-skill onboard", className: "text-slate-100" },
   { text: "✓ agent key generated", className: "text-emerald-400" },
   { text: "✓ linked to Hermes / OpenClaw", className: "text-emerald-400" },
   { text: "✓ verified with Self", className: "text-emerald-400" },

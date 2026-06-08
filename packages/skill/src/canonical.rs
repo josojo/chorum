@@ -97,18 +97,18 @@ mod tests {
     // These pin byte-for-byte cross-language compatibility with the broker.
     const GOLDEN_TOKEN: &str = r#"{
         "version": 2,
-        "scope": "hearme-v1",
+        "scope": "chorum-v1",
         "unique_identifier": "self:nullifier-1",
         "disclosed_predicates": {"region": "EU", "country": "DE", "age_band": "35-49"},
         "agent_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
         "issued_at": "2026-05-31T12:00:00.123456Z",
         "expires_at": "2026-08-29T12:00:00.123456Z",
-        "broker_signature": "liH3VGMdnr/MXqqAlxxrIol32jL4Fq43oVeoKpm1Du6mD3JvpjUELKwe/nKeJYrQVflmLp8WOCEnF307TpzaBQ=="
+        "broker_signature": "ukpv3gWGi0PLAcf8YmiABC0XfW9BGK4hOHwXwOE2Twvax1WSoyAsmywCue0piYiJlJQ9Uk0NTrCp0KPBe+zjBA=="
     }"#;
     const GOLDEN_HASH_HEX: &str =
-        "03e9bf5601d898df94914f61003abf783e62b7a0a92c1f2bde32b529a0355717";
+        "6433b2ffed393ca1192c61f4603c47dccf772c4e75b8ef90c16a1e5ede2f67b3";
     const QID: &str = "11111111-2222-3333-4444-555555555555";
-    const DHASH: &str = "03e9bf5601d898df94914f61003abf783e62b7a0a92c1f2bde32b529a0355717";
+    const DHASH: &str = "6433b2ffed393ca1192c61f4603c47dccf772c4e75b8ef90c16a1e5ede2f67b3";
 
     #[test]
     fn canonical_json_sorts_and_compacts() {
@@ -127,7 +127,7 @@ mod tests {
         let token: serde_json::Value = serde_json::from_str(GOLDEN_TOKEN).unwrap();
         assert_eq!(
             canonical_json(&token),
-            r#"{"agent_key":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=","broker_signature":"liH3VGMdnr/MXqqAlxxrIol32jL4Fq43oVeoKpm1Du6mD3JvpjUELKwe/nKeJYrQVflmLp8WOCEnF307TpzaBQ==","disclosed_predicates":{"age_band":"35-49","country":"DE","region":"EU"},"expires_at":"2026-08-29T12:00:00.123456Z","issued_at":"2026-05-31T12:00:00.123456Z","scope":"hearme-v1","unique_identifier":"self:nullifier-1","version":2}"#
+            r#"{"agent_key":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=","broker_signature":"ukpv3gWGi0PLAcf8YmiABC0XfW9BGK4hOHwXwOE2Twvax1WSoyAsmywCue0piYiJlJQ9Uk0NTrCp0KPBe+zjBA==","disclosed_predicates":{"age_band":"35-49","country":"DE","region":"EU"},"expires_at":"2026-08-29T12:00:00.123456Z","issued_at":"2026-05-31T12:00:00.123456Z","scope":"chorum-v1","unique_identifier":"self:nullifier-1","version":2}"#
         );
         assert_eq!(delegation_hash_hex(&token), GOLDEN_HASH_HEX);
     }
@@ -137,7 +137,7 @@ mod tests {
         let digest = sign_payload(QID, "yes", "nonce-abc", DHASH);
         assert_eq!(
             hex_encode(&digest),
-            "346283939cf650d944d0f2818751d697baee48c813e5329aa7ac5de9599ed7b4"
+            "179110283b83729c602a455e75102e8dd61dbf1450a025a7a7535a67df909493"
         );
     }
 
@@ -146,7 +146,7 @@ mod tests {
         let digest = revocation_payload(QID, DHASH);
         assert_eq!(
             hex_encode(&digest),
-            "affd6504090e1d643114ff1e684d2b76e658415fc4e8949f1fe37d5706307182"
+            "f1a862f3647ff92a23ad07624800d5c2f4b24717f0aac7085542878b5ae9b813"
         );
     }
 }

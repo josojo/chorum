@@ -1,6 +1,6 @@
 // Connection to the per-question linkage-secret store (ADR-098, ARCHITECTURE_V0.md
-// §1.4). The secrets live in a broker-OWNED database (`hearme_secrets`), separate
-// from the shared `hearme` DB that holds envelopes / registrations / questions —
+// §1.4). The secrets live in a broker-OWNED database (`chorum_secrets`), separate
+// from the shared `chorum` DB that holds envelopes / registrations / questions —
 // because the broker has only USAGE (not CREATE) on the shared schema, and
 // because the web/classifier roles must have no path to linkage material. In
 // production this database is co-located on the SAME RDS instance as the main DB;
@@ -42,7 +42,7 @@ export async function closeSecretsDb(): Promise<void> {
   }
 }
 
-// The broker owns this schema (the table lives in the broker-owned `hearme_secrets`
+// The broker owns this schema (the table lives in the broker-owned `chorum_secrets`
 // database, not in the web Drizzle migrations — web must never see linkage
 // material, and keeping it out of the shared schema avoids the verify-db.sh
 // boundary + drizzle drift checks). `secret` holds the WRAPPED s_q (AES-256-GCM

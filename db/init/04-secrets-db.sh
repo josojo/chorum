@@ -11,12 +11,12 @@ set -euo pipefail
 #
 # In production that is a distinct, short-retention RDS instance the broker owns.
 # For local dev / CI we simulate the separation with a second DATABASE in this
-# same container, OWNED by hearme_broker — which has only USAGE (not CREATE) on
-# the shared `hearme` schema, so it could not create the table there anyway. The
-# broker owns `hearme_secrets`, so its CREATE TABLE IF NOT EXISTS (secretsDb.ts)
-# succeeds. Runs after 02-roles.sh, so the hearme_broker role already exists.
+# same container, OWNED by chorum_broker — which has only USAGE (not CREATE) on
+# the shared `chorum` schema, so it could not create the table there anyway. The
+# broker owns `chorum_secrets`, so its CREATE TABLE IF NOT EXISTS (secretsDb.ts)
+# succeeds. Runs after 02-roles.sh, so the chorum_broker role already exists.
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'SQL'
-SELECT 'CREATE DATABASE hearme_secrets OWNER hearme_broker'
- WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'hearme_secrets')\gexec
+SELECT 'CREATE DATABASE chorum_secrets OWNER chorum_broker'
+ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'chorum_secrets')\gexec
 SQL

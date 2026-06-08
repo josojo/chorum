@@ -1,4 +1,4 @@
-# hearme
+# chorum
 
 v0 implementation of the system described in [ARCHITECTURE_V0.md](./ARCHITECTURE_V0.md).
 
@@ -25,7 +25,7 @@ multi-channel UI, and asker auth.
 ## Repo layout
 
 ```
-hearme/
+chorum/
 ├── ARCHITECTURE_V0.md           # v0 (built): identity, answering, ask-gating
 ├── ARCHITECTURE_V1.md           # v1: non-custodial Merkle-tree micropayments
 ├── ARCHITECTURE_V2.md           # v2: trust tiers, integrity audits, bribery defenses
@@ -60,8 +60,8 @@ One Postgres instance, two writer roles (ARCHITECTURE_V0.md §2, §4):
 
 | role            | writes                                | reads     |
 |-----------------|---------------------------------------|-----------|
-| `hearme_web`    | `questions`, `askers`                 | all       |
-| `hearme_broker` | `envelopes`, `aggregates`, `revocations` | all       |
+| `chorum_web`    | `questions`, `askers`                 | all       |
+| `chorum_broker` | `envelopes`, `aggregates`, `revocations` | all       |
 
 `packages/web/src/db/schema.ts` is the **single source of truth** for the schema. The SQL migrations under `packages/web/drizzle/migrations/` are *generated* from it with `npm run db:generate` — never hand-edited. Extensions (pgcrypto) live in `db/init/00-extensions.sql` (drizzle-kit doesn't model extensions). CI (`npm run db:check`) fails if `schema.ts` has changes that weren't regenerated into a committed migration. To change the schema: edit `schema.ts`, run `npm run db:generate`, commit both.
 
@@ -74,8 +74,8 @@ scripts/dev-up.sh
 That starts `postgres:16` on `localhost:5432` with the schema and roles applied.
 
 Connection strings for local dev:
-- web    — `postgres://hearme_web:hearme_web_dev@localhost:5432/hearme`
-- broker — `postgres://hearme_broker:hearme_broker_dev@localhost:5432/hearme`
+- web    — `postgres://chorum_web:chorum_web_dev@localhost:5432/chorum`
+- broker — `postgres://chorum_broker:chorum_broker_dev@localhost:5432/chorum`
 
 ### Staging secrets
 
@@ -91,7 +91,7 @@ docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build
 
 The overlay requires a non-dev broker signing key, non-dev Postgres passwords,
 real Self identity mode (`SELF_MOCK_PASSPORT=0`, `SELF_DEV_MODE=0`), and broker
-registry confirmation (`HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION=1`).
+registry confirmation (`CHORUM_BROKER_REQUIRE_REGISTRY_CONFIRMATION=1`).
 
 ### Reset the database
 

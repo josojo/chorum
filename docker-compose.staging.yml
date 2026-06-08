@@ -15,11 +15,11 @@
 services:
   postgres:
     environment:
-      POSTGRES_PASSWORD: ${HEARME_STAGING_POSTGRES_ADMIN_PASSWORD:?set in staging .env}
-      HEARME_DB_ADMIN_PASSWORD: ${HEARME_STAGING_POSTGRES_ADMIN_PASSWORD:?set in staging .env}
-      HEARME_DB_WEB_PASSWORD: ${HEARME_STAGING_POSTGRES_WEB_PASSWORD:?set in staging .env}
-      HEARME_DB_BROKER_PASSWORD: ${HEARME_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}
-      HEARME_DB_CLASSIFIER_PASSWORD: ${HEARME_STAGING_POSTGRES_CLASSIFIER_PASSWORD:?set in staging .env}
+      POSTGRES_PASSWORD: ${CHORUM_STAGING_POSTGRES_ADMIN_PASSWORD:?set in staging .env}
+      CHORUM_DB_ADMIN_PASSWORD: ${CHORUM_STAGING_POSTGRES_ADMIN_PASSWORD:?set in staging .env}
+      CHORUM_DB_WEB_PASSWORD: ${CHORUM_STAGING_POSTGRES_WEB_PASSWORD:?set in staging .env}
+      CHORUM_DB_BROKER_PASSWORD: ${CHORUM_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}
+      CHORUM_DB_CLASSIFIER_PASSWORD: ${CHORUM_STAGING_POSTGRES_CLASSIFIER_PASSWORD:?set in staging .env}
     # Start staging EMPTY: shadow the demo seed with a no-op at the same
     # container target (compose volume-merge keys on the mount path, so this
     # wins over the base mount of db/init/03-seed.sql). All data on staging is
@@ -32,33 +32,33 @@ services:
 
   broker:
     environment:
-      HEARME_BROKER_DATABASE_URL: postgres://hearme_broker:${HEARME_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}@postgres:5432/hearme
-      # Staging deliberately does NOT set HEARME_BROKER_DEV_MODE, so the broker's
+      CHORUM_BROKER_DATABASE_URL: postgres://chorum_broker:${CHORUM_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}@postgres:5432/chorum
+      # Staging deliberately does NOT set CHORUM_BROKER_DEV_MODE, so the broker's
       # fail-closed startup checks run (startup_checks.py). The overrides below
       # are what make them pass — drop one and the broker refuses to boot.
-      HEARME_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "1"
-      HEARME_BROKER_EXPOSE_REJECTION_REASONS: "0"
+      CHORUM_BROKER_REQUIRE_REGISTRY_CONFIRMATION: "1"
+      CHORUM_BROKER_EXPOSE_REJECTION_REASONS: "0"
       # Must match the self-bridge's SELF_SCOPE for this env. Distinct from
-      # mainnet ("hearme-v1") so a staging credential can never be accepted by
+      # mainnet ("chorum-v1") so a staging credential can never be accepted by
       # prod (its scope check + signature both differ). Frozen for staging's data.
-      HEARME_BROKER_SELF_SCOPE: staging-hearme-v1
-      HEARME_BROKER_SIGNING_KEY: ${HEARME_STAGING_BROKER_SIGNING_KEY:?set in staging .env}
+      CHORUM_BROKER_SELF_SCOPE: staging-chorum-v1
+      CHORUM_BROKER_SIGNING_KEY: ${CHORUM_STAGING_BROKER_SIGNING_KEY:?set in staging .env}
       # Per-question voter-tag secret store (ADR-098): the broker-owned
-      # `hearme_secrets` DB on the box's container Postgres (04-secrets-db.sh),
+      # `chorum_secrets` DB on the box's container Postgres (04-secrets-db.sh),
       # with each secret wrapped at rest under the master key.
-      HEARME_BROKER_SECRETS_DATABASE_URL: postgres://hearme_broker:${HEARME_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}@postgres:5432/hearme_secrets
-      HEARME_BROKER_VOTER_TAG_MASTER_KEY: ${HEARME_STAGING_BROKER_VOTER_TAG_MASTER_KEY:?set in staging .env}
+      CHORUM_BROKER_SECRETS_DATABASE_URL: postgres://chorum_broker:${CHORUM_STAGING_POSTGRES_BROKER_PASSWORD:?set in staging .env}@postgres:5432/chorum_secrets
+      CHORUM_BROKER_VOTER_TAG_MASTER_KEY: ${CHORUM_STAGING_BROKER_VOTER_TAG_MASTER_KEY:?set in staging .env}
 
   self-bridge:
     environment:
       # Staging's nullifier scope is deliberately DISTINCT from mainnet's
-      # ("hearme-v1") so a staging mock-passport identity can never collide with a
+      # ("chorum-v1") so a staging mock-passport identity can never collide with a
       # real prod identity. It is still frozen for the life of staging's data —
       # changing it orphans every staging registration (GH #97). Prod ignores
-      # SELF_SCOPE entirely and pins "hearme-v1" in code (see self-bridge server.js).
-      SELF_SCOPE: staging-hearme-v1
+      # SELF_SCOPE entirely and pins "chorum-v1" in code (see self-bridge server.js).
+      SELF_SCOPE: staging-chorum-v1
       # The callback the Self app posts proofs to MUST be public HTTPS.
-      SELF_ENDPOINT: ${HEARME_STAGING_SELF_ENDPOINT:?set in staging .env}
+      SELF_ENDPOINT: ${CHORUM_STAGING_SELF_ENDPOINT:?set in staging .env}
       # Staging exercises the REAL register->verify->envelope pipeline, but with
       # Self MOCK passports so verified agents can onboard from the Self app
       # without a real document. The proof is still verified (broker -> bridge ->
@@ -75,32 +75,32 @@ services:
 
   migrator:
     environment:
-      MIGRATOR_DATABASE_URL: postgres://hearme_admin:${HEARME_STAGING_POSTGRES_ADMIN_PASSWORD:?set in staging .env}@postgres:5432/hearme
+      MIGRATOR_DATABASE_URL: postgres://chorum_admin:${CHORUM_STAGING_POSTGRES_ADMIN_PASSWORD:?set in staging .env}@postgres:5432/chorum
 
   web:
     environment:
-      DATABASE_URL: postgres://hearme_web:${HEARME_STAGING_POSTGRES_WEB_PASSWORD:?set in staging .env}@postgres:5432/hearme
+      DATABASE_URL: postgres://chorum_web:${CHORUM_STAGING_POSTGRES_WEB_PASSWORD:?set in staging .env}@postgres:5432/chorum
       # Impressum (German imprint) operator details, rendered from SSM. Optional
       # (:- empty) so a deploy never fails before they're set; /impressum shows a
       # placeholder until then. Address is single-line; use "\n" for line breaks.
-      IMPRESSUM_NAME: ${HEARME_STAGING_IMPRESSUM_NAME:-}
-      IMPRESSUM_ADDRESS: ${HEARME_STAGING_IMPRESSUM_ADDRESS:-}
-      IMPRESSUM_EMAIL: ${HEARME_STAGING_IMPRESSUM_EMAIL:-}
-      IMPRESSUM_PHONE: ${HEARME_STAGING_IMPRESSUM_PHONE:-}
+      IMPRESSUM_NAME: ${CHORUM_STAGING_IMPRESSUM_NAME:-}
+      IMPRESSUM_ADDRESS: ${CHORUM_STAGING_IMPRESSUM_ADDRESS:-}
+      IMPRESSUM_EMAIL: ${CHORUM_STAGING_IMPRESSUM_EMAIL:-}
+      IMPRESSUM_PHONE: ${CHORUM_STAGING_IMPRESSUM_PHONE:-}
       # Optional invite-only login (HTTP Basic Auth on the web UI). Set BOTH in
       # SSM to require login; leave unset/empty to keep the site public. Toggles
       # the gate without touching the Caddyfile or restarting Caddy.
-      SITE_GATE_USER: ${HEARME_STAGING_SITE_GATE_USER:-}
-      SITE_GATE_PASSWORD: ${HEARME_STAGING_SITE_GATE_PASSWORD:-}
+      SITE_GATE_USER: ${CHORUM_STAGING_SITE_GATE_USER:-}
+      SITE_GATE_PASSWORD: ${CHORUM_STAGING_SITE_GATE_PASSWORD:-}
 
   classifier:
     environment:
-      HEARME_CLASSIFIER_DATABASE_URL: postgres://hearme_classifier:${HEARME_STAGING_POSTGRES_CLASSIFIER_PASSWORD:?set in staging .env}@postgres:5432/hearme
-      HEARME_CLASSIFIER_OPENROUTER_API_KEY: ${HEARME_STAGING_OPENROUTER_API_KEY:?set in staging .env}
+      CHORUM_CLASSIFIER_DATABASE_URL: postgres://chorum_classifier:${CHORUM_STAGING_POSTGRES_CLASSIFIER_PASSWORD:?set in staging .env}@postgres:5432/chorum
+      CHORUM_CLASSIFIER_OPENROUTER_API_KEY: ${CHORUM_STAGING_OPENROUTER_API_KEY:?set in staging .env}
 
   caddy:
     image: caddy:2
-    container_name: hearme-caddy
+    container_name: chorum-caddy
     restart: unless-stopped
     depends_on:
       - web
@@ -109,7 +109,7 @@ services:
       # The Caddyfile uses {$CADDY_SITE_HOST}; Caddy expands it at config-load
       # time. The fail-fast ":?" form makes compose error out instead of caddy
       # silently serving a config with an empty site block.
-      CADDY_SITE_HOST: ${HEARME_STAGING_CADDY_SITE_HOST:?set in staging .env}
+      CADDY_SITE_HOST: ${CHORUM_STAGING_CADDY_SITE_HOST:?set in staging .env}
     ports:
       - "80:80"
       - "443:443"

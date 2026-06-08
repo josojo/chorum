@@ -374,7 +374,7 @@ export function AskForm({
             <textarea
               name="delegationToken"
               rows={3}
-              placeholder='{"version":2,"scope":"hearme-v1", … }'
+              placeholder='{"version":2,"scope":"chorum-v1", … }'
               className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-xs shadow-sm transition focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100"
             />
           </Field>

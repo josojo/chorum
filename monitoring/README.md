@@ -36,12 +36,12 @@ network (never via Caddy). Series:
 
 | Metric | Labels | Use |
 |---|---|---|
-| `hearme_broker_register_total` | `outcome` | registration rate (accepted vs rejected) |
-| `hearme_broker_envelopes_total` | `outcome` | envelope ingest rate |
-| `hearme_broker_revoke_total` | `outcome` | revoke rate |
-| `hearme_broker_rejections_total` | `route`, `reason` | verification-failure breakdown by `RejectionReason` |
-| `hearme_broker_ratelimited_total` | `route` | 429 rate |
-| `hearme_broker_*` (default) | — | process: rss, event-loop lag, GC, fds |
+| `chorum_broker_register_total` | `outcome` | registration rate (accepted vs rejected) |
+| `chorum_broker_envelopes_total` | `outcome` | envelope ingest rate |
+| `chorum_broker_revoke_total` | `outcome` | revoke rate |
+| `chorum_broker_rejections_total` | `route`, `reason` | verification-failure breakdown by `RejectionReason` |
+| `chorum_broker_ratelimited_total` | `route` | 429 rate |
+| `chorum_broker_*` (default) | — | process: rss, event-loop lag, GC, fds |
 
 Liveness for services without `/metrics` (self-bridge, web) is covered by
 blackbox HTTP probes of their `/healthz`, so down-alerts work today.

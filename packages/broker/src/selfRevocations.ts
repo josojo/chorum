@@ -94,9 +94,9 @@ export class SelfRevocationListener {
     const s = this.settings;
     if (!s.selfRevocationListenerEnabled) return;
     const missing = Object.entries({
-      HEARME_BROKER_SELF_REVOCATION_RPC_URL: s.selfRevocationRpcUrl,
-      HEARME_BROKER_SELF_REVOCATION_CONTRACT_ADDRESS: s.selfRevocationContractAddress,
-      HEARME_BROKER_SELF_REVOCATION_EVENT_TOPIC: s.selfRevocationEventTopic,
+      CHORUM_BROKER_SELF_REVOCATION_RPC_URL: s.selfRevocationRpcUrl,
+      CHORUM_BROKER_SELF_REVOCATION_CONTRACT_ADDRESS: s.selfRevocationContractAddress,
+      CHORUM_BROKER_SELF_REVOCATION_EVENT_TOPIC: s.selfRevocationEventTopic,
     })
       .filter(([, value]) => !value)
       .map(([name]) => name);

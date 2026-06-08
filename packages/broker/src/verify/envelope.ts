@@ -6,7 +6,7 @@
 // The byte-level wire format: the four components joined with a single ASCII `|`
 // separator (which cannot appear in a UUID, hex hash, or base64 nonce), then
 // SHA-256 hashed so the signed message is a fixed 32 bytes. This is mirrored
-// byte-for-byte in hearme-skill — both signers and verifiers MUST agree.
+// byte-for-byte in chorum-skill — both signers and verifiers MUST agree.
 //
 // Per-envelope override (§1.12): a user retracts one answer by signing a
 // *revocation* over a domain-separated input:

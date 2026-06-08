@@ -211,8 +211,8 @@ function IntroBody({
         Asking is earned
       </h2>
       <p id={bodyId} className="mt-2 text-sm leading-relaxed text-slate-600">
-        hearme runs on contribution. Before you can post a question, your
-        personal agent has to be set up with hearme and answer a handful of
+        chorum runs on contribution. Before you can post a question, your
+        personal agent has to be set up with chorum and answer a handful of
         questions on your behalf — that&apos;s what earns you the right to ask.
       </p>
 
@@ -480,7 +480,7 @@ function LockedPlaceholder({
         Asking is earned
       </h2>
       <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-        First, your agent sets up with hearme and answers a few questions — that
+        First, your agent sets up with chorum and answers a few questions — that
         earns you the right to ask. Already contributing? Sign in with Self to
         check your score.
       </p>

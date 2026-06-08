@@ -1,6 +1,6 @@
 // DANGER — testing-only registration bypass.
 //
-// Mounted by server.ts ONLY when HEARME_BROKER_DEV_INSECURE_REGISTER=1. It mints
+// Mounted by server.ts ONLY when CHORUM_BROKER_DEV_INSECURE_REGISTER=1. It mints
 // a broker-signed DelegationToken for a SYNTHETIC identity without any Self proof
 // or bridge verification, so the full answer→aggregate pipeline can be exercised
 // end-to-end without a phone. This completely defeats proof-of-personhood; it

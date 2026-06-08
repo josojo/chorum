@@ -100,9 +100,9 @@ describe("production startup checks", () => {
     // Dev defaults trip: signing key, voter-tag master key, secrets-DB DSN, dev
     // DB password, expose-rejection-reasons.
     expect(report.errors.length).toBeGreaterThanOrEqual(5);
-    expect(report.errors.some((e) => e.includes("HEARME_BROKER_SIGNING_KEY"))).toBe(true);
-    expect(report.errors.some((e) => e.includes("HEARME_BROKER_VOTER_TAG_MASTER_KEY"))).toBe(true);
-    expect(report.errors.some((e) => e.includes("HEARME_BROKER_SECRETS_DATABASE_URL"))).toBe(true);
+    expect(report.errors.some((e) => e.includes("CHORUM_BROKER_SIGNING_KEY"))).toBe(true);
+    expect(report.errors.some((e) => e.includes("CHORUM_BROKER_VOTER_TAG_MASTER_KEY"))).toBe(true);
+    expect(report.errors.some((e) => e.includes("CHORUM_BROKER_SECRETS_DATABASE_URL"))).toBe(true);
     expect(() => enforceProductionConfig(getSettings(), { warn() {}, info() {} })).toThrow(
       ProductionConfigError,
     );
@@ -114,8 +114,8 @@ describe("production startup checks", () => {
       // Fresh master key wrapping the per-question secrets, and the secrets store
       // wired to its own broker-owned DB (co-located on the main instance) — ADR-098.
       voterTagMasterKey: Buffer.alloc(32, 5).toString("base64"),
-      secretsDatabaseUrl: "postgres://hearme_broker:s3cret@db:5432/hearme_secrets",
-      databaseUrl: "postgres://hearme_broker:s3cret@db:5432/hearme",
+      secretsDatabaseUrl: "postgres://chorum_broker:s3cret@db:5432/chorum_secrets",
+      databaseUrl: "postgres://chorum_broker:s3cret@db:5432/chorum",
       devInsecureRegister: false,
       requireRegistryConfirmation: true,
       exposeRejectionReasons: false,
@@ -126,21 +126,21 @@ describe("production startup checks", () => {
     expect(() => enforceProductionConfig(safe, { warn() {}, info() {} })).not.toThrow();
   });
 
-  it("warns (does not error) when prod ignores a set HEARME_BROKER_SELF_SCOPE", () => {
-    const prevScope = process.env.HEARME_BROKER_SELF_SCOPE;
-    const prevMode = process.env.HEARME_BROKER_PRODUCTION_MODE;
-    process.env.HEARME_BROKER_SELF_SCOPE = "oops-v2";
-    process.env.HEARME_BROKER_PRODUCTION_MODE = "1";
+  it("warns (does not error) when prod ignores a set CHORUM_BROKER_SELF_SCOPE", () => {
+    const prevScope = process.env.CHORUM_BROKER_SELF_SCOPE;
+    const prevMode = process.env.CHORUM_BROKER_PRODUCTION_MODE;
+    process.env.CHORUM_BROKER_SELF_SCOPE = "oops-v2";
+    process.env.CHORUM_BROKER_PRODUCTION_MODE = "1";
     try {
       const report = validateProductionConfig(getSettings());
-      expect(report.warnings.some((w) => w.includes("HEARME_BROKER_SELF_SCOPE"))).toBe(true);
+      expect(report.warnings.some((w) => w.includes("CHORUM_BROKER_SELF_SCOPE"))).toBe(true);
       // It is ignored, not fatal: the scope still resolves to the frozen value.
       expect(getSettings().selfScope).toBe(PRODUCTION_SCOPE);
     } finally {
-      if (prevScope === undefined) delete process.env.HEARME_BROKER_SELF_SCOPE;
-      else process.env.HEARME_BROKER_SELF_SCOPE = prevScope;
-      if (prevMode === undefined) delete process.env.HEARME_BROKER_PRODUCTION_MODE;
-      else process.env.HEARME_BROKER_PRODUCTION_MODE = prevMode;
+      if (prevScope === undefined) delete process.env.CHORUM_BROKER_SELF_SCOPE;
+      else process.env.CHORUM_BROKER_SELF_SCOPE = prevScope;
+      if (prevMode === undefined) delete process.env.CHORUM_BROKER_PRODUCTION_MODE;
+      else process.env.CHORUM_BROKER_PRODUCTION_MODE = prevMode;
     }
   });
 });
@@ -161,8 +161,8 @@ describe("scope freeze — resolveScope (GH #97)", () => {
     });
   });
   it("outside production the env var selects the scope", () => {
-    expect(resolveScope({ productionMode: false, envScope: "staging-hearme-v1" })).toEqual({
-      scope: "staging-hearme-v1",
+    expect(resolveScope({ productionMode: false, envScope: "staging-chorum-v1" })).toEqual({
+      scope: "staging-chorum-v1",
       ignoredEnvScope: null,
     });
     expect(resolveScope({ productionMode: false, envScope: undefined })).toEqual({
@@ -171,7 +171,7 @@ describe("scope freeze — resolveScope (GH #97)", () => {
     });
   });
   it("PRODUCTION_SCOPE is the frozen mainnet value", () => {
-    expect(PRODUCTION_SCOPE).toBe("hearme-v1");
+    expect(PRODUCTION_SCOPE).toBe("chorum-v1");
   });
 });
 
@@ -283,7 +283,7 @@ describe("delegation verification", () => {
     // A token issued under staging's scope (same key, so we isolate the scope
     // barrier) must be rejected by a prod-scoped broker BEFORE signature — proof
     // that staging and prod credentials can never be mixed up.
-    const staging = getSettings({ selfScope: "staging-hearme-v1" });
+    const staging = getSettings({ selfScope: "staging-chorum-v1" });
     const tok = issueDelegationToken({
       unique_identifier: "self:nullifier-1",
       disclosed_predicates: { region: "EU", age_band: "35-49" },
@@ -292,9 +292,9 @@ describe("delegation verification", () => {
       expires_at: new Date(Date.now() + 86400_000),
       settings: staging,
     });
-    expect(tok.scope).toBe("staging-hearme-v1");
+    expect(tok.scope).toBe("staging-chorum-v1");
     try {
-      verifyDelegation(tok); // default settings → scope "hearme-v1"
+      verifyDelegation(tok); // default settings → scope "chorum-v1"
       expect.unreachable();
     } catch (e) {
       expect((e as VerifyDelegationError).reason).toBe(RejectionReason.SELF_SCOPE_MISMATCH);
@@ -347,16 +347,16 @@ describe("asker session (Sign in with Self credential)", () => {
   });
 
   it("rejects a session minted under another env's scope (GH #97)", () => {
-    const staging = getSettings({ selfScope: "staging-hearme-v1" });
+    const staging = getSettings({ selfScope: "staging-chorum-v1" });
     const s = issueAskerSession({
       unique_identifier: uid,
       issued_at: new Date(),
       expires_at: new Date(Date.now() + ASKER_SESSION_TTL_MS),
       settings: staging,
     });
-    expect(s.scope).toBe("staging-hearme-v1");
+    expect(s.scope).toBe("staging-chorum-v1");
     try {
-      verifyAskerSession(s); // default settings → scope "hearme-v1"
+      verifyAskerSession(s); // default settings → scope "chorum-v1"
       expect.unreachable();
     } catch (e) {
       expect((e as VerifyDelegationError).reason).toBe(RejectionReason.SELF_SCOPE_MISMATCH);

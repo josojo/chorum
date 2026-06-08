@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Record the last-known-good deploy and prune stale images — run ON THE BOX,
-# from the repo root (~/hearme), AFTER the health gate (scripts/healthgate.sh)
+# from the repo root (~/chorum), AFTER the health gate (scripts/healthgate.sh)
 # has passed. If the deploy is unhealthy, do NOT call this: the previous
 # .deploy-state stays authoritative so `scripts/rollback.sh` still knows the
 # good SHA to return to.
@@ -12,7 +12,7 @@
 #   ENV=<staging|prod>
 #   DEPLOYED_AT=<UTC ISO8601>
 #
-# Then prunes hearme-* images, KEEPING the current + previous good SHAs (so
+# Then prunes chorum-* images, KEEPING the current + previous good SHAs (so
 # rollback can re-`up` the previous build without rebuilding) plus the local
 # `dev` tag. Without this, every deploy leaves another SHA-tagged image behind
 # and the disk fills.
@@ -52,7 +52,7 @@ tmp="$state_file.tmp"
 mv "$tmp" "$state_file"
 echo "[deploy-finalize] recorded LAST_GOOD_SHA=$new_sha PREVIOUS_GOOD_SHA=${prev_good:-<none>} ($env_name)"
 
-# Prune older hearme-* image tags, keeping what rollback needs.
+# Prune older chorum-* image tags, keeping what rollback needs.
 keep=" $new_sha $prev_good dev "
 pruned=0
 while read -r repo tag; do
@@ -60,5 +60,5 @@ while read -r repo tag; do
   if docker rmi "$repo:$tag" >/dev/null 2>&1; then
     pruned=$((pruned + 1))
   fi
-done < <(docker images --format '{{.Repository}} {{.Tag}}' | awk '$1 ~ /^hearme-/ && $2 != "<none>"')
-echo "[deploy-finalize] pruned $pruned stale hearme-* image tag(s); kept ${new_sha}, ${prev_good:-<none>}, dev"
+done < <(docker images --format '{{.Repository}} {{.Tag}}' | awk '$1 ~ /^chorum-/ && $2 != "<none>"')
+echo "[deploy-finalize] pruned $pruned stale chorum-* image tag(s); kept ${new_sha}, ${prev_good:-<none>}, dev"

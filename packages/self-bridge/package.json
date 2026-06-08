@@ -1,9 +1,9 @@
 {
-  "name": "hearme-self-bridge",
+  "name": "chorum-self-bridge",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Node sidecar wrapping @selfxyz/core: Self (self.xyz) request creation, off-chain SNARK verification, and a one-time on-chain Celo registry/root check for the hearme broker and skill.",
+  "description": "Node sidecar wrapping @selfxyz/core: Self (self.xyz) request creation, off-chain SNARK verification, and a one-time on-chain Celo registry/root check for the chorum broker and skill.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

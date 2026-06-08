@@ -16,7 +16,7 @@ import type { BridgeVerifyResult, VerifySelfProof } from "../src/verify/bridgeCl
 // ----- crypto -------------------------------------------------------------
 
 export const agentKeyPair = nacl.sign.keyPair.fromSeed(
-  new Uint8Array(Buffer.from("AGENT-KEY-FOR-HEARME-TESTING-32B")),
+  new Uint8Array(Buffer.from("AGENT-KEY-FOR-CHORUM-TESTING-32B")),
 );
 export const agentKeyB64 = Buffer.from(agentKeyPair.publicKey).toString("base64");
 

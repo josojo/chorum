@@ -6,7 +6,7 @@
 #   scripts/rollback.sh -y         # skip the confirmation prompt
 #
 # How it works: checks out the target SHA, then `docker compose up -d` pinned to
-# that SHA's images via HEARME_DEPLOY_SHA. If the previous build's images are
+# that SHA's images via CHORUM_DEPLOY_SHA. If the previous build's images are
 # still on the box (deploy-finalize keeps the last two), the bring-up does NOT
 # rebuild — recovery is seconds, and does not depend on the target source even
 # building. If they were pruned, it falls back to --build. A health gate then
@@ -49,7 +49,7 @@ read_state() {
   sed -n "s/^$1=//p" "$state_file" | head -n1
 }
 
-env_name="${HEARME_ROLLBACK_ENV:-$(read_state ENV)}"
+env_name="${CHORUM_ROLLBACK_ENV:-$(read_state ENV)}"
 env_name="${env_name:-staging}"
 last_good="$(read_state LAST_GOOD_SHA)"
 prev_good="$(read_state PREVIOUS_GOOD_SHA)"
@@ -63,9 +63,9 @@ if [ -z "$target" ]; then
   fi
 fi
 
-# Compose overlay for this environment (override with HEARME_COMPOSE_FILES).
-if [ -n "${HEARME_COMPOSE_FILES:-}" ]; then
-  read -r -a compose_files <<< "$HEARME_COMPOSE_FILES"
+# Compose overlay for this environment (override with CHORUM_COMPOSE_FILES).
+if [ -n "${CHORUM_COMPOSE_FILES:-}" ]; then
+  read -r -a compose_files <<< "$CHORUM_COMPOSE_FILES"
 else
   case "$env_name" in
     staging) compose_files=(-f docker-compose.yml -f docker-compose.staging.yml) ;;
@@ -73,7 +73,7 @@ else
     # -f — not the base+overlay pair staging uses. It defines no postgres
     # service: prod's DB is RDS. See docs/DEPLOYMENT.md §4.
     prod)    compose_files=(-f docker-compose.prod.yml) ;;
-    *) echo "unknown ENV '$env_name'; set HEARME_COMPOSE_FILES explicitly" >&2; exit 2 ;;
+    *) echo "unknown ENV '$env_name'; set CHORUM_COMPOSE_FILES explicitly" >&2; exit 2 ;;
   esac
 fi
 
@@ -95,7 +95,7 @@ echo "[rollback] now at $short_sha: $(git log -1 --pretty=%s)"
 
 test -f .env || { echo "missing .env on the box; cannot bring the stack up" >&2; exit 1; }
 set -a; . ./.env; set +a
-export HEARME_DEPLOY_SHA="$short_sha"
+export CHORUM_DEPLOY_SHA="$short_sha"
 
 # Prefer the already-built image for this SHA (fast, and independent of whether
 # the target source still builds). Fall back to a rebuild if it was pruned.
@@ -119,7 +119,7 @@ done
 if [ "$ok" -ne 0 ]; then
   echo "[rollback] FAILED: stack not healthy after rollback (broker=${bcode:-none} web=${wcode:-none})" >&2
   echo "[rollback] containers:" >&2
-  docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'hearme-|NAMES' >&2 || true
+  docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'chorum-|NAMES' >&2 || true
   exit 1
 fi
 

@@ -38,8 +38,8 @@ describe("createOpenRouterClient", () => {
     const client = createOpenRouterClient({
       apiKey: "sk-or-test",
       fetchImpl: impl,
-      referer: "https://hearme.network",
-      title: "hearme-classifier",
+      referer: "https://chorum.network",
+      title: "chorum-classifier",
     });
 
     const resp = await client.chat({
@@ -59,8 +59,8 @@ describe("createOpenRouterClient", () => {
     const headers = new Headers(c.init?.headers as HeadersInit | undefined);
     expect(headers.get("Authorization")).toBe("Bearer sk-or-test");
     expect(headers.get("Content-Type")).toBe("application/json");
-    expect(headers.get("HTTP-Referer")).toBe("https://hearme.network");
-    expect(headers.get("X-Title")).toBe("hearme-classifier");
+    expect(headers.get("HTTP-Referer")).toBe("https://chorum.network");
+    expect(headers.get("X-Title")).toBe("chorum-classifier");
 
     const body = JSON.parse(String(c.init?.body));
     expect(body).toEqual({

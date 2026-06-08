@@ -1,5 +1,5 @@
 // Cross-language golden vectors recorded from the Python broker (the
-// authoritative implementation the hearme-skill was built against). These pin
+// authoritative implementation the chorum-skill was built against). These pin
 // byte-for-byte compatibility of canonical JSON, Ed25519 signing, the envelope
 // signing input, and predicate derivation. If any of these break, agents in the
 // field stop verifying.
@@ -21,17 +21,17 @@ import type { DelegationToken } from "../src/models";
 // The fixed golden DelegationToken (dev signing key) from the Python broker.
 const WIRE: DelegationToken = {
   version: 2,
-  scope: "hearme-v1",
+  scope: "chorum-v1",
   unique_identifier: "self:nullifier-1",
   disclosed_predicates: { region: "EU", country: "DE", age_band: "35-49" },
   agent_key: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
   issued_at: "2026-05-31T12:00:00.123456Z",
   expires_at: "2026-08-29T12:00:00.123456Z",
   broker_signature:
-    "liH3VGMdnr/MXqqAlxxrIol32jL4Fq43oVeoKpm1Du6mD3JvpjUELKwe/nKeJYrQVflmLp8WOCEnF307TpzaBQ==",
+    "ukpv3gWGi0PLAcf8YmiABC0XfW9BGK4hOHwXwOE2Twvax1WSoyAsmywCue0piYiJlJQ9Uk0NTrCp0KPBe+zjBA==",
 };
-const DHASH = "03e9bf5601d898df94914f61003abf783e62b7a0a92c1f2bde32b529a0355717";
-const AGENT_PUB = "vG256kFHAI/bBigaiiQjfTdhkr6dz3ul4zMK9ZQPPMk=";
+const DHASH = "6433b2ffed393ca1192c61f4603c47dccf772c4e75b8ef90c16a1e5ede2f67b3";
+const AGENT_PUB = "CzdPHjqsN4fbFaBvAgcfkgbC2o383njYoniN5c0pBro=";
 const QID = "11111111-2222-3333-4444-555555555555";
 
 describe("canonical json", () => {
@@ -45,11 +45,11 @@ describe("canonical json", () => {
   it("matches the Python canonical bytes for the golden token", () => {
     expect(canonicalJson(WIRE).toString()).toBe(
       '{"agent_key":"AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",' +
-        '"broker_signature":"liH3VGMdnr/MXqqAlxxrIol32jL4Fq43oVeoKpm1Du6mD3JvpjUELKwe/nKeJYrQVflmLp8WOCEnF307TpzaBQ==",' +
+        '"broker_signature":"ukpv3gWGi0PLAcf8YmiABC0XfW9BGK4hOHwXwOE2Twvax1WSoyAsmywCue0piYiJlJQ9Uk0NTrCp0KPBe+zjBA==",' +
         '"disclosed_predicates":{"age_band":"35-49","country":"DE","region":"EU"},' +
         '"expires_at":"2026-08-29T12:00:00.123456Z",' +
         '"issued_at":"2026-05-31T12:00:00.123456Z",' +
-        '"scope":"hearme-v1","unique_identifier":"self:nullifier-1","version":2}',
+        '"scope":"chorum-v1","unique_identifier":"self:nullifier-1","version":2}',
     );
   });
 
@@ -84,19 +84,19 @@ describe("broker credential (Ed25519 via tweetnacl)", () => {
 describe("envelope + revocation signing inputs", () => {
   it("matches the Python envelope digest", () => {
     expect(Buffer.from(envelopeSigningInput(QID, "yes", "nonce-abc", DHASH)).toString("hex")).toBe(
-      "346283939cf650d944d0f2818751d697baee48c813e5329aa7ac5de9599ed7b4",
+      "179110283b83729c602a455e75102e8dd61dbf1450a025a7a7535a67df909493",
     );
   });
 
   it("matches the Python digest for a unicode answer", () => {
     expect(
       Buffer.from(envelopeSigningInput(QID, "café — yes", "nonce-abc", DHASH)).toString("hex"),
-    ).toBe("efb2ae673f1ddf1c71b517738959cb840d90f157762cb43321eff12191eb925a");
+    ).toBe("f635e13040ead060a997d3bf3ff7ff9ae0417077f8c67db712173457a3fe3492");
   });
 
   it("matches the Python revocation digest", () => {
     expect(Buffer.from(revocationSigningInput(QID, DHASH)).toString("hex")).toBe(
-      "affd6504090e1d643114ff1e684d2b76e658415fc4e8949f1fe37d5706307182",
+      "f1a862f3647ff92a23ad07624800d5c2f4b24717f0aac7085542878b5ae9b813",
     );
   });
 
@@ -109,7 +109,7 @@ describe("envelope + revocation signing inputs", () => {
         nonce: "nonce-abc",
         delegationHashHex: DHASH,
         agentSignatureBase64:
-          "dGnBfOhWyo7S6PNqr0SUGPu5Lk1THJEZ80Wp3Y2+KTfGMR/zS4T9WknXFvwvxn1ma6y+7C9fGBZLGwoF7dhTBQ==",
+          "7+i3+8I9gFyGxpTuEzRcMren6mF/yNN1c8VoK6qp2l9cJDOcWhDFlg59F6YrAKZOJLCCjlt5FwJpYEbVXXMDAw==",
       }),
     ).not.toThrow();
 
@@ -119,7 +119,7 @@ describe("envelope + revocation signing inputs", () => {
         questionId: QID,
         delegationHashHex: DHASH,
         revocationSignatureBase64:
-          "IRHlY3omUKleOAKchmQe+TwZ2Pdd1D7afshfNaA9B6fsGMmdZfDhukisxpwMnCa3ro9yGUNGSdDy4qp2vwEqDg==",
+          "7h5CcExeYwvRUmyRlS2nhGnylk2l9GYs0R6Oci9fp0ky72SIq9H5jBNBzS74uykig6TARRrAFmpED4su3oO9BA==",
       }),
     ).not.toThrow();
   });

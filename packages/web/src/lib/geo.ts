@@ -16,7 +16,7 @@
 // /24, IPv6 /48): country-level geo is unchanged, but a fully-identifying address
 // never leaves our infra. Steps 1–2 (override + edge geo headers) require no
 // third-party call at all, so a deployment behind Vercel/Cloudflare/Fly leaks
-// nothing. Set HEARME_GEO_DISABLE_IP_LOOKUP=1 to drop step 3 entirely and rely
+// nothing. Set CHORUM_GEO_DISABLE_IP_LOOKUP=1 to drop step 3 entirely and rely
 // only on edge headers + the default.
 
 import { headers } from "next/headers";
@@ -110,7 +110,7 @@ function countryNameFor(country: string): string {
 }
 
 function ipLookupEnabled(): boolean {
-  return process.env.HEARME_GEO_DISABLE_IP_LOOKUP !== "1";
+  return process.env.CHORUM_GEO_DISABLE_IP_LOOKUP !== "1";
 }
 
 async function lookupIp(rawIp: string): Promise<Omit<Location, "source"> | null> {

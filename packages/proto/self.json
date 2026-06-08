@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://hearme.network/proto/self.json",
+  "$id": "https://chorum.network/proto/self.json",
   "title": "SelfProofBundle",
   "description": "One verifiable Self (self.xyz) proof, as produced by the Self app and verified by @selfxyz/core's SelfBackendVerifier on the self-bridge. The skill collects one bundle per age threshold into an EnrollmentBundle (enrollment.json) and POSTs it to the broker's POST /v1/register. The broker re-verifies each bundle once (off-chain SNARK + a one-time on-chain Celo registry/root check), then issues a broker-signed DelegationToken (delegation.json). Bundles are NOT stored after registration and never travel per answer. See ARCHITECTURE_V0.md §5/§8.",
   "type": "object",

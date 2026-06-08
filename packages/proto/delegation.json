@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://hearme.network/proto/delegation.json",
+  "$id": "https://chorum.network/proto/delegation.json",
   "title": "DelegationToken",
-  "description": "The broker-issued, broker-SIGNED session credential that authorizes an agent_key to speak for a unique human within the Hearme scope. Returned by POST /v1/register after the broker verifies the Self proofs ONCE (verify-once-at-registration, forced by Self's ±1 day proof-freshness window). The agent replays this token in every envelope; the broker verifies its OWN signature + expiry + the registrations registry per answer — no Self proof, no bridge call, no chain access at answer time. Canonical JSON (sorted keys, no whitespace) of this object MINUS broker_signature is the input to broker_signature; canonical JSON of the WHOLE object is the input to delegation_hash = SHA-256(canonical_json(token)). See ARCHITECTURE_V0.md §5/§8.5.",
+  "description": "The broker-issued, broker-SIGNED session credential that authorizes an agent_key to speak for a unique human within the Chorum scope. Returned by POST /v1/register after the broker verifies the Self proofs ONCE (verify-once-at-registration, forced by Self's ±1 day proof-freshness window). The agent replays this token in every envelope; the broker verifies its OWN signature + expiry + the registrations registry per answer — no Self proof, no bridge call, no chain access at answer time. Canonical JSON (sorted keys, no whitespace) of this object MINUS broker_signature is the input to broker_signature; canonical JSON of the WHOLE object is the input to delegation_hash = SHA-256(canonical_json(token)). See ARCHITECTURE_V0.md §5/§8.5.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,7 +17,7 @@
   ],
   "properties": {
     "version": { "type": "integer", "const": 2 },
-    "scope": { "type": "string", "const": "hearme-v1" },
+    "scope": { "type": "string", "const": "chorum-v1" },
     "unique_identifier": {
       "type": "string",
       "description": "Self nullifier (unique-per-user-per-scope). Verified once at registration; authoritative thereafter. Primary key of the registrations registry."

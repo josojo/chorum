@@ -1,4 +1,4 @@
-# Alertmanager routing for the hearme stack (issue #101).
+# Alertmanager routing for the chorum stack (issue #101).
 #
 # v0 ships with a single no-op receiver: firing alerts are visible in the
 # Alertmanager UI (:9093) and Prometheus /alerts, but nothing is paged yet. Wire
@@ -23,7 +23,7 @@ receivers:
   - name: default
     # slack_configs:
     #   - api_url: ${ALERTMANAGER_SLACK_WEBHOOK}
-    #     channel: "#hearme-alerts"
+    #     channel: "#chorum-alerts"
     #     send_resolved: true
     # webhook_configs:
-    #   - url: https://example.com/hooks/hearme-alerts
+    #   - url: https://example.com/hooks/chorum-alerts

@@ -94,7 +94,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   if (settings.devInsecureRegister) {
     registerDevRoutes(app);
     app.log.warn(
-      "HEARME_BROKER_DEV_INSECURE_REGISTER=1 — POST /v1/dev/register is MOUNTED. " +
+      "CHORUM_BROKER_DEV_INSECURE_REGISTER=1 — POST /v1/dev/register is MOUNTED. " +
         "Self proof-of-personhood is BYPASSED. Do NOT use in prod.",
     );
   }

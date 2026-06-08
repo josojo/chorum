@@ -2,7 +2,7 @@
 // the topic column with the race-safe `WHERE topic IS NULL` guard.
 //
 // We use postgres-js (same driver the web app uses) over the per-service
-// `hearme_classifier` role, which has SELECT on questions + UPDATE on the
+// `chorum_classifier` role, which has SELECT on questions + UPDATE on the
 // `topic` column only. Any wider write attempt should fail at the DB grant
 // boundary, not in this file — i.e. we don't even try to defend in code.
 

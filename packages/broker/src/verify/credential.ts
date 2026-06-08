@@ -22,14 +22,14 @@ import { canonicalJson } from "./canonical";
 // verify/scope.ts and config.ts → settings.selfScope). It must equal the
 // self-bridge's SELF_SCOPE, since the nullifier it accompanies is derived under
 // that scope. issue/verify below take the scope from settings so a staging
-// credential (scope "staging-hearme-v1") can never be confused with a prod one
-// ("hearme-v1"). docs/DEPLOYMENT.md "Frozen constants — never change in prod".
+// credential (scope "staging-chorum-v1") can never be confused with a prod one
+// ("chorum-v1"). docs/DEPLOYMENT.md "Frozen constants — never change in prod".
 
 export function loadSigningSeed(settings: Settings): Uint8Array {
   const seed = Buffer.from(settings.brokerSigningKey, "base64");
   if (seed.length !== 32) {
     throw new Error(
-      `HEARME_BROKER_SIGNING_KEY decodes to ${seed.length} bytes; want 32`,
+      `CHORUM_BROKER_SIGNING_KEY decodes to ${seed.length} bytes; want 32`,
     );
   }
   return new Uint8Array(seed);
@@ -136,10 +136,10 @@ export function verifyBrokerSignature(
 
 // The governance scope, derived from (and distinct from) the answer scope, so a
 // board credential / action can never be confused with answer-time identity and
-// the two are unlinkable by scope. "hearme-v1" → "hearme-gov-v1"; staging's
-// "staging-hearme-v1" → "staging-hearme-gov-v1". Frozen per env like selfScope.
+// the two are unlinkable by scope. "chorum-v1" → "chorum-gov-v1"; staging's
+// "staging-chorum-v1" → "staging-chorum-gov-v1". Frozen per env like selfScope.
 export function governanceScope(selfScope: string): string {
-  return selfScope.replace("hearme-", "hearme-gov-");
+  return selfScope.replace("chorum-", "chorum-gov-");
 }
 
 type BoardClaims = {

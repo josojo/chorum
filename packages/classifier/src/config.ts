@@ -18,16 +18,16 @@ export type Config = {
 export class ConfigError extends Error {}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const databaseUrl = required(env, "HEARME_CLASSIFIER_DATABASE_URL");
-  const openRouterApiKey = required(env, "HEARME_CLASSIFIER_OPENROUTER_API_KEY");
-  const model = env.HEARME_CLASSIFIER_MODEL || "google/gemini-2.5-flash-lite";
+  const databaseUrl = required(env, "CHORUM_CLASSIFIER_DATABASE_URL");
+  const openRouterApiKey = required(env, "CHORUM_CLASSIFIER_OPENROUTER_API_KEY");
+  const model = env.CHORUM_CLASSIFIER_MODEL || "google/gemini-2.5-flash-lite";
   const pollIntervalMs = positiveInt(
     env,
-    "HEARME_CLASSIFIER_POLL_INTERVAL_MS",
+    "CHORUM_CLASSIFIER_POLL_INTERVAL_MS",
     10_000,
   );
-  const batchSize = positiveInt(env, "HEARME_CLASSIFIER_BATCH_SIZE", 20);
-  const oneShot = (env.HEARME_CLASSIFIER_ONE_SHOT || "").toLowerCase() === "1";
+  const batchSize = positiveInt(env, "CHORUM_CLASSIFIER_BATCH_SIZE", 20);
+  const oneShot = (env.CHORUM_CLASSIFIER_ONE_SHOT || "").toLowerCase() === "1";
   return {
     databaseUrl,
     openRouterApiKey,
@@ -35,8 +35,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     pollIntervalMs,
     batchSize,
     oneShot,
-    referer: env.HEARME_CLASSIFIER_REFERER,
-    title: env.HEARME_CLASSIFIER_TITLE,
+    referer: env.CHORUM_CLASSIFIER_REFERER,
+    title: env.CHORUM_CLASSIFIER_TITLE,
   };
 }
 

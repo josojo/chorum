@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { checkAskerEligibility, checkAskerSession } from "../src/lib/asker-auth";
 
-const VALID_TOKEN = JSON.stringify({ version: 2, scope: "hearme-v1" });
+const VALID_TOKEN = JSON.stringify({ version: 2, scope: "chorum-v1" });
 
 function mockFetch(status: number, body: unknown) {
   const fn = vi.fn(async () => ({

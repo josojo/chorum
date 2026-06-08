@@ -269,7 +269,7 @@ async function deleteEnvelopesByVoterTags(tx: Executor, tags: string[]): Promise
   return rows.map((r) => r.question_id);
 }
 
-// Apply a Self on-chain invalidation for one Hearme nullifier: record it, revoke
+// Apply a Self on-chain invalidation for one Chorum nullifier: record it, revoke
 // the registration, delete its accepted envelopes, and recompute every affected
 // aggregate — all in one transaction.
 export async function invalidateRegistrationAndVotes(
@@ -576,7 +576,7 @@ export async function askerAnswerCounts(
 // Is this identity a DB-listed admin? Admins bypass the unlock threshold
 // (evaluateAskerEligibility). Read on every eligibility check, so it's a single
 // indexed PK lookup. The broker also unions this with the static env allowlist
-// (HEARME_BROKER_ASKER_ADMIN_IDENTIFIERS) — see routes/askers.ts.
+// (CHORUM_BROKER_ASKER_ADMIN_IDENTIFIERS) — see routes/askers.ts.
 export async function isAskerAdmin(
   db: Executor,
   uniqueIdentifier: string,

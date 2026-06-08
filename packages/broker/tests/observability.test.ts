@@ -33,10 +33,10 @@ async function counterValue(
 
 describe("metrics: record helpers", () => {
   it("counts outcomes per route and rejection reasons", async () => {
-    const accBefore = await counterValue("hearme_broker_register_total", {
+    const accBefore = await counterValue("chorum_broker_register_total", {
       outcome: "accepted",
     });
-    const rejBefore = await counterValue("hearme_broker_rejections_total", {
+    const rejBefore = await counterValue("chorum_broker_rejections_total", {
       route: "register",
       reason: RejectionReason.SELF_PROOF_INVALID,
     });
@@ -45,13 +45,13 @@ describe("metrics: record helpers", () => {
     recordOutcome("register", false, RejectionReason.SELF_PROOF_INVALID);
 
     expect(
-      await counterValue("hearme_broker_register_total", { outcome: "accepted" }),
+      await counterValue("chorum_broker_register_total", { outcome: "accepted" }),
     ).toBe(accBefore + 1);
     expect(
-      await counterValue("hearme_broker_register_total", { outcome: "rejected" }),
+      await counterValue("chorum_broker_register_total", { outcome: "rejected" }),
     ).toBeGreaterThan(0);
     expect(
-      await counterValue("hearme_broker_rejections_total", {
+      await counterValue("chorum_broker_rejections_total", {
         route: "register",
         reason: RejectionReason.SELF_PROOF_INVALID,
       }),
@@ -59,7 +59,7 @@ describe("metrics: record helpers", () => {
   });
 
   it("does not record a reason on accept", async () => {
-    const before = await counterValue("hearme_broker_rejections_total", {
+    const before = await counterValue("chorum_broker_rejections_total", {
       route: "revoke",
       reason: RejectionReason.ENVELOPE_NOT_FOUND,
     });
@@ -67,7 +67,7 @@ describe("metrics: record helpers", () => {
     // it must NOT count as a rejection.
     recordOutcome("revoke", true, RejectionReason.ENVELOPE_NOT_FOUND);
     expect(
-      await counterValue("hearme_broker_rejections_total", {
+      await counterValue("chorum_broker_rejections_total", {
         route: "revoke",
         reason: RejectionReason.ENVELOPE_NOT_FOUND,
       }),
@@ -75,12 +75,12 @@ describe("metrics: record helpers", () => {
   });
 
   it("counts rate-limited requests by route", async () => {
-    const before = await counterValue("hearme_broker_ratelimited_total", {
+    const before = await counterValue("chorum_broker_ratelimited_total", {
       route: "POST /v1/register",
     });
     recordRateLimited("POST /v1/register");
     expect(
-      await counterValue("hearme_broker_ratelimited_total", {
+      await counterValue("chorum_broker_ratelimited_total", {
         route: "POST /v1/register",
       }),
     ).toBe(before + 1);
@@ -93,8 +93,8 @@ describe("GET /metrics endpoint", () => {
     const res = await app.inject({ method: "GET", url: "/metrics" });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toContain("text/plain");
-    expect(res.body).toContain("hearme_broker_register_total");
-    expect(res.body).toContain("hearme_broker_rejections_total");
+    expect(res.body).toContain("chorum_broker_register_total");
+    expect(res.body).toContain("chorum_broker_rejections_total");
     // A default Node process metric is present too.
     expect(res.body).toContain("nodejs_");
     await app.close();
@@ -115,7 +115,7 @@ describe("rate limiter increments the 429 counter", () => {
     // body, no DB/bridge), subsequent ones are rejected with 429.
     const settings = getSettings({ ratelimitRegisterPerHour: 1 });
     const app = buildApp({ settings, logger: false });
-    const before = await counterValue("hearme_broker_ratelimited_total", {
+    const before = await counterValue("chorum_broker_ratelimited_total", {
       route: "POST /v1/register",
     });
 
@@ -126,7 +126,7 @@ describe("rate limiter increments the 429 counter", () => {
     }
     expect(got429).toBeGreaterThanOrEqual(1);
     expect(
-      await counterValue("hearme_broker_ratelimited_total", {
+      await counterValue("chorum_broker_ratelimited_total", {
         route: "POST /v1/register",
       }),
     ).toBeGreaterThanOrEqual(before + 1);

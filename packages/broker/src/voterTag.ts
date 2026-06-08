@@ -2,7 +2,7 @@
 // instead of the raw Self nullifier (ARCHITECTURE_V0.md §1.4, ADR-098).
 //
 //   voter_tag = base64( HMAC-SHA256( s_q,
-//                 "hearme-voter-tag-v1" | question_id | nullifier ) )
+//                 "chorum-voter-tag-v1" | question_id | nullifier ) )
 //
 // where `s_q` is the question's OWN independently-random 32-byte linkage secret
 // (questionSecret.ts), destroyed a grace period after the question closes.
@@ -29,7 +29,7 @@ import { createHmac } from "node:crypto";
 
 import { ensureQuestionSecretKey, getQuestionSecretKeyIfLive } from "./questionSecret";
 
-const DOMAIN = "hearme-voter-tag-v1";
+const DOMAIN = "chorum-voter-tag-v1";
 // ASCII unit separator between fields, so (a|b) and (ab|"") can't collide.
 const SEP = "\x1f";
 

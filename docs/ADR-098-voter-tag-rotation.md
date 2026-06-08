@@ -1,7 +1,7 @@
 # ADR-098 — Voter-tag linkage secret: per-question, wrapped, destroyed on close
 
 - **Status:** Accepted — implemented in the broker. Supersedes the v0 global non-rotatable secret and the V2 calendar-epoch rotation for the answers table.
-- **Issue:** [#98](https://github.com/josojo/hearme/issues/98) — `voterTagSecret` is global and non-rotatable
+- **Issue:** [#98](https://github.com/josojo/chorum/issues/98) — `voterTagSecret` is global and non-rotatable
 - **Date:** 2026-06-04
 - **References:** `ARCHITECTURE_V0.md` §1.4, `ARCHITECTURE_V2.md` (epoch rotation), `packages/broker/src/{voterTag,questionSecret,secretsDb}.ts`, `packages/broker/src/queries.ts` (`invalidateRegistrationAndVotes`), `packages/broker/src/startupChecks.ts`
 
@@ -10,11 +10,11 @@
 Each envelope is stored under a per-question voter tag, not the raw Self nullifier:
 
 ```
-voter_tag = base64( HMAC-SHA256( linkage_secret, "hearme-voter-tag-v1" | question_id | nullifier ) )
+voter_tag = base64( HMAC-SHA256( linkage_secret, "chorum-voter-tag-v1" | question_id | nullifier ) )
 ```
 
 In v0 `linkage_secret` was a single global, deliberately non-rotatable secret
-(`HEARME_BROKER_VOTER_TAG_SECRET`), non-rotatable because the broker re-derives a
+(`CHORUM_BROKER_VOTER_TAG_SECRET`), non-rotatable because the broker re-derives a
 person's per-question tags to revoke / invalidate their answers.
 
 The cost (#98): the unlinkability of **every answer ever submitted** rested on one
@@ -32,7 +32,7 @@ env/SSM master key) in a broker-owned database.
 ```
 s_q          = 32 random bytes (CSPRNG), never derived from a longer-lived key
 stored blob  = iv | gcm_tag | AES-256-GCM(master_key, s_q)      -- in question_secrets
-voter_tag    = base64( HMAC-SHA256(s_q, "hearme-voter-tag-v1" | question_id | nullifier) )
+voter_tag    = base64( HMAC-SHA256(s_q, "chorum-voter-tag-v1" | question_id | nullifier) )
 ```
 
 - **Lazy mint.** On the first answer the broker generates `s_q`, wraps it, and
@@ -62,15 +62,15 @@ deeper V2 change and are out of scope here.)
 
 ### Storage: co-located broker-owned database
 
-`s_q` lives in a broker-owned database (`question_secrets` in a `hearme_secrets`
+`s_q` lives in a broker-owned database (`question_secrets` in a `chorum_secrets`
 DB), **co-located on the same RDS instance** as the main DB in production.
 
-- **Why a broker-owned DB, not the shared schema.** `hearme_broker` has only
-  `USAGE` (not `CREATE`) on the shared `hearme` schema, so it can't create the
+- **Why a broker-owned DB, not the shared schema.** `chorum_broker` has only
+  `USAGE` (not `CREATE`) on the shared `chorum` schema, so it can't create the
   table there; and keeping `question_secrets` out of the shared schema avoids the
   `verify-db.sh` table-boundary check and the drizzle migration/`db:check` drift
-  machinery. The broker owns `hearme_secrets`, so its `CREATE TABLE IF NOT EXISTS`
-  (`secretsDb.ts`) just works. `hearme_web` / `hearme_classifier` have no role or
+  machinery. The broker owns `chorum_secrets`, so its `CREATE TABLE IF NOT EXISTS`
+  (`secretsDb.ts`) just works. `chorum_web` / `chorum_classifier` have no role or
   connection on it.
 - **Why co-located is fine.** The main prod RDS runs at 1-day backup retention, so
   a separate short-retention instance would not meaningfully shorten the unlink
@@ -104,7 +104,7 @@ top of the DB to relink anything at all.
 - The master key must stay **stable**; rotating it orphans the still-live wrapped
   secrets (closed ones are already destroyed, so they're unaffected).
 - A second DSN/connection pool. The envelope INSERT (main DB) and the `s_q`
-  lookup/create (`hearme_secrets`) are separate connections, so they can't share
+  lookup/create (`chorum_secrets`) are separate connections, so they can't share
   one transaction — handled by making `s_q` creation idempotent and ordering it
   before tag derivation.
 
@@ -133,10 +133,10 @@ top of the DB to relink anything at all.
 
 ## Implementation checklist (tracking #98 acceptance criteria)
 
-- [x] Second broker DSN (`HEARME_BROKER_SECRETS_DATABASE_URL`) + pool (`secretsDb.ts`).
+- [x] Second broker DSN (`CHORUM_BROKER_SECRETS_DATABASE_URL`) + pool (`secretsDb.ts`).
 - [x] `question_secrets(question_id PK, secret BYTEA, closes_at, created_at,
-      destroyed_at)`, broker-created in the `hearme_secrets` DB.
-- [x] AES-256-GCM wrap/unwrap of `s_q` under `HEARME_BROKER_VOTER_TAG_MASTER_KEY`
+      destroyed_at)`, broker-created in the `chorum_secrets` DB.
+- [x] AES-256-GCM wrap/unwrap of `s_q` under `CHORUM_BROKER_VOTER_TAG_MASTER_KEY`
       (`questionSecret.ts`); the plaintext `s_q` never touches the DB.
 - [x] Lazy create on first envelope (`ON CONFLICT DO NOTHING`), before tag
       derivation; `voterTagForInsert` / `voterTagIfLive` (`voterTag.ts`).
@@ -146,10 +146,10 @@ top of the DB to relink anything at all.
 - [x] `s_q` / master key never interpolated into logs.
 - [x] Retire the global-secret startup check; add dev-default checks for the master
       key and the secrets DSN (`startupChecks.ts`).
-- [x] Dev/CI: broker-owned `hearme_secrets` DB (`db/init/04-secrets-db.sh`, compose);
+- [x] Dev/CI: broker-owned `chorum_secrets` DB (`db/init/04-secrets-db.sh`, compose);
       tests cover wrap-at-rest and the destroy-on-close lifecycle.
 - [ ] **Deployment:** generate the master key + push to SSM (staging, prod); create
-      the co-located `hearme_secrets` DB (prod via `bootstrap-rds.sh`; existing
+      the co-located `chorum_secrets` DB (prod via `bootstrap-rds.sh`; existing
       boxes via a one-time manual `CREATE DATABASE`).
 - [ ] *(Optional)* move the secrets off-RDS to KMS/Secrets-Manager for a stronger
       real-deletion guarantee if the threat model tightens.

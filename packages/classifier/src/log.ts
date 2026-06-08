@@ -4,7 +4,7 @@
 
 type Level = "debug" | "info" | "warn" | "error";
 
-const MIN_LEVEL: Level = (process.env.HEARME_CLASSIFIER_LOG_LEVEL as Level) || "info";
+const MIN_LEVEL: Level = (process.env.CHORUM_CLASSIFIER_LOG_LEVEL as Level) || "info";
 
 const ORDER: Record<Level, number> = {
   debug: 10,

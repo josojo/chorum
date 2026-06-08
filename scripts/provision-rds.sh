@@ -18,9 +18,9 @@
 #
 # Prereqgs:
 #   - aws CLI v2 configured with creds that can rds:CreateDBInstance and (with
-#     --push-ssm) ssm:PutParameter on /hearme/<env>/*.
+#     --push-ssm) ssm:PutParameter on /chorum/<env>/*.
 #   - The admin (master) password ALREADY pushed to SSM, i.e. you have run
-#     scripts/push-secrets-to-ssm.sh <env> with HEARME_<ENV>_POSTGRES_ADMIN_PASSWORD set.
+#     scripts/push-secrets-to-ssm.sh <env> with CHORUM_<ENV>_POSTGRES_ADMIN_PASSWORD set.
 #   - A DB subnet group spanning the VPC's private subnets (--subnet-group).
 #   - A VPC security group (--security-group) whose inbound allows 5432 FROM
 #     the EC2 box's security group. The DB is not public; this SG edge is the
@@ -28,19 +28,19 @@
 #
 # Usage:
 #   scripts/provision-rds.sh \
-#     --subnet-group hearme-db-subnets \
+#     --subnet-group chorum-db-subnets \
 #     --security-group sg-0abc123 \
-#     [--env prod] [--region eu-central-1] [--instance-id hearme-prod] \
+#     [--env prod] [--region eu-central-1] [--instance-id chorum-prod] \
 #     [--instance-class db.t4g.micro] [--storage-gb 20] [--retention-days 7] \
 #     [--engine-version 16] [--push-ssm]
 #
 # --push-ssm writes the resulting endpoint hostname to
-# /hearme/<env>/HEARME_<ENV_UPPER>_POSTGRES_HOST (a plain String — not a secret).
+# /chorum/<env>/CHORUM_<ENV_UPPER>_POSTGRES_HOST (a plain String — not a secret).
 set -euo pipefail
 
 env_name="prod"
 region="eu-central-1"
-instance_id="hearme-prod"
+instance_id="chorum-prod"
 instance_class="db.t4g.micro"
 storage_gb="20"
 retention_days="7"
@@ -73,8 +73,8 @@ case "$env_name" in prod | staging) ;; *) die "--env must be prod|staging" ;; es
 [ -n "$security_group" ] || die "--security-group is required"
 
 env_upper="$(printf '%s' "$env_name" | tr '[:lower:]' '[:upper:]')"
-admin_pw_param="/hearme/${env_name}/HEARME_${env_upper}_POSTGRES_ADMIN_PASSWORD"
-host_param="/hearme/${env_name}/HEARME_${env_upper}_POSTGRES_HOST"
+admin_pw_param="/chorum/${env_name}/CHORUM_${env_upper}_POSTGRES_ADMIN_PASSWORD"
+host_param="/chorum/${env_name}/CHORUM_${env_upper}_POSTGRES_HOST"
 
 echo "[provision-rds] reading master password from SSM ${admin_pw_param}"
 master_pw="$(aws ssm get-parameter --region "$region" \
@@ -93,14 +93,14 @@ echo "                single-AZ, encrypted, private, ${retention_days}-day backu
 aws rds create-db-instance \
   --region "$region" \
   --db-instance-identifier "$instance_id" \
-  --db-name hearme \
+  --db-name chorum \
   --engine postgres \
   --engine-version "$engine_version" \
   --db-instance-class "$instance_class" \
   --allocated-storage "$storage_gb" \
   --storage-type gp3 \
   --storage-encrypted \
-  --master-username hearme_admin \
+  --master-username chorum_admin \
   --master-user-password "$master_pw" \
   --db-subnet-group-name "$subnet_group" \
   --vpc-security-group-ids "$security_group" \
@@ -110,7 +110,7 @@ aws rds create-db-instance \
   --auto-minor-version-upgrade \
   --deletion-protection \
   --copy-tags-to-snapshot \
-  --tags "Key=app,Value=hearme" "Key=env,Value=${env_name}" \
+  --tags "Key=app,Value=chorum" "Key=env,Value=${env_name}" \
   >/dev/null
 
 echo "[provision-rds] waiting for db-instance-available (this takes several minutes)..."

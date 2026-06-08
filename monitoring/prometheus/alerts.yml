@@ -1,8 +1,8 @@
-# Alerting rules for the hearme stack (issue #101). Evaluated by Prometheus,
+# Alerting rules for the chorum stack (issue #101). Evaluated by Prometheus,
 # routed to Alertmanager. Two families: liveness (is it up?) and rate (is it
 # behaving?). Thresholds are v0 starting points — tune against real traffic.
 groups:
-  - name: hearme-liveness
+  - name: chorum-liveness
     rules:
       # The broker's /metrics is unscrapeable — process down, crashed, or wedged.
       - alert: BrokerScrapeDown
@@ -34,39 +34,39 @@ groups:
           summary: "Self-bridge /healthz failing"
           description: "GET /healthz on the self-bridge has returned non-2xx for 2m — registration depends on it."
 
-  - name: hearme-broker-rates
+  - name: chorum-broker-rates
     rules:
       # Error-rate spike on the answer path: most envelopes are being rejected.
       # clamp_min keeps the ratio defined when there is little/no traffic.
       - alert: BrokerEnvelopeRejectionSpike
         expr: |
-          sum(rate(hearme_broker_envelopes_total{outcome="rejected"}[5m]))
-            / clamp_min(sum(rate(hearme_broker_envelopes_total[5m])), 0.001) > 0.5
+          sum(rate(chorum_broker_envelopes_total{outcome="rejected"}[5m]))
+            / clamp_min(sum(rate(chorum_broker_envelopes_total[5m])), 0.001) > 0.5
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "Majority of envelopes rejected"
-          description: 'Over 50% of POST /v1/envelopes rejected for 10m — verification-pipeline pressure. Break down by hearme_broker_rejections_total{route="envelopes"}.'
+          description: 'Over 50% of POST /v1/envelopes rejected for 10m — verification-pipeline pressure. Break down by chorum_broker_rejections_total{route="envelopes"}.'
 
       # Error-rate spike on the registration path.
       - alert: BrokerRegisterRejectionSpike
         expr: |
-          sum(rate(hearme_broker_register_total{outcome="rejected"}[5m]))
-            / clamp_min(sum(rate(hearme_broker_register_total[5m])), 0.001) > 0.5
+          sum(rate(chorum_broker_register_total{outcome="rejected"}[5m]))
+            / clamp_min(sum(rate(chorum_broker_register_total[5m])), 0.001) > 0.5
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "Majority of registrations rejected"
-          description: 'Over 50% of POST /v1/register rejected for 10m. Break down by hearme_broker_rejections_total{route="register"} (e.g. self_bridge_error vs self_proof_invalid).'
+          description: 'Over 50% of POST /v1/register rejected for 10m. Break down by chorum_broker_rejections_total{route="register"} (e.g. self_bridge_error vs self_proof_invalid).'
 
       # Sustained rate-limit pressure (429s) — abuse or a misbehaving client.
       - alert: BrokerRateLimitPressure
-        expr: sum(rate(hearme_broker_ratelimited_total[5m])) > 1
+        expr: sum(rate(chorum_broker_ratelimited_total[5m])) > 1
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "Sustained 429 rate"
-          description: "The broker is returning >1 rate-limited (429) response/sec averaged over 5m, for 10m. Inspect hearme_broker_ratelimited_total by route."
+          description: "The broker is returning >1 rate-limited (429) response/sec averaged over 5m, for 10m. Inspect chorum_broker_ratelimited_total by route."
