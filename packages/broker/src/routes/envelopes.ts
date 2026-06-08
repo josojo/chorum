@@ -105,9 +105,23 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
     // no_signal envelopes carry no opinion (answer is free / empty, §1.14) and
     // skip this gate. Rejecting here — rather than accepting and dropping the
     // vote into no bucket — keeps total_answers == sum(per-option buckets).
-    if (!envelope.no_signal && classifyAnswer(envelope.answer, question.options) === null) {
+    //
+    // We keep ONLY the canonical option label (`classifyAnswer`'s result), never
+    // the raw `envelope.answer` we received (issue #137). The honest skill already
+    // signs/sends just the canonical label (skill match_option backstop), but the
+    // broker MUST NOT trust that: a tampered/injected client could smuggle free-
+    // form prose ("yes — she runs prod from the Frankfurt box") that still
+    // classifies to an option, or set no_signal=true and stuff text into `answer`
+    // (which would skip this gate entirely). Persisting the classification instead
+    // of the input means the answers table can never hold re-identifying micro-
+    // data at rest, regardless of what any client sends. no_signal → empty string.
+    const choice = envelope.no_signal
+      ? ""
+      : classifyAnswer(envelope.answer, question.options);
+    if (choice === null) {
       return ack(false, RejectionReason.ANSWER_UNCLASSIFIED);
     }
+    const storedAnswer = choice;
 
     // The envelope is stored under a per-question pseudonym, not the raw nullifier
     // (§1.4): voter_tag = HMAC(s_q, question_id | nullifier), where s_q is the
@@ -131,7 +145,8 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
       const inserted = await q.insertEnvelope(tx, {
         questionId: envelope.question_id,
         voterTag,
-        answer: envelope.answer,
+        // Canonical option label only — NEVER the raw received string (#137).
+        answer: storedAnswer,
         noSignal: envelope.no_signal,
         disclosedPredicates: token.disclosed_predicates,
         agentSignature: envelope.agent_signature,
@@ -144,7 +159,7 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
       }
       await q.incrementAggregate(tx, {
         questionId: envelope.question_id,
-        answer: envelope.answer,
+        answer: storedAnswer,
         disclosedPredicates: token.disclosed_predicates,
         options: question.options,
         noSignal: envelope.no_signal,

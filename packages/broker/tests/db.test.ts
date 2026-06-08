@@ -387,6 +387,49 @@ describe("POST /v1/envelopes (uniqueness + aggregate)", () => {
     expect(agg[0].no_signal_by_predicate).toEqual({});
   });
 
+  it("persists ONLY the canonical option label, never free-form text (#137)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const tok = await devToken({ uid: "self:e-redact" });
+    const question = await insertQuestion({});
+    // A tampered/injected client signs and sends re-identifying free-form prose
+    // that still classifies to "yes". The broker accepts it (it IS a yes) but must
+    // store ONLY the canonical label — the leaky text must never reach the DB.
+    const leaky = "yes — she runs prod from the Frankfurt box, two kids";
+    const env = makeEnvelope(tok, { questionId: question.id, answer: leaky, nonce: question.nonce });
+    expect((await app.inject({ method: "POST", url: "/v1/envelopes", payload: env })).json()).toEqual({
+      accepted: true,
+      reason: null,
+    });
+    const rows = (await db.execute(
+      sql`SELECT answer FROM envelopes WHERE question_id = ${question.id}`,
+    )) as unknown as Array<{ answer: string }>;
+    expect(rows[0].answer).toBe("yes");
+    expect(rows[0].answer).not.toContain("Frankfurt");
+  });
+
+  it("a no_signal envelope stores an empty answer even if text is smuggled in (#137)", async (ctx) => {
+    if (!pg) return ctx.skip();
+    const tok = await devToken({ uid: "self:e-ns-smuggle" });
+    const question = await insertQuestion({});
+    // no_signal skips option classification (§1.14); a malicious client could try
+    // to ride that path to stash free text. The broker forces the stored answer to
+    // "" regardless of what it received.
+    const env = makeEnvelope(tok, {
+      questionId: question.id,
+      answer: "nurse in Lyon, hates Mondays",
+      nonce: question.nonce,
+      noSignal: true,
+    });
+    expect((await app.inject({ method: "POST", url: "/v1/envelopes", payload: env })).json()).toEqual({
+      accepted: true,
+      reason: null,
+    });
+    const rows = (await db.execute(
+      sql`SELECT answer FROM envelopes WHERE question_id = ${question.id}`,
+    )) as unknown as Array<{ answer: string }>;
+    expect(rows[0].answer).toBe("");
+  });
+
   it("rejects a nonce mismatch and a bad agent signature", async (ctx) => {
     if (!pg) return ctx.skip();
     const tok = await devToken({ uid: "self:e-2" });

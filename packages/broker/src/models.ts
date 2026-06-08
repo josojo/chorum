@@ -72,6 +72,10 @@ export type DelegationToken = z.infer<typeof delegationTokenSchema>;
 export const envelopeSchema = z
   .object({
     question_id: z.string().uuid(),
+    // The honest skill sends only a canonical option label here. The broker does
+    // NOT persist this field verbatim: it classifies it to one of the question's
+    // options and stores only that label (or "" for no_signal), so no free-form
+    // text reaches the answers table at rest (#137, schema.ts envelopes.answer).
     answer: z.string(),
     no_signal: z.boolean().optional().default(false),
     nonce: z.string(),
