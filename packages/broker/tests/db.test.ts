@@ -175,16 +175,47 @@ describe("POST /v1/register (verify-once)", () => {
     });
   });
 
-  it("rejects a different agent_key for an already-bound nullifier", async (ctx) => {
+  it("rotates to a new agent_key on re-registration and invalidates the old agent", async (ctx) => {
     if (!pg) return ctx.skip();
-    await app.inject({ method: "POST", url: "/v1/register", payload: makeEnrollment({ uniqueIdentifier: "self:reg-2" }) });
-    const otherKey = Buffer.alloc(32, 7).toString("base64");
-    const res = await app.inject({
+    // First registration binds the nullifier to the original (test) agent key.
+    const first = await app.inject({
       method: "POST",
       url: "/v1/register",
-      payload: makeEnrollment({ uniqueIdentifier: "self:reg-2", agentKey: otherKey }),
+      payload: makeEnrollment({ uniqueIdentifier: "self:reg-2" }),
     });
-    expect(res.json()).toMatchObject({ accepted: false, reason: "identity_already_bound" });
+    expect(first.json().accepted).toBe(true);
+    const oldToken = first.json().delegation_token as DelegationToken;
+
+    // Dead-agent recovery: re-registering the SAME nullifier with a DIFFERENT
+    // agent key now succeeds — the fresh Self proof is sufficient authority to
+    // rotate the key (no separate revocation step needed).
+    const newKey = Buffer.alloc(32, 7).toString("base64");
+    const second = await app.inject({
+      method: "POST",
+      url: "/v1/register",
+      payload: makeEnrollment({ uniqueIdentifier: "self:reg-2", agentKey: newKey }),
+    });
+    expect(second.json().accepted).toBe(true);
+    expect(second.json().delegation_token.agent_key).toBe(newKey);
+
+    // The registry row (same nullifier PK) now points at the rotated key.
+    const reg = await q.getRegistration(db, "self:reg-2");
+    expect(reg?.agentKey).toBe(newKey);
+
+    // The old agent's still-unexpired, broker-signed token is immediately
+    // refused: every envelope re-checks the token's agent_key against the live
+    // registration, so rotation invalidates the dead agent without waiting for
+    // token expiry.
+    const ques = await insertQuestion({});
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/envelopes",
+      payload: makeEnvelope(oldToken, { questionId: ques.id, answer: "yes", nonce: ques.nonce }),
+    });
+    expect(res.json()).toMatchObject({
+      accepted: false,
+      reason: "registration_agent_mismatch",
+    });
   });
 
   it("rejects proofs that disagree on the nullifier", async (ctx) => {

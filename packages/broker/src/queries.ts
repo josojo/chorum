@@ -160,8 +160,20 @@ export async function addRevocation(db: Executor, delegationHashHex: string): Pr
 
 // Atomically bind unique_identifier (nullifier) to agent_key.
 //   "created"   — first registration of this nullifier.
-//   "refreshed" — re-registration with the SAME agent_key (or after revocation).
-//   null        — nullifier already bound to a DIFFERENT, non-revoked agent_key.
+//   "refreshed" — re-registration of an existing nullifier. Covers a token
+//                 refresh with the SAME agent_key, re-enrollment after a
+//                 revocation, AND rotation to a NEW agent_key (the dead-agent
+//                 recovery path).
+//   null        — never returned today; retained so callers stay total if a
+//                 future guard reintroduces a conditional update.
+//
+// Rotation is intentionally unconditional: reaching this upsert already requires
+// a fresh, real Self proof for this nullifier (see register.ts step 1-2), so the
+// only party who can supersede the bound agent_key is the passport holder
+// themselves. A new key immediately invalidates the old agent — every envelope
+// re-checks the token's agent_key against this row (routes/envelopes.ts,
+// REGISTRATION_AGENT_MISMATCH). The row (and thus answer_count / signal_count /
+// reputation) is preserved across rotation; only the device key changes.
 export async function upsertRegistration(
   db: Executor,
   args: {
@@ -187,8 +199,6 @@ export async function upsertRegistration(
         issued_at = EXCLUDED.issued_at,
         expires_at = EXCLUDED.expires_at,
         revoked_at = NULL
-    WHERE registrations.agent_key = EXCLUDED.agent_key
-       OR registrations.revoked_at IS NOT NULL
     RETURNING (xmax = 0) AS inserted
   `)) as unknown as Rows<{ inserted: boolean }>;
   const row = rows[0];

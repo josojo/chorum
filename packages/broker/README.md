@@ -75,8 +75,11 @@ The only path that touches a Self proof — verify-once (ARCHITECTURE_V0.md §5/
    → `verify/bridgeClient.ts`), require the on-chain `registryConfirmed`, enforce
    bindings (`agent_key` ↔ `userDefinedData`, one shared nullifier).
 3. Derive authoritative `region`/`country`/`age_band` (`verify/predicates.ts`).
-4. Atomically bind `nullifier → agent_key` in `registrations` (a different
-   agent_key for a live nullifier ⇒ `identity_already_bound`).
+4. Atomically bind `nullifier → agent_key` in `registrations`. A re-registration
+   of an existing nullifier rotates the bound `agent_key` to the freshly-proven
+   one (dead-agent recovery) — the new key supersedes the old, which the envelope
+   path then refuses (`registration_agent_mismatch`). Rotation is safe because
+   reaching this step already required a fresh real Self proof for that nullifier.
 5. Mint + return the broker-signed `DelegationToken` (`verify/credential.ts`).
 
 ## Verification pipeline (`POST /v1/envelopes`)
