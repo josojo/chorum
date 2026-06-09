@@ -25,6 +25,8 @@ import { AskGate } from "../src/components/ask-gate";
 describe("AskGate", () => {
   beforeEach(() => {
     cleanup();
+    // Each test starts with no persisted session (see the restore tests below).
+    window.sessionStorage.clear();
     // Keep /api/asker-login/start pending so the scan step shows its QR/spinner
     // rather than throwing in the test environment.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,5 +70,42 @@ describe("AskGate", () => {
     // The placeholder lets the asker reopen the flow.
     expect(screen.getByText(/Asking is earned/i)).toBeTruthy();
     expect(screen.queryByTestId("ask-form")).toBeNull();
+  });
+
+  it("restores a still-valid persisted session straight to the form, no gate", () => {
+    // A returning visitor within the session's lifetime (e.g. after the
+    // post-submit redirect): the broker-signed blob is replayed without a re-scan.
+    const session = JSON.stringify({
+      kind: "asker_session",
+      unique_identifier: "abc",
+      expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      broker_signature: "sig",
+    });
+    window.sessionStorage.setItem("chorum.askerSession", session);
+
+    render(<AskGate authRequired={true} />);
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const form = screen.getByTestId("ask-form");
+    expect(form.getAttribute("data-session")).toBe(session);
+  });
+
+  it("ignores an expired persisted session and shows the gate", () => {
+    window.sessionStorage.setItem(
+      "chorum.askerSession",
+      JSON.stringify({
+        kind: "asker_session",
+        unique_identifier: "abc",
+        expires_at: new Date(Date.now() - 1000).toISOString(),
+        broker_signature: "sig",
+      }),
+    );
+
+    render(<AskGate authRequired={true} />);
+
+    // Falls through to the gate, and the stale blob is pruned from storage.
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.queryByTestId("ask-form")).toBeNull();
+    expect(window.sessionStorage.getItem("chorum.askerSession")).toBeNull();
   });
 });

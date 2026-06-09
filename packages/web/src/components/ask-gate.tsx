@@ -16,6 +16,11 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import {
+  clearStoredSession,
+  loadStoredSession,
+  storeSession,
+} from "@/lib/asker-session-store";
 import { AskForm } from "./ask-form";
 import { EarnExplainerDialog } from "./earn-explainer";
 import {
@@ -78,7 +83,10 @@ export function AskGate({
   defaultCountry,
   defaultContinent,
 }: Props) {
-  const [open, setOpen] = useState(authRequired);
+  // Opened from the restore effect below (after the storage check), not on the
+  // first render — so a returning visitor with a still-valid session lands on
+  // the form without a frame of the gate dialog flashing open first.
+  const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("intro");
   const [ready, setReady] = useState(false);
   // The "Share your signal" walkthrough, opened from the intro so a new visitor
@@ -95,8 +103,25 @@ export function AskGate({
     setStep("intro");
     setSession(null);
     setEligibility(null);
+    clearStoredSession();
     setOpen(true);
   }, []);
+
+  // Restore a still-valid session from a prior step in this visit (e.g. after
+  // the post-submit redirect to /q/[id], or navigating back to /ask). The token
+  // is the same broker-signed capability the submit re-verifies, so we can drop
+  // straight to the form without re-scanning. Expired/malformed blobs are pruned
+  // by loadStoredSession and we just fall through to the gate.
+  useEffect(() => {
+    if (!authRequired) return;
+    const stored = loadStoredSession();
+    if (stored) {
+      setSession(stored);
+      setReady(true);
+    } else {
+      setOpen(true);
+    }
+  }, [authRequired]);
 
   // Local/demo mode: no gate, render the form straight away.
   if (!authRequired) {
@@ -121,7 +146,13 @@ export function AskGate({
   }
 
   const onVerified = (s: StatusResponse) => {
-    if (s.asker_session) setSession(JSON.stringify(s.asker_session));
+    if (s.asker_session) {
+      const serialized = JSON.stringify(s.asker_session);
+      setSession(serialized);
+      // Persist now so it survives the post-submit redirect and any back-nav
+      // for the rest of the visit (bounded by the token's own expiry).
+      storeSession(serialized);
+    }
     setEligibility(s.eligibility);
     setStep("score");
   };
