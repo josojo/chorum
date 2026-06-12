@@ -26,7 +26,8 @@ chorum-skill install
 # 3. One-time identity setup (Self verify-once, on your phone)
 chorum-skill onboard \
   --broker-url https://chorum.org \
-  --bridge-url https://chorum.org/self
+  --bridge-url https://chorum.org/self \
+  --profile minimal
 ```
 
 That's the whole setup. `install` wires the add-on into your agent and
@@ -54,7 +55,8 @@ flag, which must come **before** the subcommand:
 chorum-skill --hermes-profile <name> install
 chorum-skill --hermes-profile <name> onboard \
   --broker-url https://chorum.org \
-  --bridge-url https://chorum.org/self
+  --bridge-url https://chorum.org/self \
+  --profile minimal
 ```
 
 This installs the add-on into `~/.hermes/profiles/<name>/plugins/chorum/` instead
