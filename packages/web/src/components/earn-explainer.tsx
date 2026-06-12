@@ -215,14 +215,13 @@ function SelfAppLink() {
 }
 
 // Step 2 — the real install commands from packages/skill/README.md, plus a link
-// to the full setup guide. Copy-pasteable, against the public deployment.
+// to the full setup guide. Copy-pasteable; `onboard` defaults to the public
+// chorum.org deployment, so no URL flags are needed.
 function SkillInstall() {
   const lines = [
     "$ curl -fsSL https://github.com/josojo/chorum/releases/latest/download/install.sh | sh",
     "$ chorum-skill install",
-    "$ chorum-skill onboard \\",
-    "    --broker-url https://chorum.org \\",
-    "    --bridge-url https://chorum.org/self",
+    "$ chorum-skill onboard",
   ];
   return (
     <div className="mt-4">
