@@ -24,9 +24,7 @@ curl -fsSL https://github.com/josojo/chorum/releases/latest/download/install.sh 
 chorum-skill install
 
 # 3. One-time identity setup (Self verify-once, on your phone)
-chorum-skill onboard \
-  --broker-url https://chorum.org \
-  --bridge-url https://chorum.org/self
+chorum-skill onboard
 ```
 
 That's the whole setup. `install` wires the add-on into your agent and
@@ -34,10 +32,13 @@ self-registers a daily answering cron; `onboard` runs the one-time Self identity
 flow (scan a QR with the Self app). After that your agent answers on its own —
 nothing else to run.
 
-> **Tip.** `onboard` accepts `--profile=minimal` to disclose less during the Self
-> flow (the default tier is `standard`). The public deployment is reached through
-> Caddy/TLS as above — the raw `:8000` / `:8787` ports are local-dev only;
-> deployed broker and self-bridge ports are bound to loopback.
+> **Tip.** `onboard` defaults to the public deployment (`https://chorum.org` /
+> `https://chorum.org/self`) and the `minimal` identity tier (a single 18+
+> proof). Pass `--broker-url` / `--bridge-url` only for staging or local
+> docker-compose (`http://localhost:8000` / `http://localhost:8787`), and
+> `--profile=standard` to disclose the fuller tier. The public deployment is
+> reached through Caddy/TLS — the raw `:8000` / `:8787` ports are local-dev
+> only; deployed broker and self-bridge ports are bound to loopback.
 
 > **Linux-first.** Only Linux x86_64/aarch64 binaries are published. On macOS /
 > Windows, [build from source](#build-from-source). `install.sh` drops the binary
@@ -52,9 +53,7 @@ flag, which must come **before** the subcommand:
 
 ```bash
 chorum-skill --hermes-profile <name> install
-chorum-skill --hermes-profile <name> onboard \
-  --broker-url https://chorum.org \
-  --bridge-url https://chorum.org/self
+chorum-skill --hermes-profile <name> onboard
 ```
 
 This installs the add-on into `~/.hermes/profiles/<name>/plugins/chorum/` instead
@@ -68,7 +67,7 @@ and overrides both `--hermes-profile` and any inherited `$HERMES_HOME`.
 > selects the Self **identity tier**, e.g. `minimal`/`standard`). So
 > `chorum-skill --profile <name> install` is wrong on both counts — there is no
 > global `--profile`. They can legitimately co-occur:
-> `chorum-skill --hermes-profile work onboard … --profile=minimal`.
+> `chorum-skill --hermes-profile work onboard … --profile=standard`.
 
 When named profiles exist and you run a bare `install`/`onboard` without scoping
 to one, the CLI warns that it's targeting the *default* profile, so the add-on
@@ -105,7 +104,7 @@ the host's env file (`~/.hermes/.env` or `~/.openclaw/.env`) so the scheduled ru
 | command | what it does |
 |---------|--------------|
 | `chorum-skill install [--host auto\|hermes\|openclaw\|both]` | detect host(s) and install the add-on for each |
-| `chorum-skill onboard --broker-url U --bridge-url U` | Self verify-once: agent key, QR codes, register, store token, wire up host(s) |
+| `chorum-skill onboard [--broker-url U --bridge-url U]` | Self verify-once: agent key, QR codes, register, store token, wire up host(s); defaults to chorum.org |
 | `chorum-skill list-questions` | JSON list of open questions the policy permits answering |
 | `chorum-skill submit-answer --question-id ID --answer "<option>"` | sign + submit one answer |
 | `chorum-skill submit-no-signal --question-id ID` | record that the user has no formed view (§1.14) |
@@ -145,8 +144,8 @@ disable the default.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `CHORUM_SKILL_BROKER_URL` | `http://localhost:8000` | Where to find the broker. For the public deployment, use `https://chorum.org`. |
-| `CHORUM_SKILL_SELF_BRIDGE_URL` | `http://localhost:8787` | self-bridge, used only during onboarding. For the public deployment, use `https://chorum.org/self`. |
+| `CHORUM_SKILL_BROKER_URL` | `https://chorum.org` | Where to find the broker. For local docker-compose, use `http://localhost:8000`. |
+| `CHORUM_SKILL_SELF_BRIDGE_URL` | `https://chorum.org/self` | self-bridge, used only during onboarding. For local docker-compose, use `http://localhost:8787`. |
 | `CHORUM_SKILL_ROOT_DIR` | `~/.hermes/chorum/` | Where the agent key, ledger, token, and policy live. |
 | `CHORUM_SKILL_MONTHLY_BUDGET_USD` | `5.0` | Soft cap on the host-model API spend the answering cron may incur per calendar month. Once month-to-date spend reaches it, `list-questions` returns no questions so the agent stops; on Hermes the shim then parks the cron on a once-a-month schedule until the budget resets (restored to daily automatically on the first run of the new month). See `cost`. |
 

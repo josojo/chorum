@@ -6,7 +6,7 @@
 #
 #   1. curl -fsSL https://github.com/josojo/chorum/releases/latest/download/install.sh | sh
 #   2. chorum-skill install        # drops the skill/plugin into Hermes/OpenClaw
-#   (then: chorum-skill onboard ...   # one-time Self identity setup)
+#   (then: chorum-skill onboard       # one-time Self identity setup)
 #
 # Env overrides:
 #   CHORUM_VERSION   release tag to install (default: latest)
@@ -77,4 +77,4 @@ esac
 echo ""
 echo "Next:"
 echo "  $NAME install        # add the skill/plugin to your Hermes/OpenClaw agent"
-echo "  $NAME onboard --broker-url <url> --bridge-url <url>   # one-time identity setup"
+echo "  $NAME onboard        # one-time identity setup (uses chorum.org; --broker-url/--bridge-url to override)"

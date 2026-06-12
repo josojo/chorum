@@ -1,7 +1,8 @@
 //! Skill runtime configuration.
 //!
-//! Defaults assume the broker runs locally (docker-compose). All file paths sit
-//! under `~/.hermes/chorum/` by default; override via env vars with the
+//! Defaults point at the public chorum.org deployment; point the URLs at
+//! localhost (docker-compose) or staging via flags or env vars. All file paths
+//! sit under `~/.hermes/chorum/` by default; override via env vars with the
 //! `CHORUM_SKILL_` prefix (mirroring the Python `pydantic-settings` model).
 
 use std::path::PathBuf;
@@ -46,8 +47,8 @@ impl Settings {
     /// in the Python code (used to decide whether a URL is "explicitly set").
     pub fn defaults() -> Self {
         Self {
-            broker_url: "http://localhost:8000".to_string(),
-            self_bridge_url: "http://localhost:8787".to_string(),
+            broker_url: "https://chorum.org".to_string(),
+            self_bridge_url: "https://chorum.org/self".to_string(),
             root_dir: default_root(),
             memory_backend: "stub".to_string(),
             monthly_budget_usd: 5.0,

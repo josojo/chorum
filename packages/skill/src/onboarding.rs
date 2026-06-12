@@ -16,7 +16,7 @@ use crate::delegation::{store_delegation, validate_token};
 use crate::models::DelegationToken;
 use crate::Error;
 
-pub const DEFAULT_PROFILE: &str = "standard";
+pub const DEFAULT_PROFILE: &str = "minimal";
 
 pub struct OnboardingRequest {
     pub request_id: String,

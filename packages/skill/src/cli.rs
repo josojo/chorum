@@ -56,7 +56,8 @@ enum Command {
         bridge_url: Option<String>,
         #[arg(long)]
         broker_url: Option<String>,
-        #[arg(long, default_value = "standard")]
+        /// Self identity disclosure tier ('minimal' = a single 18+ proof).
+        #[arg(long, default_value = "minimal")]
         profile: String,
         /// Seconds to wait for the phone to send a proof.
         #[arg(long, default_value_t = 300.0)]
@@ -710,7 +711,7 @@ fn cmd_install(
         );
         return 1;
     }
-    println!("Next: run `chorum-skill onboard --broker-url <url> --bridge-url <url>` once to set up your Self identity.");
+    println!("Next: run `chorum-skill onboard` once to set up your Self identity (defaults to the public chorum.org deployment; pass --broker-url/--bridge-url for staging or local).");
     0
 }
 
