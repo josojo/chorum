@@ -357,6 +357,8 @@ export const RejectionReason = {
   // (modulo no_signal). Rejected before INSERT so total_answers can never exceed
   // the sum of the per-option buckets (§1.1).
   ANSWER_UNCLASSIFIED: "answer_unclassified",
+  // Re-submissions normally override the earlier answer in place; this only
+  // remains for the pathological insert/override/revoke race fallback.
   DUPLICATE: "duplicate",
 
   // --- per-envelope override (POST /v1/envelopes/revoke; §1.12) ---

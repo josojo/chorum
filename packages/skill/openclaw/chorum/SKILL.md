@@ -67,9 +67,13 @@ below, and stop as soon as every question is handled.
 5. Handle each question exactly once, then stop — do not re-list or revisit a
    settled question. Never fabricate views your user does not hold.
 
-## Reviewing or retracting (the user's override is sacred)
+## Reviewing, changing, or retracting (the user's override is sacred)
 
 - Show what you have already submitted: `chorum-skill review-answers`
+- Change an answer: run `submit-answer` (or `submit-no-signal`) again for that
+  question while it is still open — the new envelope replaces the previous one.
+  Note that `list-questions` hides questions you have already answered, so take
+  the `question_id` from `review-answers`.
 - Retract one answer: `chorum-skill revoke-answer --question-id "<question_id>"`
 
 ## Setup (only if the commands fail)

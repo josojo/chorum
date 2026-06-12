@@ -112,7 +112,8 @@ fn list_impl(settings: &Settings) -> Result<Value, Error> {
 
 /// Sign + submit one answer the agent decided on.
 /// Shape: `{"accepted": bool, "reason": str, "question_id": str}`. Enforces the
-/// full policy/replay/delegation backstop; never panics.
+/// full policy/delegation backstop; never panics. Re-submitting a question
+/// overrides the previously recorded answer (the broker swaps it in place).
 pub fn submit_answer(question_id: &str, answer_text: &str, settings: &Settings) -> Value {
     match submit_impl(question_id, answer_text, settings) {
         Ok(v) => v,
@@ -128,13 +129,12 @@ fn submit_impl(question_id: &str, answer_text: &str, settings: &Settings) -> Res
         );
     }
 
+    // Re-submitting a question that already has an envelope is allowed: the
+    // broker replaces the earlier answer in place (the user's signal stays
+    // theirs to change while the question is open). The broker's composite PK
+    // still guarantees one envelope per human per question, so this loses no
+    // replay-safety (§1.9).
     let ledger = Ledger::open(&settings.ledger_path())?;
-    // §1.9 replay-safety.
-    if ledger.has_submission(question_id)? {
-        return Ok(
-            json!({ "accepted": false, "reason": "already-submitted", "question_id": question_id }),
-        );
-    }
 
     // Delegation must be loadable + unexpired BEFORE we sign anything.
     let token = match load_usable(&settings.delegation_path()) {
@@ -178,12 +178,15 @@ fn submit_impl(question_id: &str, answer_text: &str, settings: &Settings) -> Res
         }
     };
 
-    // Hard policy backstop, re-evaluated at submit time.
+    // Hard policy backstop, re-evaluated at submit time. An explicit re-submit
+    // overrides the earlier answer, so this question's own prior submission must
+    // not trip the "already answered" decline; every other rule still applies.
     let policy = load_policy(&settings.policy_path());
-    let stats = LedgerStats {
+    let mut stats = LedgerStats {
         has_active_delegation: true,
         ..ledger_stats(&ledger, settings)?
     };
+    stats.already_answered_ids.remove(question_id);
     let decision = decide(&question, &policy, &stats);
     if decision.action != Action::Answer {
         return Ok(json!({
@@ -244,8 +247,8 @@ fn submit_impl(question_id: &str, answer_text: &str, settings: &Settings) -> Res
 /// Record that the user has NO formed view on one question (§1.14).
 /// Shape: `{"accepted": bool, "reason": str, "question_id": str}`. Submits a
 /// no-signal envelope (empty answer, `no_signal: true`) so "no opinion" becomes
-/// real aggregate data rather than silence. Same delegation/replay/policy
-/// backstop as `submit_answer`; never panics.
+/// real aggregate data rather than silence. Same delegation/policy backstop and
+/// override-on-resubmit semantics as `submit_answer`; never panics.
 pub fn submit_no_signal(question_id: &str, settings: &Settings) -> Value {
     match submit_no_signal_impl(question_id, settings) {
         Ok(v) => v,
@@ -254,13 +257,9 @@ pub fn submit_no_signal(question_id: &str, settings: &Settings) -> Value {
 }
 
 fn submit_no_signal_impl(question_id: &str, settings: &Settings) -> Result<Value, Error> {
+    // Re-submission is an override, same as submit_impl — the broker swaps the
+    // existing envelope (no_signal or not) rather than rejecting it.
     let ledger = Ledger::open(&settings.ledger_path())?;
-    // §1.9 replay-safety: one envelope per question, no_signal or not.
-    if ledger.has_submission(question_id)? {
-        return Ok(
-            json!({ "accepted": false, "reason": "already-submitted", "question_id": question_id }),
-        );
-    }
 
     let token = match load_usable(&settings.delegation_path()) {
         Ok(t) => t,
@@ -290,12 +289,15 @@ fn submit_no_signal_impl(question_id: &str, settings: &Settings) -> Result<Value
 
     // Policy still applies: recording "no opinion" is participating, so a
     // blocked topic or an exhausted daily cap declines here too (§7.2). No
-    // option matching — a no-signal envelope carries no answer.
+    // option matching — a no-signal envelope carries no answer. As in
+    // submit_impl, an explicit re-submit is an override, so the question's own
+    // prior submission is exempt from the "already answered" decline.
     let policy = load_policy(&settings.policy_path());
-    let stats = LedgerStats {
+    let mut stats = LedgerStats {
         has_active_delegation: true,
         ..ledger_stats(&ledger, settings)?
     };
+    stats.already_answered_ids.remove(question_id);
     let decision = decide(&question, &policy, &stats);
     if decision.action != Action::Answer {
         return Ok(json!({
