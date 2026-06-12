@@ -7,8 +7,9 @@
 //   4. Recompute delegation_hash (in verifyDelegation).
 //   5. Verify agent_signature over H(question_id || answer || nonce || delegation_hash).
 //   6. Question exists, open, not closed, nonce matches, predicates eligible.
-//   7. INSERT envelope (composite PK = duplicate rejection).
-//   8. Increment the aggregate row.
+//   7. INSERT envelope; on composite-PK collision, override the earlier answer
+//      in place (re-submission replaces, never duplicates).
+//   8. Increment the aggregate row (or rebuild it after an override).
 
 import type { FastifyInstance } from "fastify";
 
@@ -126,9 +127,9 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
     // The envelope is stored under a per-question pseudonym, not the raw nullifier
     // (§1.4): voter_tag = HMAC(s_q, question_id | nullifier), where s_q is the
     // question's own secret, lazily minted here on first answer (ADR-098).
-    // Deterministic, so the composite PK still rejects a second answer from the
-    // same human to the same question; unlinkable, so the answers table is no
-    // cross-question join key. Null only if the secret was already destroyed
+    // Deterministic, so a second answer from the same human lands on the same
+    // row (an override, never a second vote); unlinkable, so the answers table
+    // is no cross-question join key. Null only if the secret was already destroyed
     // (closed past grace) — fail closed rather than store an unkeyed envelope
     // (unreachable: step 6a already rejected closed/expired questions).
     const voterTag = await voterTagForInsert(
@@ -140,37 +141,63 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
 
     // Steps 7-8 in a transaction so aggregates + per-person counters can't drift
     // from envelopes.
-    let duplicate = false;
+    const row = {
+      questionId: envelope.question_id,
+      voterTag,
+      // Canonical option label only — NEVER the raw received string (#137).
+      answer: storedAnswer,
+      noSignal: envelope.no_signal,
+      disclosedPredicates: token.disclosed_predicates,
+      agentSignature: envelope.agent_signature,
+      delegationHashHex: verified.delegationHash,
+    };
+    let conflicted = false;
     await db.transaction(async (tx) => {
-      const inserted = await q.insertEnvelope(tx, {
-        questionId: envelope.question_id,
-        voterTag,
-        // Canonical option label only — NEVER the raw received string (#137).
-        answer: storedAnswer,
-        noSignal: envelope.no_signal,
-        disclosedPredicates: token.disclosed_predicates,
-        agentSignature: envelope.agent_signature,
-        delegationHashHex: verified.delegationHash,
-      });
+      let inserted = await q.insertEnvelope(tx, row);
       if (!inserted) {
-        // Composite PK collision — DB-enforced one-answer-per-human.
-        duplicate = true;
-        return;
+        // Composite PK collision: this human already answered this question.
+        // Re-answering overrides the earlier envelope in place (§1.12 — the
+        // signal stays the user's to change while the question is open). The
+        // total count is unchanged; only the signal/no-signal split can move.
+        const prev = await q.overrideEnvelope(tx, row);
+        if (prev !== null) {
+          const signalDelta =
+            (envelope.no_signal ? 0 : 1) - (prev.previousNoSignal ? 0 : 1);
+          if (signalDelta !== 0) {
+            await q.adjustAnswerCounters(tx, {
+              uniqueIdentifier: verified.uniqueIdentifier,
+              delta: 0,
+              signalDelta,
+            });
+          }
+        } else {
+          // The earlier envelope was retracted between our INSERT attempt and
+          // the override (concurrent revoke). overrideEnvelope left us holding
+          // the question's advisory lock, so a retried INSERT is race-free.
+          inserted = await q.insertEnvelope(tx, row);
+          if (!inserted) {
+            conflicted = true;
+            return;
+          }
+        }
       }
-      await q.incrementAggregate(tx, {
-        questionId: envelope.question_id,
-        answer: storedAnswer,
-        disclosedPredicates: token.disclosed_predicates,
-        options: question.options,
-        noSignal: envelope.no_signal,
-      });
-      // Per-person tally on the registration (the answers table no longer holds a
-      // stable per-person key, §1.4 / §14.2). Keyed by the raw nullifier.
-      await q.adjustAnswerCounters(tx, {
-        uniqueIdentifier: verified.uniqueIdentifier,
-        delta: 1,
-        signalDelta: envelope.no_signal ? 0 : 1,
-      });
+      if (inserted) {
+        await q.incrementAggregate(tx, {
+          questionId: envelope.question_id,
+          answer: storedAnswer,
+          disclosedPredicates: token.disclosed_predicates,
+          options: question.options,
+          noSignal: envelope.no_signal,
+        });
+        // Per-person tally on the registration (the answers table no longer
+        // holds a stable per-person key, §1.4 / §14.2). Keyed by the raw
+        // nullifier.
+        await q.adjustAnswerCounters(tx, {
+          uniqueIdentifier: verified.uniqueIdentifier,
+          delta: 1,
+          signalDelta: envelope.no_signal ? 0 : 1,
+        });
+      }
       // Referral activation (REFERRALS.md §4): if this answer just pushed the
       // answerer over BOTH unlock thresholds and they have a pending referral,
       // flip it to active and credit their referrer's reputation. Idempotent and
@@ -183,7 +210,7 @@ export function registerEnvelopesRoutes(app: FastifyInstance): void {
         boardThreshold: settings.repBoardThreshold,
       });
     });
-    if (duplicate) return ack(false, RejectionReason.DUPLICATE);
+    if (conflicted) return ack(false, RejectionReason.DUPLICATE);
 
     return ack(true);
   });

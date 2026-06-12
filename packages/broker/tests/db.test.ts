@@ -261,19 +261,48 @@ describe("POST /v1/dev/register", () => {
 });
 
 describe("POST /v1/envelopes (uniqueness + aggregate)", () => {
-  it("accepts one answer, increments the aggregate, then rejects a duplicate", async (ctx) => {
+  it("accepts one answer, then lets a re-submission override it in place", async (ctx) => {
     if (!pg) return ctx.skip();
-    const tok = await devToken({ uid: "self:e-1" });
+    const uid = "self:e-1";
+    const tok = await devToken({ uid });
     const question = await insertQuestion({});
     const env = makeEnvelope(tok, { questionId: question.id, answer: "yes", nonce: question.nonce });
 
     const first = await app.inject({ method: "POST", url: "/v1/envelopes", payload: env });
     expect(first.json()).toEqual({ accepted: true, reason: null });
     expect(await totalAnswers(question.id)).toBe(1);
+    expect(await q.askerAnswerCounts(db, uid)).toEqual({ total: 1, signal: 1 });
 
-    const dup = await app.inject({ method: "POST", url: "/v1/envelopes", payload: env });
-    expect(dup.json()).toMatchObject({ accepted: false, reason: "duplicate" });
+    // Same human, new signal: the envelope is swapped in place — accepted, one
+    // row / one vote still, and the aggregate bucket moves from "yes" to "no".
+    const override = makeEnvelope(tok, { questionId: question.id, answer: "no", nonce: question.nonce });
+    const second = await app.inject({ method: "POST", url: "/v1/envelopes", payload: override });
+    expect(second.json()).toEqual({ accepted: true, reason: null });
     expect(await totalAnswers(question.id)).toBe(1);
+    const agg = (await db.execute(sql`
+      SELECT by_predicate FROM aggregates WHERE question_id = ${question.id}
+    `)) as unknown as Array<{ by_predicate: unknown }>;
+    const byPredicate = (
+      typeof agg[0].by_predicate === "string"
+        ? JSON.parse(agg[0].by_predicate)
+        : agg[0].by_predicate
+    ) as Record<string, Record<string, number>>;
+    for (const bucket of Object.values(byPredicate)) {
+      expect(bucket).toMatchObject({ yes: 0, no: 1 });
+    }
+
+    // Overriding to no-signal keeps the total but rolls back the signal-bearing
+    // counter on the registration (§1.14 / §14.2).
+    const noSignal = makeEnvelope(tok, {
+      questionId: question.id,
+      answer: "",
+      nonce: question.nonce,
+      noSignal: true,
+    });
+    const third = await app.inject({ method: "POST", url: "/v1/envelopes", payload: noSignal });
+    expect(third.json()).toEqual({ accepted: true, reason: null });
+    expect(await totalAnswers(question.id)).toBe(1);
+    expect(await q.askerAnswerCounts(db, uid)).toEqual({ total: 1, signal: 0 });
   });
 
   it("stores a per-question voter tag, never the raw nullifier (§1.4)", async (ctx) => {

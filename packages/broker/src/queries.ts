@@ -491,8 +491,10 @@ export async function upsertSelfChainCursor(
 
 // ----- envelopes ---------------------------------------------------------
 
-// INSERT one envelope; return false if PK collision (duplicate). The composite PK
-// (question_id, unique_identifier) is the hard Sybil-resistance gate. The
+// INSERT one envelope; return false if PK collision (an answer already exists —
+// the caller switches to overrideEnvelope). The composite PK
+// (question_id, unique_identifier) is the hard Sybil-resistance gate: one ROW
+// per human per question, though the row's content may be overridden. The
 // `voterTag` written into unique_identifier is the per-question pseudonym
 // (voterTag.ts) — NOT the raw nullifier — so the table is unlinkable across
 // questions; callers MUST pass the tag, never the nullifier.
@@ -521,6 +523,51 @@ export async function insertEnvelope(
     RETURNING 1 AS inserted
   `)) as unknown as Rows<unknown>;
   return rows.length === 1;
+}
+
+// Replace an existing envelope in place — a re-submission from the same human
+// to the same question overrides the earlier answer (§1.12: the user's signal
+// is always theirs to change while the question is open). The composite PK
+// still guarantees one ROW per human per question; only its content moves.
+// Takes the same per-question advisory lock as incrementAggregate, then swaps
+// the row and rebuilds the aggregate from the remaining envelopes. Returns the
+// previous row's no_signal flag so the caller can move the registration's
+// signal counter, or null if the row vanished underneath us (raced with a
+// concurrent retraction) — in that case the caller can safely retry the INSERT
+// while still holding the lock. MUST run inside the caller's transaction.
+export async function overrideEnvelope(
+  db: Executor,
+  args: {
+    questionId: string;
+    voterTag: string;
+    answer: string;
+    noSignal: boolean;
+    disclosedPredicates: Record<string, string>;
+    agentSignature: string;
+    delegationHashHex: string;
+  },
+): Promise<{ previousNoSignal: boolean } | null> {
+  await db.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${String(args.questionId)}::text, 0))`,
+  );
+  const prev = (await db.execute(sql`
+    SELECT no_signal FROM envelopes
+    WHERE question_id = ${args.questionId} AND unique_identifier = ${args.voterTag}
+    FOR UPDATE
+  `)) as unknown as Rows<{ no_signal: boolean }>;
+  if (prev.length === 0) return null;
+  await db.execute(sql`
+    UPDATE envelopes
+    SET answer = ${args.answer},
+        no_signal = ${args.noSignal},
+        disclosed_predicates = ${JSON.stringify(args.disclosedPredicates)}::jsonb,
+        agent_signature = ${args.agentSignature},
+        delegation_hash = ${args.delegationHashHex},
+        submitted_at = now()
+    WHERE question_id = ${args.questionId} AND unique_identifier = ${args.voterTag}
+  `);
+  await recomputeAggregate(db, args.questionId);
+  return { previousNoSignal: prev[0].no_signal === true };
 }
 
 // Move an identity's answer tallies on the registration as envelopes are accepted

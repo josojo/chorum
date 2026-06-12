@@ -226,7 +226,7 @@ CREATE INDEX ON envelopes(question_id);
 CREATE INDEX ON envelopes(submitted_at);
 ```
 
-The composite primary key on `envelopes(question_id, unique_identifier)` is the hard enforcement of Sybil resistance at the database layer. Because `unique_identifier` holds the deterministic per-question voter tag (§1.4), a repeat answer from the same human to the same question collides on the PK and is rejected — the broker can crash, restart, double-submit and the DB still rejects duplicates — while two answers by the same human to *different* questions store unrelated tags, so the table cannot be grouped back into one person's history. Each question's secret `s_q` that derives the tag lives — **wrapped** under an env/SSM master key — in a broker-owned `chorum_secrets` database (the `question_secrets` table, ADR-098), never in this shared schema, and is destroyed a grace period after the question closes; per-person tallies are kept on `registrations.{answer_count,signal_count}` rather than by scanning `envelopes`.
+The composite primary key on `envelopes(question_id, unique_identifier)` is the hard enforcement of Sybil resistance at the database layer. Because `unique_identifier` holds the deterministic per-question voter tag (§1.4), a repeat answer from the same human to the same question collides on the PK and **overrides** the earlier envelope in place rather than ever creating a second one — the broker can crash, restart, double-submit and the DB still holds at most one row (one vote) per human per question — while two answers by the same human to *different* questions store unrelated tags, so the table cannot be grouped back into one person's history. Each question's secret `s_q` that derives the tag lives — **wrapped** under an env/SSM master key — in a broker-owned `chorum_secrets` database (the `question_secrets` table, ADR-098), never in this shared schema, and is destroyed a grace period after the question closes; per-person tallies are kept on `registrations.{answer_count,signal_count}` rather than by scanning `envelopes`.
 
 > **Secrets store (ADR-098).** `question_secrets(question_id, secret, closes_at, destroyed_at)` is **not** part of this shared schema. It lives in a broker-owned `chorum_secrets` database (`CHORUM_BROKER_SECRETS_DATABASE_URL`), co-located on the same RDS instance as the main DB; `chorum_web` / `chorum_classifier` have no access to it. `secret` is the **wrapped** `s_q` (`AES-256-GCM(master_key, s_q)`), so a dump of the instance yields only ciphertext. A periodic reaper destroys (`secret = NULL`) every secret whose question closed more than the grace window ago; once destroyed, the master key can no longer decrypt it, so the question's answers are unlinkable even to the broker.
 
@@ -312,8 +312,9 @@ parse (pydantic)
   → check signed predicates are eligible for the question scope
   → ensure (lazily mint, wrapped) this question's secret s_q in chorum_secrets, then
        derive voter_tag = HMAC(s_q, "chorum-voter-tag-v1"|question_id|unique_identifier)  (§1.4, ADR-098)
-  → INSERT envelope under voter_tag (composite PK rejects duplicates; raw nullifier never stored)
-  → increment aggregates row for question_id
+  → INSERT envelope under voter_tag (composite PK = one row per human; a re-submission
+       overrides that row in place; raw nullifier never stored)
+  → increment aggregates row for question_id (or rebuild it after an override)
   → bump registrations.{answer_count, signal_count} for the nullifier  (per-person tally; §14.2)
 ```
 All of the last three writes share one transaction, so aggregates, the per-person counters, and the envelope can never drift apart.
