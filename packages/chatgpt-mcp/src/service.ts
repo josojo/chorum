@@ -20,8 +20,10 @@ export class ChorumService {
     const current = await this.store.get(userId);
     if (!current?.consentAutomaticVoting || current.identity?.state !== state) throw new Error("identity authorization is missing or expired");
     const credential = await this.identity.complete(userId, state);
+    const subject = credential.unique_identifier ?? userId;
     await this.store.put(userId, { ...current, identity: undefined, credential });
-    return { status: "authorized" };
+    await this.store.move(userId, subject);
+    return { status: "authorized", subject };
   }
 
   async latestQuestions(userId: string): Promise<Question[]> {

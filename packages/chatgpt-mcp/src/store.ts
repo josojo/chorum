@@ -42,6 +42,16 @@ export class EncryptedUserStore {
     await this.writeAll(all);
   }
 
+  async move(fromUserId: string, toUserId: string): Promise<void> {
+    if (fromUserId === toUserId) return;
+    const all = await this.readAll();
+    const value = all[fromUserId];
+    if (!value) throw new Error("credential store record is missing");
+    all[toUserId] = value;
+    delete all[fromUserId];
+    await this.writeAll(all);
+  }
+
   private async readAll(): Promise<Record<string, UserRecord>> {
     try {
       const raw = JSON.parse(await readFile(this.path, "utf8")) as { iv: string; tag: string; data: string };

@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import type { ChorumOAuthServer } from "./oauth.js";
 
 export type OAuthUserResolver = (request: import("node:http").IncomingMessage) => Promise<string | undefined>;
 
@@ -15,7 +16,7 @@ const tools = [
 const readOnlyTools = new Set(["chorum_authorize", "chorum_complete_identity", "chorum_latest_questions", "chorum_review"]);
 
 /** Protocol shell only; production wiring must inject OAuth user resolution and service dependencies. */
-export function createMcpServer(call: (userId: string, name: string, args: Record<string, unknown>) => Promise<unknown>, resolveUser: OAuthUserResolver = defaultLocalUserResolver) {
+export function createMcpServer(call: (userId: string, name: string, args: Record<string, unknown>) => Promise<unknown>, resolveUser: OAuthUserResolver = defaultLocalUserResolver, oauth?: ChorumOAuthServer) {
   return createServer(async (req, res) => {
     if (req.method === "GET" && req.url === "/mcp/healthz") {
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, read_only: process.env.CHORUM_MCP_READ_ONLY === "1", oauth_configured: process.env.CHORUM_MCP_AUTH_CONFIGURED === "1" }));
@@ -23,7 +24,25 @@ export function createMcpServer(call: (userId: string, name: string, args: Recor
     }
     if (req.method === "GET" && req.url === "/.well-known/oauth-protected-resource") {
       const issuer = process.env.CHORUM_MCP_OAUTH_ISSUER?.trim();
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ resource: "/mcp", authorization_servers: issuer ? [issuer] : [], oauth_configured: Boolean(issuer) }));
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ resource: `${issuer || ""}/mcp`, authorization_servers: issuer ? [issuer] : [], oauth_configured: Boolean(issuer && oauth) }));
+      return;
+    }
+    if (req.method === "GET" && req.url === "/.well-known/oauth-authorization-server" && oauth) {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify(oauth.metadata()));
+      return;
+    }
+    if (oauth && req.method === "GET" && req.url?.startsWith("/oauth/authorize?")) {
+      await oauth.authorize(new URL(req.url, `http://${req.headers.host ?? "localhost"}`), res);
+      return;
+    }
+    if (oauth && req.method === "GET" && req.url?.startsWith("/oauth/authorize/status?")) {
+      await oauth.status(new URL(req.url, `http://${req.headers.host ?? "localhost"}`), res);
+      return;
+    }
+    if (oauth && req.method === "POST" && req.url === "/oauth/token") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      await oauth.token(new URLSearchParams(body), res);
       return;
     }
     if (req.method !== "POST" || req.url !== "/mcp") { res.writeHead(404).end(); return; }

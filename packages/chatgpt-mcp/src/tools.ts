@@ -7,7 +7,8 @@ export function createToolDispatcher(service: ChorumService) {
       case "chorum_authorize":
         return service.authorize(userId, args.consentAutomaticVoting === true, args.consentHistoryUse === true);
       case "chorum_complete_identity":
-        return service.completeIdentity(userId, String(args.state ?? ""));
+        await service.completeIdentity(userId, String(args.state ?? ""));
+        return { status: "authorized" };
       case "chorum_latest_questions":
         return { questions: await service.latestQuestions(userId) };
       case "chorum_vote":

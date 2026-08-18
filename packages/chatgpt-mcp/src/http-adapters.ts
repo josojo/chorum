@@ -48,7 +48,14 @@ export class SelfIdentityProvider implements IdentityProvider {
     const result = await registration.json() as { accepted?: boolean; delegation_token?: Record<string, unknown> };
     if (result.accepted !== true || !result.delegation_token) throw new Error("Chorum identity registration was rejected");
     this.pending.delete(state);
-    return { delegation_token: result.delegation_token, agent_seed_b64: pending.seed.toString("base64") };
+    const uniqueIdentifier = typeof result.delegation_token.unique_identifier === "string"
+      ? result.delegation_token.unique_identifier
+      : undefined;
+    return {
+      delegation_token: result.delegation_token,
+      agent_seed_b64: pending.seed.toString("base64"),
+      unique_identifier: uniqueIdentifier,
+    };
   }
 }
 

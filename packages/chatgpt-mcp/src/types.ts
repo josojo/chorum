@@ -9,6 +9,8 @@ export type Question = {
 export type IdentityCredential = {
   delegation_token: Record<string, unknown>;
   agent_seed_b64: string;
+  /** Broker Self nullifier; used only as the server-side account subject. */
+  unique_identifier?: string;
 };
 
 export interface IdentityProvider {
