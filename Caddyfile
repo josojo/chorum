@@ -35,6 +35,10 @@
 		reverse_proxy chatgpt-mcp:8788
 	}
 
+	handle /.well-known/oauth-protected-resource {
+		reverse_proxy chatgpt-mcp:8788
+	}
+
 	# Everything else is the Next.js web app.
 	handle {
 		reverse_proxy web:3000
