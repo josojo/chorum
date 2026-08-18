@@ -49,8 +49,9 @@ matching its region/country.
 A Self **mock passport** is a feature of the Self mobile app on the
 staging/testnet hub. There is **no phone-free way** to mint a real Self proof —
 the zk proof is generated on-device — so each mock passport = one identity, and
-you need the Self app on a phone. Do this on a local or isolated testnet stack;
-the public staging overlay disables mock passports and dev mode.
+you need the Self app on a phone. The current staging overlay explicitly enables
+mock passports and dev mode (`SELF_MOCK_PASSPORT=1`, `SELF_DEV_MODE=1`) and pins
+Celo Alfajores (`SELF_CHAIN_ID=44787`). Production must keep those settings off.
 
 ### One-time: the bridge must request `devMode:true`
 

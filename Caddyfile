@@ -29,6 +29,12 @@
 		reverse_proxy broker:8000
 	}
 
+	# ChatGPT remote MCP endpoint. Staging is read-only and fail-closed until
+	# OAuth is configured; the same public TLS host is used for Self callbacks.
+	handle /mcp* {
+		reverse_proxy chatgpt-mcp:8788
+	}
+
 	# Everything else is the Next.js web app.
 	handle {
 		reverse_proxy web:3000

@@ -98,6 +98,35 @@ services:
       CHORUM_CLASSIFIER_DATABASE_URL: postgres://chorum_classifier:${CHORUM_STAGING_POSTGRES_CLASSIFIER_PASSWORD:?set in staging .env}@postgres:5432/chorum
       CHORUM_CLASSIFIER_OPENROUTER_API_KEY: ${CHORUM_STAGING_OPENROUTER_API_KEY:?set in staging .env}
 
+  chatgpt-mcp:
+    build:
+      context: .
+      dockerfile: packages/chatgpt-mcp/Dockerfile
+    image: chorum-chatgpt-mcp:${CHORUM_DEPLOY_SHA:-dev}
+    container_name: chorum-chatgpt-mcp
+    restart: unless-stopped
+    depends_on:
+      broker:
+        condition: service_healthy
+      self-bridge:
+        condition: service_started
+    environment:
+      PORT: "8788"
+      CHORUM_MCP_BROKER_URL: http://broker:8000
+      CHORUM_MCP_SELF_BRIDGE_URL: http://self-bridge:8787
+      CHORUM_MCP_STORE_PATH: /data/users.enc
+      CHORUM_MCP_MASTER_KEY_B64: ${CHORUM_STAGING_MCP_MASTER_KEY_B64:?set in staging .env}
+      CHORUM_MCP_SIGNER_BIN: /usr/local/bin/chorum-skill
+      # OAuth is deliberately fail-closed until the operator supplies a real
+      # issuer/client integration. No bearer token is accepted in staging.
+      CHORUM_MCP_AUTH_CONFIGURED: "0"
+      CHORUM_MCP_READ_ONLY: "1"
+      CHORUM_MCP_OAUTH_ISSUER: ${CHORUM_STAGING_MCP_OAUTH_ISSUER:-}
+    volumes:
+      - chatgpt-mcp-data:/data
+    ports:
+      - "127.0.0.1:8788:8788"
+
   caddy:
     image: caddy:2
     container_name: chorum-caddy
@@ -121,3 +150,4 @@ services:
 volumes:
   caddy-data:
   caddy-config:
+  chatgpt-mcp-data:

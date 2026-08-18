@@ -1,0 +1,19 @@
+{
+  "name": "@chorum/chatgpt-mcp",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ChatGPT remote MCP boundary for consented Chorum voting",
+  "type": "module",
+  "scripts": {
+    "test": "node --import tsx --test tests/*.test.ts",
+    "dev": "node --import tsx src/main.ts",
+    "build": "tsc --noEmit false --outDir dist --module NodeNext --target ES2022 --moduleResolution NodeNext"
+  },
+  "dependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2"
+  }
+}
