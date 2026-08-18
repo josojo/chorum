@@ -1,4 +1,4 @@
-FROM rust:1.85-slim AS signer-build
+FROM rust:1.86-slim AS signer-build
 WORKDIR /src
 COPY packages/skill/Cargo.toml packages/skill/Cargo.lock ./packages/skill/
 COPY packages/skill ./packages/skill
