@@ -18,7 +18,7 @@ name: deploy-staging
 #                                               same one already provisioning
 #                                               EC2). Needs ec2:Authorize/
 #                                               RevokeSecurityGroupIngress on
-#                                               sg-05db2170c9271f2c6, plus
+#                                               sg-0a2cc80f8a0e61d4b, plus
 #                                               ssm:GetParametersByPath +
 #                                               kms:Decrypt on
 #                                               /chorum/staging/* (to render the
@@ -63,8 +63,8 @@ jobs:
     timeout-minutes: 20
     env:
       AWS_REGION: eu-central-1
-      STAGING_SG_ID: sg-05db2170c9271f2c6
-      STAGING_HOST: 3.121.186.133
+      STAGING_SG_ID: sg-0a2cc80f8a0e61d4b
+      STAGING_HOST: 35.159.125.37
       STAGING_USER: ubuntu
 
     steps:
