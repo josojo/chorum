@@ -139,8 +139,8 @@ jobs:
           # Existing Postgres volumes do not re-run /docker-entrypoint-initdb.d.
           # Re-apply the role script inside the running container so staging can
           # rotate away from the committed dev passwords without wiping data.
-          if docker ps --format '{{.Names}}' | grep -qx chorum-postgres; then
-            docker exec -i \
+          if sudo -n docker ps --format '{{.Names}}' | grep -qx chorum-postgres; then
+            sudo -n docker exec -i \
               -e POSTGRES_USER=chorum_admin \
               -e POSTGRES_DB=chorum \
               -e CHORUM_DB_ADMIN_PASSWORD="\$CHORUM_STAGING_POSTGRES_ADMIN_PASSWORD" \
@@ -149,11 +149,11 @@ jobs:
               chorum-postgres bash -s < db/init/02-roles.sh
 
             # Same reason: 04-secrets-db.sh creates the broker-owned
-            # `chorum_secrets` DB (ADR-098), but only on a fresh volume. The
+            # chorum_secrets DB (ADR-098), but only on a fresh volume. The
             # broker opens it at startup (initSecretsDb) and crashes if it is
             # missing, so re-apply it on the live container too. Idempotent
             # (CREATE DATABASE … WHERE NOT EXISTS \gexec).
-            docker exec -i \
+            sudo -n docker exec -i \
               -e POSTGRES_USER=chorum_admin \
               -e POSTGRES_DB=chorum \
               chorum-postgres bash -s < db/init/04-secrets-db.sh
@@ -166,20 +166,20 @@ jobs:
           export CHORUM_DEPLOY_SHA="\$(git rev-parse --short=12 HEAD)"
           echo "pinning images to tag \$CHORUM_DEPLOY_SHA"
 
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml config --quiet
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build --remove-orphans
+          sudo -n docker compose -f docker-compose.yml -f docker-compose.staging.yml config --quiet
+          sudo -n docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build --remove-orphans
 
           echo "--- container state ---"
-          docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'chorum-|NAMES'
+          sudo -n docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'chorum-|NAMES'
 
           # Health-gate the new stack. If it never answers this exits non-zero
           # (set -e) and the deploy FAILS — deploy-finalize below does not run,
           # so .deploy-state still points at the last good SHA and an operator
           # can run scripts/rollback.sh to recover.
-          bash scripts/healthgate.sh
+          sudo -n bash scripts/healthgate.sh
 
           # Healthy: record this SHA as last-known-good and prune stale images.
-          bash scripts/deploy-finalize.sh staging
+          sudo -n bash scripts/deploy-finalize.sh staging
           EOF
 
       - name: Revoke runner IP from the staging SG (always)
