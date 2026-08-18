@@ -7,7 +7,7 @@ RUN cargo build --manifest-path packages/skill/Cargo.toml --release
 FROM node:20-slim
 WORKDIR /app
 COPY packages/chatgpt-mcp/package.json packages/chatgpt-mcp/package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 COPY packages/chatgpt-mcp/tsconfig.json ./
 COPY packages/chatgpt-mcp/src ./src
 COPY --from=signer-build /src/packages/skill/target/release/chorum-skill /usr/local/bin/chorum-skill
