@@ -2,35 +2,32 @@ import { createHash, randomBytes } from "node:crypto";
 import type { ServerResponse } from "node:http";
 import type { ChorumService } from "./service.js";
 
+type OAuthClient = { redirectUris: Set<string> };
 type AuthorizationRequest = {
   clientId: string;
   redirectUri: string;
+  resource: string;
   codeChallenge: string;
   state?: string;
   scope: string;
   temporaryUserId: string;
-  selfUrl: string;
-  status: "pending" | "complete";
+  selfUrl?: string;
+  status: "consent" | "pending" | "complete";
   authorizationCode?: string;
   subject?: string;
 };
-
 type Code = { request: AuthorizationRequest; used: boolean };
-type AccessToken = { userId: string; expiresAt: number };
+type AccessToken = { userId: string; expiresAt: number; resource: string; scope: string };
 
-const ttlSeconds = 300;
+const scope = "chorum.vote";
 const tokenTtlSeconds = 900;
 const b64url = (value: Buffer) => value.toString("base64url");
 const digest = (value: string) => createHash("sha256").update(value).digest();
 const html = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 
-/**
- * Chorum's OAuth server. Self.xyz is intentionally a proof provider behind
- * this boundary, not an OAuth issuer: the browser completes a Self proof,
- * then Chorum mints a short-lived PKCE-bound authorization code and bearer
- * token. Credential material remains in ChorumService's encrypted store.
- */
+/** Chorum OAuth server; Self.xyz remains the proof provider behind it. */
 export class ChorumOAuthServer {
+  private readonly clients = new Map<string, OAuthClient>();
   private readonly requests = new Map<string, AuthorizationRequest>();
   private readonly codes = new Map<string, Code>();
   private readonly tokens = new Map<string, AccessToken>();
@@ -38,60 +35,91 @@ export class ChorumOAuthServer {
   constructor(
     private readonly service: ChorumService,
     private readonly issuer: string,
-    private readonly clientId: string,
-    private readonly redirectUris: Set<string>,
+    private readonly resource: string,
   ) {}
 
   metadata() {
     return {
       issuer: this.issuer,
+      authorization_response_iss_parameter_supported: true,
       authorization_endpoint: `${this.issuer}/oauth/authorize`,
       token_endpoint: `${this.issuer}/oauth/token`,
+      registration_endpoint: `${this.issuer}/oauth/register`,
+      token_endpoint_auth_methods_supported: ["none"],
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code"],
       code_challenge_methods_supported: ["S256"],
-      scopes_supported: ["chorum.read"],
+      scopes_supported: [scope],
     };
   }
 
+  protectedResourceMetadata() {
+    return { resource: this.resource, authorization_servers: [this.issuer], scopes_supported: [scope] };
+  }
+
+  async register(body: unknown, res: ServerResponse): Promise<void> {
+    const input = body as { redirect_uris?: unknown; token_endpoint_auth_method?: unknown; grant_types?: unknown; response_types?: unknown };
+    const redirects = Array.isArray(input.redirect_uris) && input.redirect_uris.every((value) => typeof value === "string" && value.startsWith("https://"))
+      ? input.redirect_uris as string[] : [];
+    if (!redirects.length || (input.token_endpoint_auth_method && input.token_endpoint_auth_method !== "none")) {
+      this.json(res, 400, { error: "invalid_client_metadata" });
+      return;
+    }
+    const clientId = `chorum_${b64url(randomBytes(24))}`;
+    this.clients.set(clientId, { redirectUris: new Set(redirects) });
+    this.json(res, 201, { client_id: clientId, client_id_issued_at: Math.floor(Date.now() / 1000), redirect_uris: redirects, token_endpoint_auth_method: "none", grant_types: ["authorization_code"], response_types: ["code"] });
+  }
+
   async authorize(url: URL, res: ServerResponse): Promise<void> {
-    const clientId = url.searchParams.get("client_id");
+    const clientId = url.searchParams.get("client_id") ?? "";
+    const client = this.clients.get(clientId);
     const redirectUri = url.searchParams.get("redirect_uri");
     const challenge = url.searchParams.get("code_challenge");
     const responseType = url.searchParams.get("response_type");
+    const requestedResource = url.searchParams.get("resource");
+    const requestedScope = url.searchParams.get("scope") ?? scope;
     const state = url.searchParams.get("state") ?? undefined;
-    const scope = url.searchParams.get("scope") ?? "chorum.read";
-    if (clientId !== this.clientId || responseType !== "code" || !redirectUri || !this.redirectUris.has(redirectUri) || !challenge || scope !== "chorum.read") {
-      res.writeHead(400, { "content-type": "text/plain" }).end("invalid OAuth authorization request");
+    if (!client || !redirectUri || !client.redirectUris.has(redirectUri) || responseType !== "code" || !challenge || url.searchParams.get("code_challenge_method") !== "S256" || requestedResource !== this.resource || requestedScope !== scope) {
+      this.authorizationError(res, redirectUri && client?.redirectUris.has(redirectUri) ? redirectUri : undefined, state, "invalid_request");
       return;
     }
     const requestId = b64url(randomBytes(24));
-    const started = await this.service.authorize(requestId, true, true);
-    this.requests.set(requestId, {
-      clientId, redirectUri, codeChallenge: challenge, state, scope,
-      temporaryUserId: requestId, selfUrl: started.authorization_url,
-      status: "pending",
-    });
-    this.renderPending(res, requestId);
+    this.requests.set(requestId, { clientId, redirectUri, resource: this.resource, codeChallenge: challenge, state, scope, temporaryUserId: requestId, status: "consent" });
+    this.renderConsent(res, requestId);
+  }
+
+  async consent(body: URLSearchParams, res: ServerResponse): Promise<void> {
+    const requestId = body.get("request") ?? "";
+    const request = this.requests.get(requestId);
+    if (!request || request.status !== "consent") { res.writeHead(404).end(); return; }
+    if (body.get("automatic_voting") !== "on" || body.get("history_use") !== "on") {
+      this.authorizationError(res, request.redirectUri, request.state, "access_denied");
+      return;
+    }
+    try {
+      const started = await this.service.authorize(request.temporaryUserId, true, true);
+      request.selfUrl = started.authorization_url;
+      request.status = "pending";
+      this.renderPending(res, requestId);
+    } catch {
+      this.authorizationError(res, request.redirectUri, request.state, "server_error");
+    }
   }
 
   async status(url: URL, res: ServerResponse): Promise<void> {
-    const requestId = url.searchParams.get("request");
-    const request = requestId ? this.requests.get(requestId) : undefined;
+    const requestId = url.searchParams.get("request") ?? "";
+    const request = this.requests.get(requestId);
     if (!request) { res.writeHead(404).end(); return; }
     if (request.status === "pending") {
       try {
-        const completed = await this.service.completeIdentity(request.temporaryUserId, requestId!);
+        const completed = await this.service.completeIdentity(request.temporaryUserId, requestId);
         request.subject = completed.subject;
-        const code = b64url(randomBytes(32));
-        this.codes.set(code, { request, used: false });
-        request.authorizationCode = code;
+        request.authorizationCode = b64url(randomBytes(32));
+        this.codes.set(request.authorizationCode, { request, used: false });
         request.status = "complete";
       } catch (error) {
-        // The Self bridge reports an incomplete request while the scan is in
-        // progress. Keep polling; terminal errors are surfaced without logs.
         if (error instanceof Error && !/could not be read|did not complete|missing or expired/.test(error.message)) {
-          res.writeHead(400, { "content-type": "text/plain" }).end("Self authorization failed");
+          this.authorizationError(res, request.redirectUri, request.state, "server_error");
           return;
         }
       }
@@ -99,45 +127,58 @@ export class ChorumOAuthServer {
     if (request.status === "complete" && request.authorizationCode) {
       const target = new URL(request.redirectUri);
       target.searchParams.set("code", request.authorizationCode);
+      target.searchParams.set("iss", this.issuer);
       if (request.state) target.searchParams.set("state", request.state);
       res.writeHead(302, { location: target.toString() }).end();
       return;
     }
-    this.renderPending(res, requestId!);
+    this.renderPending(res, requestId);
   }
 
   async token(body: URLSearchParams, res: ServerResponse): Promise<void> {
     const codeValue = body.get("code");
-    const verifier = body.get("code_verifier");
     const entry = codeValue ? this.codes.get(codeValue) : undefined;
-    if (!entry || entry.used || !verifier || b64url(digest(verifier)) !== entry.request.codeChallenge) {
-      res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: "invalid_grant" }));
+    const verifier = body.get("code_verifier");
+    const client = body.get("client_id");
+    const redirectUri = body.get("redirect_uri");
+    if (!entry || entry.used || !verifier || client !== entry.request.clientId || redirectUri !== entry.request.redirectUri || body.get("resource") !== this.resource || b64url(digest(verifier)) !== entry.request.codeChallenge || !entry.request.subject) {
+      this.json(res, 400, { error: "invalid_grant" });
       return;
     }
     entry.used = true;
     const token = b64url(randomBytes(32));
-    // The temporary record was atomically moved to the Self nullifier by
-    // completeIdentity; resolve it once and retain only the opaque token map.
-    if (!entry.request.subject) {
-      res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: "invalid_grant" }));
-      return;
-    }
-    this.tokens.set(token, { userId: entry.request.subject, expiresAt: Date.now() + tokenTtlSeconds * 1000 });
-    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({ access_token: token, token_type: "Bearer", expires_in: tokenTtlSeconds, scope: entry.request.scope }));
+    this.tokens.set(token, { userId: entry.request.subject, expiresAt: Date.now() + tokenTtlSeconds * 1000, resource: this.resource, scope: entry.request.scope });
+    this.json(res, 200, { access_token: token, token_type: "Bearer", expires_in: tokenTtlSeconds, scope: entry.request.scope });
   }
 
   resolveBearer(value: string): string | undefined {
     const entry = this.tokens.get(value);
-    if (!entry || entry.expiresAt <= Date.now()) { this.tokens.delete(value); return undefined; }
+    if (!entry || entry.expiresAt <= Date.now() || entry.resource !== this.resource) { this.tokens.delete(value); return undefined; }
     return entry.userId;
+  }
+
+  private renderConsent(res: ServerResponse, requestId: string) {
+    const body = `<!doctype html><meta charset="utf-8"><title>Connect Chorum</title><h1>Connect Chorum</h1><p>Chorum will use your verified Self identity to access your account.</p><form method="post" action="/oauth/consent"><input type="hidden" name="request" value="${html(requestId)}"><label><input type="checkbox" name="automatic_voting"> Allow ongoing automatic voting</label><br><label><input type="checkbox" name="history_use"> Allow use of permitted past voting history</label><br><button type="submit">Continue to Self verification</button></form>`;
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }).end(body);
   }
 
   private renderPending(res: ServerResponse, requestId: string) {
     const request = this.requests.get(requestId)!;
     const statusUrl = `/oauth/authorize/status?request=${encodeURIComponent(requestId)}`;
-    const body = `<!doctype html><meta charset="utf-8"><title>Connect Chorum</title><p>Open Self to verify your identity. This page will continue automatically after verification.</p><p><a href="${html(request.selfUrl)}">Open Self</a></p><meta http-equiv="refresh" content="3;url=${html(statusUrl)}">`;
+    const body = `<!doctype html><meta charset="utf-8"><title>Verify with Self</title><p>Open Self to verify your identity. This page continues automatically after verification.</p><p><a href="${html(request.selfUrl ?? "")}">Open Self</a></p><meta http-equiv="refresh" content="3;url=${html(statusUrl)}">`;
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }).end(body);
   }
+
+  private authorizationError(res: ServerResponse, redirectUri: string | undefined, state: string | undefined, error: string) {
+    if (redirectUri) {
+      const target = new URL(redirectUri);
+      target.searchParams.set("error", error); target.searchParams.set("iss", this.issuer);
+      if (state) target.searchParams.set("state", state);
+      res.writeHead(302, { location: target.toString() }).end();
+    } else this.json(res, 400, { error });
+  }
+
+  private json(res: ServerResponse, status: number, body: unknown) { res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify(body)); }
 }
 
 export function pkceChallenge(verifier: string): string { return b64url(digest(verifier)); }

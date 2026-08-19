@@ -19,15 +19,9 @@ const service = new ChorumService(
 const dispatcher = createToolDispatcher(service);
 const oauthConfigured = process.env.CHORUM_MCP_AUTH_CONFIGURED === "1";
 const issuer = process.env.CHORUM_MCP_OAUTH_ISSUER?.trim() ?? "";
-const oauthClientId = process.env.CHORUM_MCP_OAUTH_CLIENT_ID?.trim() ?? "";
-const oauthRedirectUris = new Set((process.env.CHORUM_MCP_OAUTH_REDIRECT_URIS ?? "").split(",").map((value) => value.trim()).filter(Boolean));
-const oauth = oauthConfigured && issuer && oauthClientId && oauthRedirectUris.size > 0
-  ? new ChorumOAuthServer(
-    service,
-    issuer,
-    oauthClientId,
-    oauthRedirectUris,
-  )
+const resource = process.env.CHORUM_MCP_OAUTH_RESOURCE?.trim() || `${issuer}/mcp`;
+const oauth = oauthConfigured && issuer && resource
+  ? new ChorumOAuthServer(service, issuer, resource)
   : undefined;
 const server = createMcpServer(dispatcher, async (request) => {
   const token = request.headers.authorization?.replace(/^Bearer\s+/i, "");

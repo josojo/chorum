@@ -117,11 +117,12 @@ services:
       CHORUM_MCP_STORE_PATH: /data/users.enc
       CHORUM_MCP_MASTER_KEY_B64: ${CHORUM_STAGING_MCP_MASTER_KEY_B64:?set in staging .env}
       CHORUM_MCP_SIGNER_BIN: /usr/local/bin/chorum-skill
-      # OAuth is deliberately fail-closed until the operator supplies a real
-      # issuer/client integration. No bearer token is accepted in staging.
-      CHORUM_MCP_AUTH_CONFIGURED: "0"
-      CHORUM_MCP_READ_ONLY: "1"
-      CHORUM_MCP_OAUTH_ISSUER: ${CHORUM_STAGING_MCP_OAUTH_ISSUER:-}
+      # Staging-only OAuth/DCR and staged write path. Production compose keeps
+      # its own isolated values and is not changed by this overlay.
+      CHORUM_MCP_AUTH_CONFIGURED: "1"
+      CHORUM_MCP_READ_ONLY: "0"
+      CHORUM_MCP_OAUTH_ISSUER: ${CHORUM_STAGING_MCP_OAUTH_ISSUER:?set in staging .env}
+      CHORUM_MCP_OAUTH_RESOURCE: ${CHORUM_STAGING_MCP_OAUTH_RESOURCE:?set in staging .env}
     volumes:
       - chatgpt-mcp-data:/data
     ports:

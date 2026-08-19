@@ -4,13 +4,13 @@ import type { ChorumOAuthServer } from "./oauth.js";
 export type OAuthUserResolver = (request: import("node:http").IncomingMessage) => Promise<string | undefined>;
 
 const tools = [
-  { name: "chorum_authorize", description: "Obtain consent and begin Self identity authorization.", inputSchema: { type: "object", properties: { consentAutomaticVoting: { type: "boolean" }, consentHistoryUse: { type: "boolean" } }, required: ["consentAutomaticVoting", "consentHistoryUse"] } },
-  { name: "chorum_complete_identity", description: "Complete the pending Self identity authorization; the Self proof is collected server-side.", inputSchema: { type: "object", properties: { state: { type: "string" } }, required: ["state"] } },
-  { name: "chorum_latest_questions", description: "Retrieve the latest eligible Chorum questions.", inputSchema: { type: "object", properties: {} } },
-  { name: "chorum_vote", description: "Submit a grounded answer or abstain with answer null.", inputSchema: { type: "object", properties: { question_id: { type: "string" }, answer: { type: ["string", "null"] } }, required: ["question_id", "answer"] } },
-  { name: "chorum_review", description: "Review this user's Chorum vote history.", inputSchema: { type: "object", properties: {} } },
-  { name: "chorum_revoke", description: "Revoke one previously submitted Chorum vote.", inputSchema: { type: "object", properties: { question_id: { type: "string" } }, required: ["question_id"] } },
-  { name: "chorum_reset", description: "Revoke and remove this user's Chorum authorization.", inputSchema: { type: "object", properties: {} } },
+  { name: "chorum_authorize", description: "Obtain consent and begin Self identity authorization.", annotations: { readOnlyHint: false, destructiveHint: false }, inputSchema: { type: "object", properties: { consentAutomaticVoting: { type: "boolean" }, consentHistoryUse: { type: "boolean" } }, required: ["consentAutomaticVoting", "consentHistoryUse"] } },
+  { name: "chorum_complete_identity", description: "Complete the pending Self identity authorization; the Self proof is collected server-side.", annotations: { readOnlyHint: false, destructiveHint: false }, inputSchema: { type: "object", properties: { state: { type: "string" } }, required: ["state"] } },
+  { name: "chorum_latest_questions", description: "Retrieve the latest eligible Chorum questions.", annotations: { readOnlyHint: true }, inputSchema: { type: "object", properties: {} } },
+  { name: "chorum_vote", description: "Submit a grounded answer or abstain with answer null.", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }, inputSchema: { type: "object", properties: { question_id: { type: "string" }, answer: { type: ["string", "null"] } }, required: ["question_id", "answer"] } },
+  { name: "chorum_review", description: "Review this user's Chorum vote history.", annotations: { readOnlyHint: true }, inputSchema: { type: "object", properties: {} } },
+  { name: "chorum_revoke", description: "Revoke one previously submitted Chorum vote.", annotations: { readOnlyHint: false, destructiveHint: true }, inputSchema: { type: "object", properties: { question_id: { type: "string" } }, required: ["question_id"] } },
+  { name: "chorum_reset", description: "Revoke and remove this user's Chorum authorization.", annotations: { readOnlyHint: false, destructiveHint: true }, inputSchema: { type: "object", properties: {} } },
 ];
 
 const readOnlyTools = new Set(["chorum_authorize", "chorum_complete_identity", "chorum_latest_questions", "chorum_review"]);
@@ -19,12 +19,12 @@ const readOnlyTools = new Set(["chorum_authorize", "chorum_complete_identity", "
 export function createMcpServer(call: (userId: string, name: string, args: Record<string, unknown>) => Promise<unknown>, resolveUser: OAuthUserResolver = defaultLocalUserResolver, oauth?: ChorumOAuthServer) {
   return createServer(async (req, res) => {
     if (req.method === "GET" && req.url === "/mcp/healthz") {
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, read_only: process.env.CHORUM_MCP_READ_ONLY === "1", oauth_configured: process.env.CHORUM_MCP_AUTH_CONFIGURED === "1" }));
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, read_only: process.env.CHORUM_MCP_READ_ONLY === "1", oauth_configured: Boolean(oauth) }));
       return;
     }
     if (req.method === "GET" && req.url === "/.well-known/oauth-protected-resource") {
-      const issuer = process.env.CHORUM_MCP_OAUTH_ISSUER?.trim();
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ resource: `${issuer || ""}/mcp`, authorization_servers: issuer ? [issuer] : [], oauth_configured: Boolean(issuer && oauth) }));
+      const resource = process.env.CHORUM_MCP_OAUTH_RESOURCE?.trim() || `${new URL(`http://${req.headers.host ?? "localhost"}`).origin}/mcp`;
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(oauth ? oauth.protectedResourceMetadata() : { resource, authorization_servers: [] }));
       return;
     }
     if (req.method === "GET" && req.url === "/.well-known/oauth-authorization-server" && oauth) {
@@ -33,6 +33,18 @@ export function createMcpServer(call: (userId: string, name: string, args: Recor
     }
     if (oauth && req.method === "GET" && req.url?.startsWith("/oauth/authorize?")) {
       await oauth.authorize(new URL(req.url, `http://${req.headers.host ?? "localhost"}`), res);
+      return;
+    }
+    if (oauth && req.method === "POST" && req.url === "/oauth/consent") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      await oauth.consent(new URLSearchParams(body), res);
+      return;
+    }
+    if (oauth && req.method === "POST" && req.url === "/oauth/register") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      try { await oauth.register(JSON.parse(body), res); } catch { res.writeHead(400).end(); }
       return;
     }
     if (oauth && req.method === "GET" && req.url?.startsWith("/oauth/authorize/status?")) {
@@ -47,7 +59,12 @@ export function createMcpServer(call: (userId: string, name: string, args: Recor
     }
     if (req.method !== "POST" || req.url !== "/mcp") { res.writeHead(404).end(); return; }
     const userId = await resolveUser(req);
-    if (!userId) { res.writeHead(401, { "WWW-Authenticate": "Bearer" }).end(); return; }
+    if (!userId) {
+      const resource = process.env.CHORUM_MCP_OAUTH_RESOURCE?.trim();
+      const metadata = resource ? `${new URL(resource).origin}/.well-known/oauth-protected-resource` : "/.well-known/oauth-protected-resource";
+      res.writeHead(401, { "WWW-Authenticate": `Bearer resource_metadata=\"${metadata}\"` }).end();
+      return;
+    }
     let body = "";
     for await (const chunk of req) body += chunk;
     const request = JSON.parse(body) as { id: number; method: string; params?: { name?: string; arguments?: Record<string, unknown> } };
